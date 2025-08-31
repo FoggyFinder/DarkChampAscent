@@ -5,15 +5,15 @@ Dark Champ Ascent - discord game made by and for [Dark Coin](https://dark-coin.i
 
 ----
 
-1. [TOS](#TOS)
+1. [Terms of Service](#tos-terms-of-service)
 2. [Requirements](#Requirements)
 3. [Basics](#Basics)
-4. [Monsters](#Monster)
+4. [Monsters](#Monsters)
 5. [Tokenomics](#Tokenomics)
 6. [Wallets](#Wallets)
 7. [Shop](#Shop)
 8. [Premium features](#Premium-features)
-9. [Commands](#Command)
+9. [Commands](#Commands)
 
 ## TOS (Terms of Service)
 
