@@ -45,7 +45,7 @@ type RoundBoost = {
 [<RequireQualifiedAccess>]
 module Shop =
     // ToDo: investigate why adding [<Literal>] breaks program
-    let RenamePrice = 0.05M
+    let RenamePrice = 5M
     
     let getPrice =
         function

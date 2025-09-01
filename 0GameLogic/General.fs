@@ -338,7 +338,7 @@ module Constants =
 module Levels =
     open System.Collections.Generic
 
-    let [<Literal>] XPPerLvl = 10UL
+    let [<Literal>] XPPerLvl = 100UL
     
     /// every level gives exactly 1 point to char.
     let statFromCharacteristics(lvls:IDictionary<Characteristic, int>) =
