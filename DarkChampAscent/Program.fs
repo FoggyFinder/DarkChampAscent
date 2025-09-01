@@ -22,7 +22,7 @@ open DiscordBot.Commands
 open Conf
 open NetCord
 
-let cs = "Data Source=darkchampascent.sqlite; Cache=Shared;Foreign Keys = True"
+let cs = "Data Source=darkchampascentdb.sqlite; Cache=Shared;Foreign Keys = True"
 let db = new Db.SqliteStorage(cs)
 
 let builder = Host.CreateApplicationBuilder()

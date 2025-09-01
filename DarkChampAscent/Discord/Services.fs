@@ -376,7 +376,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         let roundStartMessage = MessageProperties().WithComponents([ roundCard ]).WithFlags(MessageFlags.IsComponentsV2)
                         do! Utils.sendMsgToLogChannel gclient roundStartMessage
                     | _ -> ()
-                | Error err -> Log.Error($"StartBattleError: {err}")
+                | Error err ->
+                    Log.Error($"StartBattleError: {err}")
+                    do! Task.Delay(TimeSpan.FromMinutes(5.0))
             | Error _ -> ()   
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
@@ -399,7 +401,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | StartRoundError.MaxRoundsInBattle ->
                     let mp = MessageProperties(Content = $"Battle is finished - max amount of rounds ({Constants.RoundsInBattle}) is reached!")
                     do! Utils.sendMsgToBattleChannelSilently gclient mp  
-                | _ -> Log.Error($"StartRoundError: {err}")
+                | _ ->
+                    Log.Error($"StartRoundError: {err}")
+                    do! Task.Delay(TimeSpan.FromMinutes(5.0))
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
             do! Utils.sendMsgToLogChannel gclient mp
