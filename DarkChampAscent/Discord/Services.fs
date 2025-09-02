@@ -59,76 +59,80 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
             while cancellationToken.IsCancellationRequested |> not do
                 do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
                 try
-                    let dt = DateTime.UtcNow
-                    let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
-                    let confirmations =
-                        Blockchain.getNotesForWallet(options.Value.Wallet.GameWallet, lpd)
-                        |> Seq.choose(fun (wallet, barr) ->
-                            try
-                                Some(wallet, System.Text.Encoding.UTF8.GetString barr)
-                            with _ -> None)
-                        |> Seq.toArray
-                    let! isOk =
-                        match confirmations.Length with
-                        | 0 -> task { return true }
-                        | _ ->
-                            task {
-                                let mutable noErrors = true
-                                for (wallet, code) in confirmations do
-                                    if db.WalletIsConfirmed(wallet) then ()
-                                    elif db.ConfirmWallet(wallet, code) then
-                                        match db.FindDiscordIdByWallet wallet with
-                                        | Some discordId ->
-                                            for guild in client.Cache.Guilds do
-                                                match guild.Value.Users.TryGetValue(uint64 discordId) with
-                                                | true, duser ->
-                                                    let rO =
-                                                        guild.Value.Roles
-                                                        |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
-                                                    match rO with
-                                                    | Some role ->
-                                                        try
-                                                            if duser.RoleIds |> Seq.contains role.Key |> not then
-                                                                let! v = guild.Value.AddUserRoleAsync(uint64 discordId, role.Key)
-                                                                Log.Information("Role added to a user")
-                                                        with exn ->
-                                                            Log.Error(exn, $"Unable to add role to user inside {guild.Value.Name} guild")
-                                                    | None ->
-                                                        Log.Error($"Unable to find a role to user inside {guild.Value.Name} guild")
-                                                | false, _ -> ()
-                                        | None -> ()
-                                        match db.FindUserIdByWallet wallet with
-                                        | Some userId ->
-                                            Blockchain.getChampsForWallet wallet
-                                            |> Seq.iter(fun assetId ->
-                                                let r = db.ChampExists assetId
-                                                let isOk =
-                                                    match r with
-                                                    | Ok b ->
-                                                        if b then
-                                                            db.UpdateUserForChamp(uint64 userId, assetId) |> Result.isOk
-                                                        else
-                                                            Blockchain.tryGetChampInfo assetId
-                                                            |> Option.map(fun (trait', ipfs) ->
-                                                                db.AddOrInsertChamp ({
-                                                                    Name = Blockchain.getAssetName assetId
-                                                                    AssetId = assetId
-                                                                    IPFS = ipfs
-                                                                    UserId = uint64 userId
-                                                                    Stats = Champ.generateStats trait'
-                                                                    Traits = trait'
-                                                                }))
-                                                            |> Option.defaultValue false
-                                                    | Error _ -> false
-                                                noErrors <- noErrors && isOk)
-                                        | None -> ()
-                                    else ()
-                                return noErrors
+                    let unconfirmedWalletExists = db.UnConfirmedWalletExists()
+                    if unconfirmedWalletExists then
+                        let dt = DateTime.UtcNow
+                        let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
+                        let confirmations =
+                            Blockchain.getNotesForWallet(options.Value.Wallet.GameWallet, lpd)
+                            |> Seq.choose(fun (wallet, barr) ->
+                                try
+                                    Some(wallet, System.Text.Encoding.UTF8.GetString barr)
+                                with _ -> None)
+                            |> Seq.toArray
+                        let! isOk =
+                            match confirmations.Length with
+                            | 0 -> task { return true }
+                            | _ ->
+                                task {
+                                    let mutable noErrors = true
+                                    for (wallet, code) in confirmations do
+                                        if db.WalletIsConfirmed(wallet) then ()
+                                        elif db.ConfirmWallet(wallet, code) then
+                                            match db.FindDiscordIdByWallet wallet with
+                                            | Some discordId ->
+                                                for guild in client.Cache.Guilds do
+                                                    match guild.Value.Users.TryGetValue(uint64 discordId) with
+                                                    | true, duser ->
+                                                        let rO =
+                                                            guild.Value.Roles
+                                                            |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
+                                                        match rO with
+                                                        | Some role ->
+                                                            try
+                                                                if duser.RoleIds |> Seq.contains role.Key |> not then
+                                                                    let! v = guild.Value.AddUserRoleAsync(uint64 discordId, role.Key)
+                                                                    Log.Information("Role added to a user")
+                                                            with exn ->
+                                                                Log.Error(exn, $"Unable to add role to user inside {guild.Value.Name} guild")
+                                                        | None ->
+                                                            Log.Error($"Unable to find a role to user inside {guild.Value.Name} guild")
+                                                    | false, _ -> ()
+                                            | None -> ()
+                                            match db.FindUserIdByWallet wallet with
+                                            | Some userId ->
+                                                Blockchain.getChampsForWallet wallet
+                                                |> Seq.iter(fun assetId ->
+                                                    let r = db.ChampExists assetId
+                                                    let isOk =
+                                                        match r with
+                                                        | Ok b ->
+                                                            if b then
+                                                                db.UpdateUserForChamp(uint64 userId, assetId) |> Result.isOk
+                                                            else
+                                                                Blockchain.tryGetChampInfo assetId
+                                                                |> Option.map(fun (trait', ipfs) ->
+                                                                    db.AddOrInsertChamp ({
+                                                                        Name = Blockchain.getAssetName assetId
+                                                                        AssetId = assetId
+                                                                        IPFS = ipfs
+                                                                        UserId = uint64 userId
+                                                                        Stats = Champ.generateStats trait'
+                                                                        Traits = trait'
+                                                                    }))
+                                                                |> Option.defaultValue false
+                                                        | Error _ -> false
+                                                    noErrors <- noErrors && isOk)
+                                            | None -> ()
+                                        else ()
+                                    return noErrors
                             
-                        }
-                    if isOk then
-                        db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
-                    do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                            }
+                        if isOk then
+                            db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
+                        do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                    else
+                        do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
                 with exn ->
                     Log.Error(exn, "confirmationTracker2")
         }
@@ -256,7 +260,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         // must be <= wallet holdings
         let b = db.GetBalances()
         match b with
-        | Ok bal ->
+        | Ok bal when bal.Rewards > 0M ->
             match Blockchain.getDarkCoinBalance(options.Value.Wallet.GameWallet) with
             | Ok walletBalance ->
                 if bal.Total <= walletBalance then
@@ -273,6 +277,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             | Error err ->
                 Log.Error(err)
                 Error("Unable to read balance from blockchain API")
+        | Ok _ ->
+            Log.Information("No rewards")
+            Ok(())
         | Error err ->
             db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, false) |> ignore
             let err = $"Unable to read balance: {err}"

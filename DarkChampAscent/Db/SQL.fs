@@ -380,6 +380,7 @@ module internal SQL =
     let UserExists = "SELECT EXISTS(SELECT 1 FROM User WHERE DiscordId = @discordId LIMIT 1);"
     let WalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet LIMIT 1);"
     let ConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet AND IsConfirmed = 1 LIMIT 1);"
+    let UnConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE IsConfirmed = 0 LIMIT 1);"
     let ChampExists = "SELECT EXISTS(SELECT 1 FROM Champ WHERE AssetId = @assetId LIMIT 1);"
     let DepositExists = "SELECT EXISTS(SELECT 1 FROM Deposit WHERE Tx = @tx LIMIT 1);"
     let DonationExists = "SELECT EXISTS(SELECT 1 FROM Donation WHERE Tx = @tx LIMIT 1);"

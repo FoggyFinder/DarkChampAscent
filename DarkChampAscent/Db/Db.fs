@@ -400,6 +400,15 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, $"WalletIsConfirmed: {wallet}")
             false 
 
+    member _.UnConfirmedWalletExists() =
+        try 
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UnConfirmedWalletExists conn
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+        with exn ->
+            Log.Error(exn, "SQL.UnConfirmedWalletExists")
+            false
+
     member _.ConfirmWallet(wallet:string, code:string) =
         if confirmationCodeIsMatchedForWallet(wallet, code) then
             try 
