@@ -1879,6 +1879,19 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, "GetRoundStatus")
             None
 
+    member _.GetRoundTimestamp(roundId:uint64) =
+        try 
+            use conn = new SqliteConnection(cs)
+            
+            Db.newCommand SQL.GetRoundTimestamp conn
+            |> Db.setParams [
+                "roundId", SqlType.Int64 <| int64 roundId
+            ]
+            |> Db.querySingle(fun r -> r.GetDateTime(0))
+        with exn ->
+            Log.Error(exn, "GetRoundTimestamp")
+            None
+
     member _.GetRoundInfo(roundId:uint64) =
         try 
             use conn = new SqliteConnection(cs)

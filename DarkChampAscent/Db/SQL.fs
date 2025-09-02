@@ -433,6 +433,7 @@ module internal SQL =
     let GetLastRound = "SELECT Max(ID) FROM Round";
     let GetRoundsCount = "SELECT Count(*) FROM Round"
     let GetRoundStatus = "SELECT Status FROM Round WHERE ID = @roundId"
+    let GetRoundTimestamp = "SELECT Timestamp FROM Round WHERE ID = @roundId"
     let GetRoundInfo = "SELECT BattleId, Timestamp, Status FROM Round WHERE ID = @roundId"
 
     let GetLastActiveBattle = "SELECT Max(ID) FROM Battle WHERE Status = 0"

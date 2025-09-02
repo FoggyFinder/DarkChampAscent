@@ -215,25 +215,18 @@ type UserModule(db:SqliteStorage) =
                         options.Content <- "No champs found"
                     else
                         options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        options.Components <- xs |> List.map(fun champ ->
-                            ComponentContainerProperties([
-                                TextDisplayProperties($"**{champ.Name}**")
-                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                ComponentSectionProperties
-                                    (ComponentSectionThumbnailProperties(
-                                        ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.Ipfs}")),
-                                    [
-                                        TextDisplayProperties(xp champ.XP)
-                                        TextDisplayProperties(health champ.Stat.Health)
-                                        TextDisplayProperties(magic champ.Stat.Magic)
-                                    ])
-                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                TextDisplayProperties(balance champ.Balance)
-                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            
-                                yield! toTable2 champ.Stat |> List.map TextDisplayProperties |> Seq.cast
-                            ])
-                        )
+                        options.Components <-
+                            xs
+                            |> List.sortByDescending(fun c -> c.XP)
+                            |> List.map(fun champ ->
+                                ComponentContainerProperties([
+                                    ComponentSectionProperties
+                                        (ComponentSectionThumbnailProperties(
+                                            ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.Ipfs}")),
+                                        [
+                                            TextDisplayProperties($"**{champ.Name}** | {xp champ.XP} | {balance champ.Balance}")
+                                        ])
+                                ]))
                 | None -> 
                     options.Content <- $"Oh, no...there was error")
             ()
@@ -471,6 +464,38 @@ type BattleModule(db:SqliteStorage) =
                         ]
                 | Error err ->
                     options.Content <- err
+                )
+            ()
+        } :> Task
+
+    [<SubSlashCommand("timetonextround", "returns approx time to next round")>]
+    member x.TimeToNextRound() =
+        let res =
+            match db.GetLastRoundId() with
+            | Some roundId ->
+                match db.GetRoundStatus roundId with
+                | Some status ->
+                    if status = RoundStatus.Started then
+                        match db.GetRoundTimestamp(roundId) with
+                        | Some roundStared ->
+                            let dt = DateTime.UtcNow
+                            let diff = ((roundStared + Battle.RoundDuration) - dt)
+                            if(diff.TotalMinutes > 0.0) then Ok($"approx ~{diff} to the end of the round +2-3 min to process")
+                            else Ok("round is likely processing now")
+                        | None -> Error("Something went wrong - unable to get round timestamp")
+                    else
+                        Error("New round should start in no time. Few minutes if no errors max")
+                | None -> Error("Something went wrong - unable to get round status")
+            | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
+        
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral)
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                options.Content <- 
+                    match res with
+                    | Ok str -> str
+                    | Error err -> err
                 )
             ()
         } :> Task
