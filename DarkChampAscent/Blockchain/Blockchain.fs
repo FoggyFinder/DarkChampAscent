@@ -169,10 +169,11 @@ let getAccountBalanceBalance(wallet:string, assetId: uint64) =
 
 let getDarkCoinBalance(wallet:string) =
     try
-        getAccountBalanceBalance(wallet, DarkCoinAssetId)
-        |> Option.map(fun v -> decimal v / Algo6Decimals)
+        match getAccountBalanceBalance(wallet, DarkCoinAssetId) with
+        | Some v -> decimal v / Algo6Decimals |> Ok
+        | None -> Error("Unexpected error")
     with exp ->
-        None
+        Error(exp.ToString())
 
 let getAssetTxsForAddress(wallet:string, assetId: Nullable<uint64>, afterTimeOpt:DateTime option) =
     let afterTimeStr = afterTimeOpt |> Option.map(fun dt -> dt.ToString("yyyy-MM-dd")) |> Option.defaultValue ""

@@ -520,6 +520,17 @@ module internal SQL =
             )
     """
 
+    let GetUserChampsUnderEffect = """
+        SELECT Champ.ID, Name, RoundId, Duration, Item FROM Champ
+        JOIN UserChamp uc ON uc.ChampId = Champ.ID
+		JOIN Impact i ON i.ChampId = Champ.ID
+        JOIN Effect e ON e.ID = i.ItemId
+        WHERE UserId = @userId AND
+			(RoundId <= @roundId AND 
+				RoundId + Duration >= @roundId) AND
+			IsActive = 1
+    """
+
     let UpdateIpfsByChampId = "UPDATE Champ SET IPFS = @ipfs WHERE ID = @champId;"
     let RenameChamp = "UPDATE Champ SET Name = @newName WHERE Name = @oldName"
     

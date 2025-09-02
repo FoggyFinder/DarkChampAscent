@@ -1030,6 +1030,30 @@ type SqliteStorage(cs: string)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
+    member _.GetUserChampsUnderEffect(discordId: uint64, roundId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserChampsUnderEffect  conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                    "roundId", SqlType.Int64 <| int64 roundId
+                ]
+                |> Db.query (fun r ->
+                   {|
+                        Id = r.GetInt64(0)
+                        Name = r.GetString(1)
+                        EndsAt = (r.GetInt64(2)) + int64 (r.GetInt32(3))
+                        Item = r.GetInt32(4) |> enum<Effect>
+                   |}
+                )
+                |> Ok
+            with exn ->
+                Log.Error(exn, $"GetUserChampsUnderEffect {discordId}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
+
     member _.GetUserChampsWithStats(discordId: uint64) =
         match getUserIdByDiscordId discordId with
         | Some userId ->
@@ -1197,7 +1221,8 @@ type SqliteStorage(cs: string)=
                 }
                 |> Ok
             | _, _, _, _, _,_,_ ->
-                Error("")
+                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; User: {userO.IsSome}; Champ:{champO.IsSome}"
+                Error(err)
 
         with exn ->
             Log.Error(exn, $"GetBalances")

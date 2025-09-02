@@ -255,25 +255,29 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         // sum of burn / dev / rewards / reserve / user balances / champs balances
         // must be <= wallet holdings
         let b = db.GetBalances()
-        let balance = Blockchain.getDarkCoinBalance(options.Value.Wallet.GameWallet)
-        match b, balance with
-        | Ok bal, Some walletBalance ->
-            if bal.Total <= walletBalance then
-                db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, true) |> ignore
-                Log.Information($"Balance check is passed: {bal.Total} <= {walletBalance}")
-                Ok(())
-            else
-                let err = $"Balance doesn't match {bal.Total} >= {walletBalance}"
-                Log.Error(err)
-                // if diff isn't significant then log error and allow game to continue
-                if bal.Total <= walletBalance + 1000M then
+        match b with
+        | Ok bal ->
+            match Blockchain.getDarkCoinBalance(options.Value.Wallet.GameWallet) with
+            | Ok walletBalance ->
+                if bal.Total <= walletBalance then
+                    db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, true) |> ignore
+                    Log.Information($"Balance check is passed: {bal.Total} <= {walletBalance}")
                     Ok(())
-                else Error(err)
-        | _, _ ->
+                else
+                    let err = $"Balance doesn't match {bal.Total} >= {walletBalance}"
+                    Log.Error(err)
+                    // if diff isn't significant then log error and allow game to continue
+                    if bal.Total <= walletBalance + 1000M then
+                        Ok(())
+                    else Error(err)
+            | Error err ->
+                Log.Error(err)
+                Error("Unable to read balance from blockchain API")
+        | Error err ->
             db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, false) |> ignore
-            let err = $"Unable to read balance: db = {b}; balance = {balance}"
+            let err = $"Unable to read balance: {err}"
             Log.Error(err)
-            Error(err)
+            Error("Unable to read balance")
 
     let finalizeBattle(battleId:uint64) = task {
         let send (wallet:string) (d:decimal) =
@@ -383,7 +387,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
             do! Utils.sendMsgToLogChannel gclient mp
-            do! Task.Delay(TimeSpan.FromHours(12))
+            do! Task.Delay(TimeSpan.FromHours(1))
     }
 
     let startRound() = task {
