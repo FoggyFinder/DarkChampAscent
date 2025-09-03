@@ -19,37 +19,38 @@ module Utils =
     open System
     open NetCord
     let sendMsgToChannel(channel:string) (client:GatewayClient)(mp:MessageProperties)(pin:bool) = task {
-        try
-            for guild in client.Cache.Guilds do
-                match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = channel) with
-                | Some channel ->
+        for guild in client.Cache.Guilds do
+            match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = channel) with
+            | Some channel ->
+                try
                     let! rm = client.Rest.SendMessageAsync(channel.Key, mp)
                     if pin then
                         try
                             do! rm.PinAsync()
                         with exn ->
                             Log.Error(exn, "Unable to pin message")
-                | None ->
-                    Log.Error($"Can't find channel in guild {guild}")
-        with exn ->
-            Log.Error(exn, $"Unable to send a msg")
+                with exn ->
+                    Log.Error(exn, $"Unable to send a msg to {channel.Value.Name} at {guild.Value.Name}")
+            | None ->
+                Log.Error($"Can't find channel in guild {guild}")
+
     }
 
     let createAndSendMsgToChannel(channel:string) (client:GatewayClient)(getMP:unit -> MessageProperties)(pin:bool) = task {
-        try
-            for guild in client.Cache.Guilds do
-                match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = channel) with
-                | Some channel ->
+        for guild in client.Cache.Guilds do
+            match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = channel) with
+            | Some channel ->
+                try
                     let! rm = client.Rest.SendMessageAsync(channel.Key, getMP())
                     if pin then
                         try
                             do! rm.PinAsync()
                         with exn ->
                             Log.Error(exn, "Unable to pin message")
-                | None ->
-                    Log.Error($"Can't find channel in guild {guild}")
-        with exn ->
-            Log.Error(exn, $"Unable to send a msg")
+                with exn ->
+                    Log.Error(exn, $"Unable to send a msg to {channel.Value.Name} at {guild.Value.Name}")
+            | None ->
+                Log.Error($"Can't find channel in guild {guild}")
     }
 
     let sendMsgToBattleChannel (client:GatewayClient) (mp:MessageProperties) =
