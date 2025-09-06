@@ -364,15 +364,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                     TextDisplayProperties($" {Emoj.Coin} Rewards: {ar.BattleRewards} {Emoj.Coin}")
                                 ])
-                
                             let monsterCard = Components.monsterComponent monster
                         
                             MessageProperties()
-                                .WithAttachments([Components.monsterAttachnment monster])
-                                .WithComponents([
-                                    battleCard
-                                    monsterCard
-                                ])
+                                .WithComponents([battleCard; monsterCard])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                                 
                         do! Utils.createAndSendMsgToChannel Channels.BattleChannel gclient createMP true

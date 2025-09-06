@@ -253,9 +253,7 @@ let mselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
     let callback = InteractionCallback.ModifyMessage(fun options ->
         match res with
         | Some monster ->
-            let cs = DiscordBot.Components.monsterComponent monster
-            options.Components <- [ cs ]
-            options.Attachments <- [ Components.monsterAttachnment monster ]
+            options.Components <- [ DiscordBot.Components.monsterComponent monster ]
         | None ->
             options.Content <- $"Oh, no...something went wrong"
     )

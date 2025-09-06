@@ -382,10 +382,7 @@ type MonsterModule(db:SqliteStorage) =
                 match res with
                 | Ok monster ->
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                    let cs = DiscordBot.Components.monsterComponent monster
-
-                    options.Components <- [ cs ]
-                    options.Attachments <- [ Components.monsterAttachnment monster ]
+                    options.Components <- [ DiscordBot.Components.monsterComponent monster ]
                 | Error err ->
                     options.Content <- $"Oh, no...something went wrong: {err}"
                 )

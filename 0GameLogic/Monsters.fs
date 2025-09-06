@@ -40,8 +40,10 @@ type MonsterRecord(name:string, description:string, monster:Monster, stats:Stat,
 [<RequireQualifiedAccess>]
 type MonsterImg =
     | File of filepath:string
-    static member DefaultFile(monster:Monster)=
-        let filename = monster.MType.ToString().ToLower() + "_" + monster.MSubType.ToString().ToLower() + ".png"
+    static member DefaultName(mtype:MonsterType, msubtype:MonsterSubType) =
+        mtype.ToString().ToLower() + "_" + msubtype.ToString().ToLower() + ".png"
+    static member DefaultFile(monster:Monster) =
+        let filename = MonsterImg.DefaultName (monster.MType, monster.MSubType)
         System.IO.Path.Combine("Assets", filename) |> MonsterImg.File
 
 type MonsterInfo = {

@@ -85,13 +85,14 @@ open GameLogic.Monsters
 open GameLogic.Battle
 
 let monsterComponent (monster:MonsterInfo) =
+    let imgUrl = $"https://raw.githubusercontent.com/FoggyFinder/DarkChampAscent/refs/heads/main/DarkChampAscent/Assets/{MonsterImg.DefaultName(monster.MType, monster.MSubType)}"
     ComponentContainerProperties([
         TextDisplayProperties($"**{monster.Name} Info **")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             
         ComponentSectionProperties
             (ComponentSectionThumbnailProperties(
-                ComponentMediaProperties($"attachment://image.png")),
+                ComponentMediaProperties(imgUrl)),
             [
                 TextDisplayProperties(monster.Description)
             ])
@@ -103,18 +104,18 @@ let monsterComponent (monster:MonsterInfo) =
         yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
         MediaGalleryProperties([
             MediaGalleryItemProperties(
-                ComponentMediaProperties($"attachment://image.png")    
+                ComponentMediaProperties(imgUrl)    
             )
         ])
     ])
 
-let monsterAttachnment(monster:MonsterInfo) =
-    let filename =
-        match monster.Picture with
-        | MonsterImg.File fn -> fn
-    let bytes = System.IO.File.ReadAllBytes(filename)
-    let imageStream = new System.IO.MemoryStream(bytes)
-    AttachmentProperties("image.png", imageStream)
+//let monsterAttachnment(monster:MonsterInfo) =
+//    let filename =
+//        match monster.Picture with
+//        | MonsterImg.File fn -> fn
+//    let bytes = System.IO.File.ReadAllBytes(filename)
+//    let imageStream = new System.IO.MemoryStream(bytes)
+//    AttachmentProperties("image.png", imageStream)
 
 let battleResults(br:BattleResult) (names:Map<uint64, string>) =
     let movesComponent =
