@@ -2508,13 +2508,13 @@ type SqliteStorage(cs: string)=
     member _.GetMonsterLeaderboard() =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetMonsterLeaderBoard25 conn
+            Db.newCommand SQL.GetMonsterLeaderBoard10 conn
             |> Db.query(fun r ->
                 {|
                     Name = r.GetString(0)
                     MType = enum<MonsterType> <| r.GetInt32(1)
                     MSubType = enum<MonsterSubType> <| r.GetInt32(2)
-                    Xp = r.GetDouble(3)
+                    Xp = r.GetInt64(3)
                 |}
             )
             |> Ok

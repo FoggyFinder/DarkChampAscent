@@ -350,13 +350,19 @@ type ChampsModule(db:SqliteStorage) =
                     if xs.IsEmpty then
                         options.Content <- "No champs found"
                     else
-                        let ep = EmbedProperties()
-                        ep.Title <- "Leaderboard"
-                        ep.Fields <-
-                            xs |> List.mapi(fun i ar ->
-                                EmbedFieldProperties(Name = $"{i+1}. {ar.Name} ({ar.AssetId})", Value = $"{Emoj.Gem} {ar.Xp} xp")
-                            )
-                        options.Embeds <- [ ep ]
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <-
+                            xs
+                            |> List.sortByDescending(fun c -> c.Xp)
+                            |> List.map(fun champ ->
+                                ComponentContainerProperties([
+                                    ComponentSectionProperties
+                                        (ComponentSectionThumbnailProperties(
+                                            ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.IPFS}")),
+                                        [
+                                            TextDisplayProperties($"**{champ.Name}** | {xp <| uint64 champ.Xp}")
+                                        ])
+                                ]))
                 | Error err -> 
                     options.Content <- $"Oh, no...there was error: {err}")
             ()
@@ -418,6 +424,36 @@ type MonsterModule(db:SqliteStorage) =
                 | None ->
                     options.Content <- $"Oh, no...something went wrong"
                 )
+            ()
+        } :> Task
+
+    [<SubSlashCommand("top10", "shows top-10 monsters by xp")>]
+    member x.GetLeaderboard(): Task =
+        let res = db.GetMonsterLeaderboard()
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match res with
+                | Ok xs ->
+                    if xs.IsEmpty then
+                        options.Content <- "No monsters found"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <-
+                            xs
+                            |> List.map(fun ar ->
+                                let imgUrl = $"https://raw.githubusercontent.com/FoggyFinder/DarkChampAscent/refs/heads/main/DarkChampAscent/Assets/{MonsterImg.DefaultName(ar.MType, ar.MSubType)}"
+                                ComponentContainerProperties([
+                                    ComponentSectionProperties
+                                        (ComponentSectionThumbnailProperties(
+                                            ComponentMediaProperties(imgUrl)),
+                                        [
+                                            TextDisplayProperties($"**{ar.Name}** | {xp <| uint64 ar.Xp} |")
+                                        ])
+                                ]))
+                | Error err -> 
+                    options.Content <- $"Oh, no...{err}")
             ()
         } :> Task
 

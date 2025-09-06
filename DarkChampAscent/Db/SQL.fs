@@ -850,11 +850,11 @@ module internal SQL =
         LIMIT 10
     """
 
-    let GetMonsterLeaderBoard25 = """
+    let GetMonsterLeaderBoard10 = """
         SELECT Name, Type, Subtype FROM, Xp FROM Monster
         ORDER BY
             Xp DESC
-        LIMIT 25
+        LIMIT 10
     """
 
     let GetTopInGameDonaters = """
