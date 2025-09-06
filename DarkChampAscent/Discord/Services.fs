@@ -411,7 +411,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     Log.Error($"StartRoundError: {err}")
                     do! Task.Delay(TimeSpan.FromMinutes(5.0))
         | Error err ->
-            let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
+            let mp = MessageProperties(Content = $"Unable to start new round - {err}")
             do! Utils.sendMsgToLogChannel gclient mp
             do! Task.Delay(TimeSpan.FromHours(1))
     }

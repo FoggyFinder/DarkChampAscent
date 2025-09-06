@@ -170,7 +170,7 @@ let getAccountBalanceBalance(wallet:string, assetId: uint64) =
 let getDarkCoinBalance(wallet:string) =
     try
         match getAccountBalanceBalance(wallet, DarkCoinAssetId) with
-        | Some v -> decimal v / Algo6Decimals |> Ok
+        | Some v -> Math.Round(decimal v / Algo6Decimals, 6) |> Ok
         | None -> Error("Unexpected error")
     with exp ->
         Error(exp.ToString())
