@@ -47,11 +47,7 @@ type GuildCreateHandler(db:SqliteStorage) =
                     let! ch = arg.Guild.CreateChannelAsync(logChannel)
                     Log.Information($"Done! {ch.Id}")
                 
-                let battleChannelIsCreated = arg.Guild.Channels |> Seq.exists(fun ch -> ch.Value.Name = Channels.BattleChannel)
-                if battleChannelIsCreated |> not then
-                    let battleChannel = GuildChannelProperties(Channels.BattleChannel, ChannelType.TextGuildChannel)
-                    battleChannel.ParentId <- Nullable(categoryId)
-                    battleChannel.PermissionOverwrites <- [
+                let bcp = [
                         PermissionOverwriteProperties(arg.Guild.EveryoneRole.Id, PermissionOverwriteType.Role).WithDenied(
                             Nullable(Permissions.SendMessages)
                         )
@@ -59,15 +55,36 @@ type GuildCreateHandler(db:SqliteStorage) =
                         | Some brole ->
                             PermissionOverwriteProperties(brole.Key, PermissionOverwriteType.Role).WithAllowed(
                                 Nullable(Permissions.SendMessages 
-                                    // ||| Permissions.ManageMessages
+                                    ||| Permissions.AttachFiles
                                 )
                             )                            
                         | None -> ()
                     ]
+                match arg.Guild.Channels |> Seq.tryFind(fun ch -> ch.Value.Name = Channels.BattleChannel) with
+                | None ->                
+                    let battleChannel = GuildChannelProperties(Channels.BattleChannel, ChannelType.TextGuildChannel)
+                    battleChannel.ParentId <- Nullable(categoryId)
+                    battleChannel.PermissionOverwrites <- bcp
                     Log.Information($"Creating...{Channels.BattleChannel}")
                     let! ch = arg.Guild.CreateChannelAsync(battleChannel)
                     Log.Information($"Done! {ch.Id}")
-                
+                | Some battleChannel ->
+                    // ToDo: remove if works
+                    match botRole with
+                    | Some brole ->
+                        let p =
+                            PermissionOverwriteProperties(brole.Key, PermissionOverwriteType.Role).WithAllowed(
+                                Nullable(Permissions.SendMessages ||| Permissions.AttachFiles))
+                        if battleChannel.Value.PermissionOverwrites |> Seq.exists(fun kv -> kv.Key = p.Id && kv.Value.Allowed = p.Allowed.Value) then
+                            Log.Information($"Permission already up to date in {arg.Guild.Name}")
+                        else
+                            try
+                                Log.Information($"Modifying permission in {arg.Guild.Name}")
+                                do! battleChannel.Value.ModifyPermissionsAsync(p)
+                            with exn ->
+                                Log.Error(exn, "Unable to modify permissions")
+                    | None -> ()
+
                 let chatChannelIsCreated = arg.Guild.Channels |> Seq.exists(fun ch -> ch.Value.Name = Channels.ChatChannel)
                 if chatChannelIsCreated |> not then
                     let logChannel = GuildChannelProperties(Channels.ChatChannel, ChannelType.TextGuildChannel)
