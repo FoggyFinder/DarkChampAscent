@@ -851,7 +851,7 @@ module internal SQL =
     """
 
     let GetMonsterLeaderBoard10 = """
-        SELECT Name, Type, Subtype FROM, Xp FROM Monster
+        SELECT Name, Type, Subtype, Xp FROM Monster
         ORDER BY
             Xp DESC
         LIMIT 10

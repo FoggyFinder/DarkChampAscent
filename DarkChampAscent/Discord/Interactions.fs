@@ -9,7 +9,6 @@ open Serilog
 open GameLogic.Shop
 open NetCord
 open Display
-open NetCord.Gateway
 open Components
 open GameLogic.Champs
 open GameLogic.Battle
