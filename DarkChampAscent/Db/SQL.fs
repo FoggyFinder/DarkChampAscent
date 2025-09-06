@@ -947,6 +947,12 @@ module internal SQL =
         WHERE ChampId = @champId;
     """
 
+    let AddMonsterXp = """
+        UPDATE Monster SET 
+            Xp = Xp + @xp
+        WHERE ID = @monsterId;
+    """
+
     let MarkEffectsAsPassiveBeforeRound = """
         UPDATE Impact SET 
             IsActive = 0

@@ -2271,6 +2271,15 @@ type SqliteStorage(cs: string)=
                     "monsterId", SqlType.Int64 <| int64 monsterId
                 ]
                 |> Db.exec
+
+            let addMonsterXp (tn:Data.IDbTransaction) (monsterId:uint64) (xpEarned:uint64) =
+                tn
+                |> Db.newCommandForTransaction SQL.AddMonsterXp
+                |> Db.setParams [
+                    "xp", SqlType.Int64 <| int64 xpEarned
+                    "monsterId", SqlType.Int64 <| int64 monsterId
+                ]
+                |> Db.exec
                 
             let defeatMonster (tn:Data.IDbTransaction) (champId:uint64) =
                 let m = bresult.MonsterChar
@@ -2451,6 +2460,15 @@ type SqliteStorage(cs: string)=
                         ]
                         |> Db.exec                        
                     )
+
+                match bresult.MonsterPM with
+                | Some _ -> 1UL
+                | None ->
+                    bresult.MonsterActions
+                    |> Seq.sumBy(fun kv ->
+                        let (_, xp) = kv.Value
+                        xp)
+                |> addMonsterXp tn bresult.MonsterChar.Id
 
             Db.batch (fun tn ->
                 updateRewards tn bresult.RoundId bresult.Rewards
