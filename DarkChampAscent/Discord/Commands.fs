@@ -224,9 +224,7 @@ type UserModule(db:SqliteStorage) =
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.Ipfs}")),
                                         [
-                                            TextDisplayProperties($"**{champ.Name}** | {xp champ.XP} | {balance champ.Balance}")
-                                            TextDisplayProperties($"{xp champ.XP}")
-                                            TextDisplayProperties($"{balance champ.Balance}")
+                                            TextDisplayProperties($"**{champ.Name}** ({xp champ.XP}) | {balance champ.Balance}")
                                         ])
                                 ]))
                 | None -> 
@@ -391,8 +389,7 @@ type ChampsModule(db:SqliteStorage) =
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.IPFS}")),
                                         [
-                                            TextDisplayProperties($"**{champ.Name}**")
-                                            TextDisplayProperties($"{xp <| uint64 champ.Xp}")
+                                            TextDisplayProperties($"**{champ.Name} ({xp <| uint64 champ.Xp})**")
                                         ])
                                 ]))
                 | Error err -> 
@@ -485,9 +482,7 @@ type MonsterModule(db:SqliteStorage) =
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties(imgUrl)),
                                         [
-                                            TextDisplayProperties($"**{ar.Name}**")
-                                            TextDisplayProperties($"{ar.MType} ({subType})")
-                                            TextDisplayProperties($"{xp <| uint64 ar.Xp}")
+                                            TextDisplayProperties($"**{ar.Name}** - {ar.MType} ({subType}) | {xp <| uint64 ar.Xp}")
                                         ])
                                 ]))
                 | Error err -> 
