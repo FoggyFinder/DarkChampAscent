@@ -225,12 +225,43 @@ type UserModule(db:SqliteStorage) =
                                             ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.Ipfs}")),
                                         [
                                             TextDisplayProperties($"**{champ.Name}** | {xp champ.XP} | {balance champ.Balance}")
+                                            TextDisplayProperties($"{xp champ.XP}")
+                                            TextDisplayProperties($"{balance champ.Balance}")
                                         ])
                                 ]))
                 | None -> 
                     options.Content <- $"Oh, no...there was error")
             ()
         } :> Task
+
+    [<SlashCommand("champsundereffects", "Shows user's champs under effects")>]
+    member x.ShowChampsUnderEffects() =
+        let res =
+            match db.GetLastRoundId() with
+            | Some roundId -> db.GetUserChampsUnderEffect(x.Context.User.Id, roundId)
+            | None -> Error("Unable to find round")
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match res with
+                | Ok xs ->
+                    if xs.IsEmpty then
+                        options.Content <- "No champs currently are under effects"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <-
+                            xs
+                            |> List.sortBy(fun ar -> ar.EndsAt)
+                            |> List.map(fun ar ->
+                                ComponentContainerProperties([
+                                    TextDisplayProperties($"**{ar.Name}** : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                                ]))
+                | Error err ->
+                    options.Content <- $"Oh, no...there was error: {err}")
+            ()
+        } :> Task
+
 
     [<SlashCommand("donate", "donate to in-game rewards")>]
     member x.Donate([<SlashCommandParameter(Name = "amount", Description = "amount to donate")>] amount:decimal
@@ -360,7 +391,8 @@ type ChampsModule(db:SqliteStorage) =
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.IPFS}")),
                                         [
-                                            TextDisplayProperties($"**{champ.Name}** | {xp <| uint64 champ.Xp}")
+                                            TextDisplayProperties($"**{champ.Name}**")
+                                            TextDisplayProperties($"{xp <| uint64 champ.Xp}")
                                         ])
                                 ]))
                 | Error err -> 
@@ -444,12 +476,18 @@ type MonsterModule(db:SqliteStorage) =
                             xs
                             |> List.map(fun ar ->
                                 let imgUrl = $"https://raw.githubusercontent.com/FoggyFinder/DarkChampAscent/refs/heads/main/DarkChampAscent/Assets/{MonsterImg.DefaultName(ar.MType, ar.MSubType)}"
+                                let subType =
+                                    match ar.MSubType with
+                                    | MonsterSubType.None -> ""
+                                    | _ -> ar.MSubType.ToString()
                                 ComponentContainerProperties([
                                     ComponentSectionProperties
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties(imgUrl)),
                                         [
-                                            TextDisplayProperties($"**{ar.Name}** | {xp <| uint64 ar.Xp} |")
+                                            TextDisplayProperties($"**{ar.Name}**")
+                                            TextDisplayProperties($"{ar.MType} ({subType})")
+                                            TextDisplayProperties($"{xp <| uint64 ar.Xp}")
                                         ])
                                 ]))
                 | Error err -> 
@@ -530,6 +568,24 @@ type BattleModule(db:SqliteStorage) =
                     | Ok str -> str
                     | Error err -> err
                 )
+            ()
+        } :> Task
+
+    [<SubSlashCommand("params", "shows battle parameters")>]
+    member x.BattleParams() =
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                let ep =
+                    EmbedProperties(Title = "Params:")
+                        .WithFields([
+                            EmbedFieldProperties(Name = "Rounds in battle", Value = $"{Constants.RoundsInBattle}", Inline = true)
+                            EmbedFieldProperties(Name = "Round duration", Value = $"{Battle.RoundDuration}", Inline = true)
+                            EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
+                        ])
+                options.Embeds <- [ ep ]
+            )
             ()
         } :> Task
 

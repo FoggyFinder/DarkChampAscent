@@ -1050,16 +1050,18 @@ type SqliteStorage(cs: string)=
                     "roundId", SqlType.Int64 <| int64 roundId
                 ]
                 |> Db.query (fun r ->
+                   let endsAt = (r.GetInt64(2)) + int64 (r.GetInt32(3))
                    {|
                         Id = r.GetInt64(0)
                         Name = r.GetString(1)
-                        EndsAt = (r.GetInt64(2)) + int64 (r.GetInt32(3))
+                        EndsAt = endsAt
                         Item = r.GetInt32(4) |> enum<Effect>
+                        RoundsLeft = endsAt - int64 roundId
                    |}
                 )
                 |> Ok
             with exn ->
-                Log.Error(exn, $"GetUserChampsUnderEffect {discordId}")
+                Log.Error(exn, $"GetUserChampsUnderEffect {discordId} at {roundId}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
