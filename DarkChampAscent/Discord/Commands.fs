@@ -476,13 +476,13 @@ type MonsterModule(db:SqliteStorage) =
                                 let subType =
                                     match ar.MSubType with
                                     | MonsterSubType.None -> ""
-                                    | _ -> ar.MSubType.ToString()
+                                    | _ -> $"({ar.MSubType})"
                                 ComponentContainerProperties([
                                     ComponentSectionProperties
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties(imgUrl)),
                                         [
-                                            TextDisplayProperties($"**{ar.Name}** - {ar.MType} ({subType}) | {xp <| uint64 ar.Xp}")
+                                            TextDisplayProperties($"**{ar.Name}** - {ar.MType} {subType} | {xp <| uint64 ar.Xp}")
                                         ])
                                 ]))
                 | Error err -> 
