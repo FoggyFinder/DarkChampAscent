@@ -31,7 +31,7 @@ module Utils =
                             do! rm.PinAsync()
                         with exn ->
                             Log.Error(exn, "Unable to pin message")
-                    // do! Task.Delay(TimeSpan.FromSeconds(1.0))
+                    do! Task.Delay(TimeSpan.FromSeconds(1.0))
                 with exn ->
                     Log.Error(exn, $"Unable to send a msg to {channel.Value.Name} at {guild.Value.Name}")
             | None ->

@@ -36,7 +36,7 @@ let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) = 
                             .WithFlags(MessageFlags.IsComponentsV2)
                             .WithAllowedMentions(AllowedMentionsProperties.None)
 
-                    do! Utils.sendMsgToLogChannel context.Client newInGameDonationMessage
+                    Utils.sendMsgToLogChannel context.Client newInGameDonationMessage |> ignore
                     return Ok(())
                 | Error err -> return Error(err)
             | false, _ ->
@@ -178,7 +178,7 @@ let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName
                 try      
                     let logMessage = MessageProperties(Content = $"{oldName} changed name to {newName}")
 
-                    do! Utils.sendMsgToLogChannel context.Client logMessage
+                    Utils.sendMsgToLogChannel context.Client logMessage |> ignore
                 with exn ->
                     Log.Error(exn, "Send to discord")
                 return "Done!"
@@ -285,7 +285,7 @@ let actionselect (db:SqliteStorage) (context:StringMenuInteractionContext) (move
                 let name = db.GetChampNameById rar.ChampId |> Option.defaultValue("")
                 let mp = MessageProperties(Content = $"{name} joined round!")
                 task { 
-                    do! Utils.sendMsgToLogChannel context.Client mp
+                    Utils.sendMsgToLogChannel context.Client mp |> ignore
                     return "Action is recorded"
                 }
             | Error str ->  task { return str }

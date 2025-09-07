@@ -263,7 +263,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         | Ok bal when bal.Rewards > 0M ->
             match Blockchain.getDarkCoinBalance(options.Value.Wallet.GameWallet) with
             | Ok walletBalance ->
-                if bal.Total <= walletBalance then
+                if Math.Round(bal.Total, 6) <= walletBalance then
                     db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, true) |> ignore
                     Log.Information($"Balance check is passed: {bal.Total} <= {walletBalance}")
                     Ok(())
