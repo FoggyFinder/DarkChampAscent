@@ -533,6 +533,15 @@ module internal SQL =
 			IsActive = 1
     """
 
+    let GetMonstersUnderEffect = """
+        SELECT Name, Type, SubType, RoundId, Duration, Item FROM Monster
+        JOIN MonsterImpact mi ON mi.MonsterId = Monster.ID
+        JOIN Effect e ON e.ID = mi.ItemId
+        WHERE (RoundId <= @roundId AND 
+	        RoundId + Duration >= @roundId) AND
+	        IsActive = 1
+    """
+
     let UpdateIpfsByChampId = "UPDATE Champ SET IPFS = @ipfs WHERE ID = @champId;"
     let RenameChamp = "UPDATE Champ SET Name = @newName WHERE Name = @oldName"
     

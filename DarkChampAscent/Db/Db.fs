@@ -1065,6 +1065,29 @@ type SqliteStorage(cs: string)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
+    member _.GetMonstersUnderEffect(roundId: uint64) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetMonstersUnderEffect  conn
+            |> Db.setParams [
+                "roundId", SqlType.Int64 <| int64 roundId
+            ]
+            |> Db.query (fun r ->
+                let endsAt = (r.GetInt64(3)) + int64 (r.GetInt32(4))
+                {|
+                    Name = r.GetString(0)
+                    MType = enum<MonsterType> <| r.GetInt32(1)
+                    MSubType = enum<MonsterSubType> <| r.GetInt32(2)
+                    EndsAt = endsAt
+                    Item = r.GetInt32(5) |> enum<Effect>
+                    RoundsLeft = endsAt - int64 roundId
+                |}
+            )
+            |> Ok
+        with exn ->
+            Log.Error(exn, $"GetMonstersUnderEffect at {roundId}")
+            Error("Unexpected error")
+
     member _.GetUserChampsWithStats(discordId: uint64) =
         match getUserIdByDiscordId discordId with
         | Some userId ->

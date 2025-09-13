@@ -171,6 +171,10 @@ let fromMonster(mt:MonsterType, mst:MonsterSubType) =
     let st = fromSubType mst
     $"{st} {mt} {st}"
 
+let fullMonsterName(name:string, mt:MonsterType, mst:MonsterSubType) =
+    let subType = match mst with | MonsterSubType.None -> "" | _ -> $"({mst})"
+    $"**{name}** - {mt} {subType}"
+
 let getTraitInfo(t:Trait, traits:Traits) =
     let chs = TraitCharacteristic.impact.[t]
     let name, icon, stat, v =

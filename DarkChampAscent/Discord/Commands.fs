@@ -473,22 +473,47 @@ type MonsterModule(db:SqliteStorage) =
                             xs
                             |> List.map(fun ar ->
                                 let imgUrl = $"https://raw.githubusercontent.com/FoggyFinder/DarkChampAscent/refs/heads/main/DarkChampAscent/Assets/{MonsterImg.DefaultName(ar.MType, ar.MSubType)}"
-                                let subType =
-                                    match ar.MSubType with
-                                    | MonsterSubType.None -> ""
-                                    | _ -> $"({ar.MSubType})"
                                 ComponentContainerProperties([
                                     ComponentSectionProperties
                                         (ComponentSectionThumbnailProperties(
                                             ComponentMediaProperties(imgUrl)),
                                         [
-                                            TextDisplayProperties($"**{ar.Name}** - {ar.MType} {subType} | {xp <| uint64 ar.Xp}")
+                                            TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} | {xp <| uint64 ar.Xp}")
                                         ])
                                 ]))
                 | Error err -> 
                     options.Content <- $"Oh, no...{err}")
             ()
         } :> Task
+
+    [<SlashCommand("undereffects", "Shows monsters under effects")>]
+    member x.UnderEffects() =
+        let res =
+            match db.GetLastRoundId() with
+            | Some roundId -> db.GetMonstersUnderEffect(roundId)
+            | None -> Error("Unable to find round")
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match res with
+                | Ok xs ->
+                    if xs.IsEmpty then
+                        options.Content <- "No monsters are under effects currently"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <-
+                            xs
+                            |> List.sortBy(fun ar -> ar.EndsAt)
+                            |> List.map(fun ar ->
+                                ComponentContainerProperties([
+                                    TextDisplayProperties($"**{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)}** : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                                ]))
+                | Error err ->
+                    options.Content <- $"Oh, no...there was error: {err}")
+            ()
+        } :> Task
+
 
 [<SlashCommand("battle", "Battle command")>]
 type BattleModule(db:SqliteStorage) =
