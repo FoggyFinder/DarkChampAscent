@@ -507,7 +507,7 @@ type MonsterModule(db:SqliteStorage) =
                             |> List.sortBy(fun ar -> ar.EndsAt)
                             |> List.map(fun ar ->
                                 ComponentContainerProperties([
-                                    TextDisplayProperties($"**{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)}** : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                                    TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
                                 ]))
                 | Error err ->
                     options.Content <- $"Oh, no...there was error: {err}")
