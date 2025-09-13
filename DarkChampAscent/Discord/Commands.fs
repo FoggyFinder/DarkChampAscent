@@ -486,7 +486,7 @@ type MonsterModule(db:SqliteStorage) =
             ()
         } :> Task
 
-    [<SlashCommand("undereffects", "Shows monsters under effects")>]
+    [<SubSlashCommand("undereffects", "Shows monsters under effects")>]
     member x.UnderEffects() =
         let res =
             match db.GetLastRoundId() with
