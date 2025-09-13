@@ -285,6 +285,23 @@ type UserModule(db:SqliteStorage) =
             ()
         } :> Task
 
+type GeneralModule(db:SqliteStorage) =
+    inherit ApplicationCommandModule<ApplicationCommandContext>()
+
+    [<SlashCommand("rewards", "shows in-game rewards balance")>]
+    member x.GetBalance(): Task =
+        let res = db.GetNumKey DbKeysNum.Rewards
+        let str =
+            match res with
+            | Some d -> $"In-game rewards balance: {Emoj.Coin} {d} DarkCoins"
+            | None -> $"Can't get balance."
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options -> options.Content <- str)
+            ()
+        } :> Task
+
 [<SlashCommand("champ", "Champ command")>]
 type ChampsModule(db:SqliteStorage) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
@@ -513,7 +530,6 @@ type MonsterModule(db:SqliteStorage) =
                     options.Content <- $"Oh, no...there was error: {err}")
             ()
         } :> Task
-
 
 [<SlashCommand("battle", "Battle command")>]
 type BattleModule(db:SqliteStorage) =

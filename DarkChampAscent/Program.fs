@@ -63,7 +63,8 @@ host
     .AddApplicationCommandModule(typeof<MonsterModule>)
     .AddApplicationCommandModule(typeof<BattleModule>)
     .AddApplicationCommandModule(typeof<TopModule>)
-    
+    .AddApplicationCommandModule(typeof<GeneralModule>)
+
     .AddComponentInteraction<StringMenuInteractionContext>("rename", Func<_,_,_,_>(Interactions.renameItem))
     .AddComponentInteraction<ButtonInteractionContext>("donate", Func<_,_,_,_>(Interactions.donate))
     .AddComponentInteraction<ButtonInteractionContext>("use", Func<_,_,_,_>(Interactions.useItem))
