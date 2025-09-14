@@ -13,8 +13,8 @@ let RoundsInBattle = 48M
 let BattleReward v = v / Window
 let RoundReward v = v / RoundsInBattle
 open System
-let total = 100000M
-//[1..360] |> List.fold (fun state i ->
+let total = 900000M
+//[1..90] |> List.fold (fun state i ->
 //    let battleRewards = Math.Round(BattleReward state, 6)
 //    let roundRewards = Math.Round(RoundReward battleRewards, 6)
 //    printfn $"{i} | {state} | {battleRewards} | {roundRewards}"
@@ -59,11 +59,10 @@ let battle(monster:Monster) (rounds:int) =
         let hasPlayers = actions |> List.exists(fun a -> a.Stat.IsAlive)
         if hasPlayers && mstat.IsAlive && r < rounds then
             let log = StringBuilder()
- 
             let actions', mstat' = Battle.processActions mstat actions
             let actions'', mstat'' =
                 actions' |> List.choose id |> List.sortBy(fun (ra,_) -> ra.ChampId) |> List.mapFold(fun (ms:Stat) (ra, pm) ->
-                    let nextMove = Move.Attack
+                    let nextMove = Move.MagicAttack
                     let source, target, pm' =
                         Battle.attack ms 0UL
                         |> PerformedMove.Attack
@@ -85,8 +84,18 @@ let battle(monster:Monster) (rounds:int) =
     
 let monsters = Monster.DefaultsMonsters |> List.map(fun mr -> mr.Monster)
 
-monsters |> List.iter(fun m ->
-    printfn $"{m.MType}, {m.MSubType}"
-    battle m (4 * Constants.RoundsInBattle)
-    |> Seq.iter(printf "%A")
+//monsters
+//|> List.truncate 1
+//|> List.iter(fun m ->
+//    printfn $"{m.MType}, {m.MSubType}"
+//    battle m Constants.RoundsInBattle
+//    |> Seq.iter(printf "%A")
+//)
+monsters
+|> List.iter(fun m ->
+    let lvl = Random.Shared.NextInt64(0, 10) |> uint64
+    let stat = Monster.getMonsterStatsByLvl(m.MType, m.MSubType, lvl)
+    printfn $"{m.MType}, {m.MSubType}: {lvl}"
+    printfn $"{statShort stat}"
+    printfn ""
 )

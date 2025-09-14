@@ -123,18 +123,124 @@ module Monster =
     let getMonsterStatsByLvl(mtype:MonsterType, msubtype:MonsterSubType, lvl:uint64) =
         let arr =
             match mtype, msubtype with
-            | MonsterType.Zombie, MonsterSubType.None
-            | MonsterType.Zombie, MonsterSubType.Frost
-            | MonsterType.Zombie, MonsterSubType.Fire
-            | MonsterType.Demon, MonsterSubType.None
-            | MonsterType.Demon, MonsterSubType.Frost
-            | MonsterType.Demon, MonsterSubType.Fire
-            | MonsterType.Necromancer, MonsterSubType.None
-            | MonsterType.Necromancer, MonsterSubType.Frost
+            | MonsterType.Zombie, MonsterSubType.None ->
+                [|
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Health
+
+                    // no magic so health + attack + defense instead of magic + mattack + mdefense
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Health
+                    Characteristic.Attack; Characteristic.Attack
+                    Characteristic.Defense; Characteristic.Defense
+                   
+
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Health
+                |]
+            | MonsterType.Zombie, MonsterSubType.Frost ->
+                [|
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Defense
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Defense
+                |]
+            | MonsterType.Zombie, MonsterSubType.Fire ->
+                [|
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Attack
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Attack; Characteristic.Health
+                    Characteristic.Defense; Characteristic.Attack
+                |]
+            | MonsterType.Demon, MonsterSubType.None ->
+                [|
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.Magic
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.Magic
+                |]
+            | MonsterType.Demon, MonsterSubType.Frost ->
+                [|
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.MagicDefense
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.MagicDefense
+                |]
+            | MonsterType.Demon, MonsterSubType.Fire ->
+                [|
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.MagicAttack
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Health; Characteristic.Defense
+                    Characteristic.Luck; Characteristic.MagicAttack
+                |]
+            | MonsterType.Necromancer, MonsterSubType.None ->
+                [|
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.Health
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.Health
+                |]
+            | MonsterType.Necromancer, MonsterSubType.Frost ->
+                [|
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.MagicDefense
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.MagicDefense
+                |]
             | MonsterType.Necromancer, MonsterSubType.Fire ->
                 [|
-                    Characteristic.Attack; Characteristic.Health; Characteristic.Magic; Characteristic.MagicAttack
-                    Characteristic.Defense; Characteristic.MagicDefense; Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.MagicAttack
+
+                    Characteristic.Luck; Characteristic.Accuracy
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Attack; Characteristic.MagicAttack
+                    Characteristic.Defense; Characteristic.MagicDefense
+
+                    Characteristic.Magic; Characteristic.MagicAttack
+                    Characteristic.Accuracy; Characteristic.MagicAttack
                 |]
         Seq.init (int lvl) (fun i -> arr.[i % arr.Length]) |> Levels.statFromCharacteristicSeq
     

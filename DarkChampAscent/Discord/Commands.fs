@@ -293,7 +293,7 @@ type GeneralModule(db:SqliteStorage) =
         let res = db.GetNumKey DbKeysNum.Rewards
         let str =
             match res with
-            | Some d -> $"In-game rewards balance: {Emoj.Coin} {d} DarkCoins"
+            | Some d -> $"In-game rewards balance: {Emoj.Coin} {Display.toRound6StrD d} DarkCoins"
             | None -> $"Can't get balance."
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);

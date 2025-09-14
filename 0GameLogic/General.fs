@@ -340,11 +340,10 @@ module Levels =
 
     let [<Literal>] XPPerLvl = 100UL
     
-    /// every level gives exactly 1 point to char.
     let statFromCharacteristics(lvls:IDictionary<Characteristic, int>) =
         {
-            Health = Utils.getValueOrDefault lvls 0 Characteristic.Health |> int64
-            Magic = Utils.getValueOrDefault lvls 0 Characteristic.Magic |> int64
+            Health = 10L * (Utils.getValueOrDefault lvls 0 Characteristic.Health |> int64)
+            Magic = 5L * (Utils.getValueOrDefault lvls 0 Characteristic.Magic |> int64)
             Accuracy = Utils.getValueOrDefault lvls 0 Characteristic.Accuracy |> int64
             Luck = Utils.getValueOrDefault lvls 0 Characteristic.Luck |> int64
             Attack = Utils.getValueOrDefault lvls 0 Characteristic.Attack |> int64
