@@ -392,7 +392,7 @@ module internal SQL =
         SELECT ID FROM Monster
         WHERE ID NOT IN (
 	        SELECT MonsterId FROM MonsterDefeats
-	        WHERE RoundId > @roundId AND RoundId + RevivalDuration < @roundId)      
+	        WHERE RoundId < @roundId AND RoundId + RevivalDuration >= @roundId)      
     """
     
     let GetMonsters = "SELECT ID FROM Monster"
@@ -681,7 +681,7 @@ module internal SQL =
     let MonsterIsDeadAtRound = """
         SELECT EXISTS (
             SELECT 1 FROM MonsterDefeats
-            WHERE MonsterId = @monsterId AND (RoundId > @roundId AND RoundId + RevivalDuration < @roundId)
+            WHERE MonsterId = @monsterId AND (RoundId < @roundId AND RoundId + RevivalDuration >= @roundId)
         );
     """
 
