@@ -14,7 +14,7 @@ open Display
 open System.Threading.Tasks
 open Microsoft.Extensions.Options
 open DiscordBot.Components
-open DiscordBot
+open Serilog
 
 [<SlashCommand("wallet", "Wallet command")>]
 type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
@@ -22,14 +22,23 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
 
     [<SubSlashCommand("register", "Register Algorand wallet, nfd not supported yet")>]
     member x.Register([<SlashCommandParameter(Name = "wallet", Description = "your wallets")>] wallet:string): Task =
-        let res = db.RegisterNewWallet(x.Context.User.Id, wallet)
+        let wallet' = wallet.Trim()
+        let res =
+            if Blockchain.isValidAddress wallet' then
+                db.RegisterNewWallet(x.Context.User.Id, wallet')
+            else
+                try
+                    Log.Error($"{x.Context.User} attempts to register invalid {wallet'} address")
+                with exn ->
+                    Log.Error(exn, $"attempt to register {wallet'} address")
+                Error($"Invalid Algorand address. Please, check correctness: {wallet'}")
         let str =
             match res with
-            | Ok code -> $"Good, to confirm your wallet ({wallet}) send 0-cost Algo tx to {options.Value.Wallet.GameWallet} with following note: {code}"
+            | Ok code -> $"Good, to confirm your wallet ({wallet'}) send 0-cost Algo tx to {options.Value.Wallet.GameWallet} with following note: {code}"
             | Error err -> $"Oh, no...there was error: {err}"
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
-            let! icr = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
             let! _ = x.Context.Interaction.ModifyResponseAsync(fun options -> options.Content <- str)
             ()
         } :> Task

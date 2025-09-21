@@ -234,3 +234,4 @@ let sendTx(keys:string, receiver:string, amount:uint64, assetId:uint64, note:str
             return Error(exn)
     }
 
+let isValidAddress = Address.IsValid
