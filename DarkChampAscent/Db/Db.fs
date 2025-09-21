@@ -323,6 +323,8 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, $"FindUserIdByWallet: {wallet}")
             None
+    
+    member _.FindUserIdByDiscordId = getUserIdByDiscordId
 
     member _.FindDiscordIdByWallet(wallet: string) =
         try 
@@ -474,7 +476,7 @@ type SqliteStorage(cs: string)=
                 ]
                 |> Db.query(fun r ->
                     {|
-                        Walllet = r.GetString(0)
+                        Wallet = r.GetString(0)
                         IsConfirmed = r.GetBoolean(1)
                         IsActive = r.GetBoolean(2)
                         Code = r.GetString(3)

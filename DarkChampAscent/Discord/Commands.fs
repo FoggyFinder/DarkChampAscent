@@ -64,7 +64,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                                     if ar.IsConfirmed then isConfStr
                                     else $"{isConfStr} ({ar.Code})"
                                 let isActive = Display.fromBool ar.IsActive
-                                EmbedFieldProperties(Name = ar.Walllet, Value = $"Confirmed: {isConfirmed} | Active: {isActive}")
+                                EmbedFieldProperties(Name = ar.Wallet, Value = $"Confirmed: {isConfirmed} | Active: {isActive}")
                             )
                         options.Embeds <- [ ep ]
                 | Error err -> 
@@ -269,7 +269,6 @@ type UserModule(db:SqliteStorage) =
             ()
         } :> Task
 
-
     [<SlashCommand("donate", "donate to in-game rewards")>]
     member x.Donate([<SlashCommandParameter(Name = "amount", Description = "amount to donate")>] amount:decimal
     ): Task =
@@ -294,6 +293,59 @@ type UserModule(db:SqliteStorage) =
             ()
         } :> Task
 
+    [<SlashCommand("rescan", "Fetches info on champs from user's registered wallets")>]
+    member x.Rescan() =
+        try
+            Log.Information($"{x.Context.User} uses rescan command")
+        with exn ->
+            Log.Error(exn, $"rescan command")
+        // ToDo: improve, return results to a user
+        let updateChamps(wallets:string list) =
+            match db.FindUserIdByDiscordId x.Context.User.Id with
+            | Some userId ->
+                wallets
+                |> Seq.collect Blockchain.getChampsForWallet
+                |> Seq.iter(fun assetId ->
+                    let r = db.ChampExists assetId
+                    match r with
+                    | Ok b ->
+                        if b |> not then
+                            Blockchain.tryGetChampInfo assetId
+                            |> Option.iter(fun (trait', ipfs) ->
+                                db.AddOrInsertChamp ({
+                                    Name = Blockchain.getAssetName assetId
+                                    AssetId = assetId
+                                    IPFS = ipfs
+                                    UserId = uint64 userId
+                                    Stats = Champ.generateStats trait'
+                                    Traits = trait'
+                                }) |> ignore)
+                    | Error _ -> ())
+            | None -> ()
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            match db.GetUserWallets(x.Context.User.Id) with
+            | Ok xs ->
+                let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
+                let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                    if xs'.IsEmpty then
+                        options.Content <- "No confirmed wallets found"
+                    else
+                        options.Content <- "Updating...")
+                if xs'.IsEmpty |> not then
+                    updateChamps xs'
+                    let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                        options.Content <- "Done")
+                    ()
+            | Error err ->
+                let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                        options.Content <- $"Oh, no...there was error: {err}")
+                ()
+            ()
+        } :> Task
+
+    
 type GeneralModule(db:SqliteStorage) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
 
