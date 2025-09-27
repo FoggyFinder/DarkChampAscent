@@ -984,3 +984,10 @@ module internal SQL =
         VALUES(@monsterId, @itemId, @roundId, @duration, 1);
         SELECT last_insert_rowid();
     """
+
+    let UserEarnings = """
+        SELECT Sum(Rewards) FROM Action
+        WHERE
+            ChampId IN (SELECT ChampId FROM UserChamp WHERE UserId = @userId)
+            AND RoundId >= @startRound AND RoundId <= @endRound
+    """

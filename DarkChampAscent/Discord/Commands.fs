@@ -345,6 +345,21 @@ type UserModule(db:SqliteStorage) =
             ()
         } :> Task
 
+    [<SlashCommand("earnings", "returns amount of coins earned for specific range of rounds")>]
+    member x.Earnings(
+        [<SlashCommandParameter(Name = "start", Description = "from round (included)")>] startRound:uint64,
+        [<SlashCommandParameter(Name = "end", Description = "to round (included)")>] endRound:uint64): Task =
+        let res = db.GetUserEarnings(x.Context.User.Id, startRound, endRound)
+        let str =
+            match res with
+            | Some d -> $"Your earnings for [{startRound}..{endRound}] rounds: {Emoj.Coin} {d} DarkCoins"
+            | None -> $"Can't get earnings."
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options -> options.Content <- str)
+            ()
+        } :> Task
     
 type GeneralModule(db:SqliteStorage) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()

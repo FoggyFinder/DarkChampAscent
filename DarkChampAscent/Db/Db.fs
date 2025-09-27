@@ -1274,6 +1274,23 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, $"GetBattleReward")
             Error("Unexpected error")
 
+    member _.GetUserEarnings(discordId: uint64, startRound:uint64, endRound:uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.UserEarnings conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                    "startRound", SqlType.Int64 <| int64 startRound
+                    "endRound", SqlType.Int64 <| int64 endRound
+                ]
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
+            with exn ->
+                Log.Error(exn, $"GetUserEarnings {discordId}: [{startRound}-{endRound}]")
+                None
+        | None -> None 
+
     member t.UseItemFromStorage(discordId: uint64, item:ShopItem, champId: uint64) =
         try
             use conn = new SqliteConnection(cs)
