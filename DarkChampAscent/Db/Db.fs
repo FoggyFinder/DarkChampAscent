@@ -1480,7 +1480,7 @@ type SqliteStorage(cs: string)=
         try
             use conn = new SqliteConnection(cs)
             let lastRoundIdO =
-                Db.newCommand SQL.GetLastBattle conn
+                Db.newCommand SQL.GetLastRound conn
                 |> Db.scalar (fun v -> tryUnbox<int64> v)
             match lastRoundIdO with
             | Some roundId ->
