@@ -120,6 +120,32 @@ module internal SQL =
             SubType INTEGER NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS UserMonster (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            MonsterId INTEGER NOT NULL UNIQUE,
+            UserId INTEGER NOT NULL,
+            Timestamp DATETIME NOT NULL,
+            UNIQUE(MonsterId, UserId),
+            FOREIGN KEY (MonsterId)
+               REFERENCES Monster (ID),
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID)
+        );
+
+        -- ToDo: save init request
+        CREATE TABLE IF NOT EXISTS UserGenMonsterRequest (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            UserId INTEGER NOT NULL,
+            Timestamp DATETIME NOT NULL,
+            Status INT NOT NULL,
+            Payload TEXT,
+            Cost NUMERIC NOT NULL,
+            IsFinished BOOL NOT NULL,
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            CHECK (Cost > 0)
+        );
+
         CREATE TABLE IF NOT EXISTS Battle (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             MonsterId INT NOT NULL,
@@ -983,6 +1009,30 @@ module internal SQL =
         INSERT INTO MonsterImpact(MonsterId, ItemId, RoundId, Duration, IsActive)
         VALUES(@monsterId, @itemId, @roundId, @duration, 1);
         SELECT last_insert_rowid();
+    """
+
+    let InitGenRequest = """
+        INSERT INTO UserGenMonsterRequest(UserId, Timestamp, Status, Payload, Cost, IsFinished)
+        VALUES(@userId, DATETIME('now'), @status, @payload, @cost, 0);
+        SELECT last_insert_rowid();
+    """
+
+    let UpdateGenRequest = """
+        UPDATE UserGenMonsterRequest SET 
+            Status = @status,
+            Payload = @payload,
+            IsFinished = @isFinished
+        WHERE ID = @id AND
+    """
+
+    let SelectUnfinishedRequests = """
+        SELECT UserId, Status, Payload FROM UserGenMonsterRequest
+        WHERE IsFinished = 0
+    """
+
+    let GetGenReqCost = """
+        SELECT Cost FROM UserGenMonsterRequest
+        WHERE ID = @id
     """
 
     let UserEarnings = """
