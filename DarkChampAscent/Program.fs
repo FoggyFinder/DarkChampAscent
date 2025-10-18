@@ -55,7 +55,7 @@ builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Wallet") |
 builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Chain") |> ignore
 builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Db") |> ignore
 builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Gen") |> ignore
-
+builder.Services.AddSingleton<AipgGen>() |> ignore
 
 let host = builder.Build()
 
