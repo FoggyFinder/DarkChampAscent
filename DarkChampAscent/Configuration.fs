@@ -13,7 +13,11 @@ type ChainConfiguration() =
 type DbConfiguration() =
     member val BackupFolder: string = "" with get, set
 
+type GenConfiguration() = 
+    member val AIPG: string = "" with get, set
+
 type Configuration() =
     member val Wallet: WalletConfiguration = WalletConfiguration() with get, set
     member val Chain: ChainConfiguration = ChainConfiguration() with get, set
     member val Db: DbConfiguration = DbConfiguration() with get, set
+    member val Gen: GenConfiguration = GenConfiguration() with get, set

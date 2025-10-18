@@ -17,7 +17,7 @@ open NetCord
 open System.IO
 open GameLogic.Battle
 
-type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
+type BackupService(db:SqliteStorage, options: IOptions<Conf.DbConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -35,7 +35,7 @@ type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                         | None -> true
                     if backupIsRequired then
                         let datasource =
-                            let dir = options.Value.Db.BackupFolder
+                            let dir = options.Value.BackupFolder
                             if Directory.Exists(dir) |> not then
                                 Directory.CreateDirectory(dir) |> ignore
                             let dbname = now.ToString("yyyyMMddhhmm") + ".sqlite"
@@ -51,7 +51,7 @@ type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                     Log.Error(exn, "BackupService")
         }
 
-type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.Configuration>) =
+type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -64,7 +64,7 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                         let dt = DateTime.UtcNow
                         let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
                         let confirmations =
-                            Blockchain.getNotesForWallet(options.Value.Wallet.GameWallet, lpd)
+                            Blockchain.getNotesForWallet(options.Value.GameWallet, lpd)
                             |> Seq.choose(fun (wallet, barr) ->
                                 try
                                     Some(wallet, System.Text.Encoding.UTF8.GetString barr)
@@ -167,7 +167,7 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                     Log.Error(exn, "UpdatePriceService")
         }
 
-type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
+type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -177,7 +177,7 @@ type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<C
                 try
                     let dt = DateTime.UtcNow
                     let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
-                    let deposits = Blockchain.getDarkCoinDepositForWallet(options.Value.Wallet.GameWallet, lpd) |> Seq.toArray
+                    let deposits = Blockchain.getDarkCoinDepositForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
                     let statuses =
                         deposits
                         |> Array.map(fun (txid, sender, value) -> {|

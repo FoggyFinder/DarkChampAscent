@@ -31,10 +31,12 @@
 		<Compile Include="Utils.fs" />
 		<Compile Include="External.fs" />
 		<Compile Include="Blockchain\Blockchain.fs" />
+		<Compile Include="Configuration.fs" />
+		<Compile Include="Gen\GenAIPG.fs" />
+		<Compile Include="Gen\Gen.fs" />
 		<Compile Include="Db\SQL.fs" />
 		<Compile Include="Db\Db.fs" />
 		<Compile Include="Display.fs" />
-		<Compile Include="Configuration.fs" />
 		<Compile Include="Discord\Utils.fs" />
 		<Compile Include="Discord\Components.fs" />
 		<Compile Include="Discord\Interactions.fs" />

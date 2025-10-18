@@ -21,6 +21,7 @@ open DiscordBot.Services
 open DiscordBot.Commands
 open Conf
 open NetCord
+open GenAIPG.AipgImageGenV2
 
 let cs = "Data Source=darkchampascentdb.sqlite; Cache=Shared;Foreign Keys = True"
 let db = new Db.SqliteStorage(cs)
@@ -50,6 +51,11 @@ builder.Services
 
 builder.Logging.AddSerilog(dispose=true) |> ignore
 builder.Services.AddOptions<Configuration>().BindConfiguration(nameof Configuration) |> ignore
+builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Wallet") |> ignore
+builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Chain") |> ignore
+builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Db") |> ignore
+builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Gen") |> ignore
+
 
 let host = builder.Build()
 
