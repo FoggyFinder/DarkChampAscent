@@ -21,7 +21,6 @@ open DiscordBot.Services
 open DiscordBot.Commands
 open Conf
 open NetCord
-open GenAIPG.AipgImageGenV2
 
 let cs = "Data Source=darkchampascentdb.sqlite; Cache=Shared;Foreign Keys = True"
 let db = new Db.SqliteStorage(cs)
@@ -36,6 +35,7 @@ builder.Services
     .AddHostedService<TrackChampCfgService>()
     .AddHostedService<BattleService>()
     .AddHostedService<BackupService>()
+    .AddHostedService<GenService>()
     .AddDiscordGateway(fun options ->
         options.Intents <- GatewayIntents.GuildMessages
                           ||| GatewayIntents.GuildMessageReactions
@@ -55,7 +55,6 @@ builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Wallet") |
 builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Chain") |> ignore
 builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Db") |> ignore
 builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Gen") |> ignore
-builder.Services.AddSingleton<AipgGen>() |> ignore
 
 let host = builder.Build()
 

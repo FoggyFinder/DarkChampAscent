@@ -15,6 +15,7 @@ type DbConfiguration() =
 
 type GenConfiguration() = 
     member val AIPG: string = "" with get, set
+    member val ImgFolder: string = "" with get, set
 
 type Configuration() =
     member val Wallet: WalletConfiguration = WalletConfiguration() with get, set

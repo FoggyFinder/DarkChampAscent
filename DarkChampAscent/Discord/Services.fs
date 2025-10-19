@@ -530,3 +530,96 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 with exn ->
                     Log.Error(exn, "BattleService")
         }
+
+
+open Gen
+open GenAIPG
+type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
+    inherit BackgroundService()
+    let aipgGen = GenAIPG.AipgGen(options)
+
+    let getTextRequest(prompt:string) =
+        GenerateTextRequest(prompt, [| "grid/llama-3.3-70b-versatile" |], TextRequestParams(512, 512, 0.7, 0.9))
+
+    let getImgRequest(tp:TextPayload) =
+        GenerateRequest(prompt = tp.Description,
+            models = [| "FLUX.1-dev" |],
+            parameters = Params(samplerName = "k_dpmpp_2m"))
+
+    override this.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                try
+                    // get all request that aren't finished
+                    let requests = db.GetAllUnfinishedGenRequests()
+                    for req in requests do
+                        match req.Payload with
+                        | GenPayload.TextReqCreated prompt ->
+                            let! res =
+                                prompt
+                                |> getTextRequest
+                                |> aipgGen.GenerateTextAsync
+                            let newPayload = 
+                                match res with
+                                | Ok id -> GenPayload.TextReqReceived id
+                                | Error err ->
+                                    GenPayload.Failure req.Payload
+                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
+                        | GenPayload.TextReqReceived id ->
+                            let! res = aipgGen.GetGeneratedTextAsync id
+                            let newPayload = 
+                                match res with
+                                | Ok json ->
+                                    deserialize<TextPayload> json
+                                    |> GenPayload.TextPayloadReceived 
+                                | Error err ->
+                                    GenPayload.Failure req.Payload
+                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
+                        | GenPayload.TextPayloadReceived tp ->
+                            let! res =
+                                tp
+                                |> getImgRequest
+                                |> aipgGen.GenerateImageAsync
+                            let newPayload = 
+                                match res with
+                                | Ok id -> GenPayload.ImgReqReceived(id, tp)
+                                | Error err ->
+                                    GenPayload.Failure req.Payload
+                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                        | GenPayload.ImgReqReceived (id, tp) ->
+                            // fetch img and save locally
+                            let! res = aipgGen.FetchCompleteResponseAsync id
+                            match res with
+                            | Ok bytes ->
+                                let dir = options.Value.ImgFolder
+                                if Directory.Exists(dir) |> not then
+                                    Directory.CreateDirectory(dir) |> ignore
+                                let filename =
+                                    req.MType.ToString().ToLower() + "_" + req.MSubType.ToString().ToLower() + "_" + req.ID.ToString() + ".png"
+                                let filepath = Path.Combine(dir, filename)
+                                // save img locally
+                                System.IO.File.WriteAllBytes(filepath, bytes)
+                                let mi = MonsterImg.File filepath
+                                // tx:
+                                // - create monster
+                                // - connect monster and user
+                                // - move coins from locked to rewards
+                                // - change status to success and mark as finished
+                                ()
+                            | Error err ->
+                                let newPayload = GenPayload.Failure req.Payload
+                                db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                        | GenPayload.Failure prevStep ->
+                            ()
+                        | GenPayload.Success ->
+                            // ToDo: log error and mark as finished
+                            ()
+                        | _ -> ()
+                    do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
+                with exn ->
+                    Log.Error(exn, "GenService")
+        }

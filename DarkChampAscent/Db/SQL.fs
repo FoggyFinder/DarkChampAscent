@@ -120,19 +120,6 @@ module internal SQL =
             SubType INTEGER NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS UserMonster (
-            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            MonsterId INTEGER NOT NULL UNIQUE,
-            UserId INTEGER NOT NULL,
-            Timestamp DATETIME NOT NULL,
-            UNIQUE(MonsterId, UserId),
-            FOREIGN KEY (MonsterId)
-               REFERENCES Monster (ID),
-            FOREIGN KEY (UserId)
-               REFERENCES User (ID)
-        );
-
-        -- ToDo: save init request
         CREATE TABLE IF NOT EXISTS UserGenMonsterRequest (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             UserId INTEGER NOT NULL,
@@ -141,9 +128,25 @@ module internal SQL =
             Payload TEXT,
             Cost NUMERIC NOT NULL,
             IsFinished BOOL NOT NULL,
+            Type INTEGER NOT NULL,
+            SubType INTEGER NOT NULL
             FOREIGN KEY (UserId)
                REFERENCES User (ID),
             CHECK (Cost > 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS UserMonster (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            MonsterId INTEGER NOT NULL UNIQUE,
+            UserId INTEGER NOT NULL,
+            RequestId INTEGER NOT NULL,
+            UNIQUE(MonsterId, UserId),
+            FOREIGN KEY (MonsterId)
+               REFERENCES Monster (ID),
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            FOREIGN KEY (RequestId)
+               REFERENCES UserGenMonsterRequest (ID),
         );
 
         CREATE TABLE IF NOT EXISTS Battle (
@@ -1012,8 +1015,8 @@ module internal SQL =
     """
 
     let InitGenRequest = """
-        INSERT INTO UserGenMonsterRequest(UserId, Timestamp, Status, Payload, Cost, IsFinished)
-        VALUES(@userId, DATETIME('now'), @status, @payload, @cost, 0);
+        INSERT INTO UserGenMonsterRequest(UserId, Timestamp, Status, Payload, Cost, IsFinished, Type, SubType)
+        VALUES(@userId, DATETIME('now'), @status, @payload, @cost, 0, @type, @subtype);
         SELECT last_insert_rowid();
     """
 
@@ -1026,8 +1029,10 @@ module internal SQL =
     """
 
     let SelectUnfinishedRequests = """
-        SELECT UserId, Status, Payload FROM UserGenMonsterRequest
+        SELECT ID, Status, Payload, Cost, Type, SubType
+        FROM UserGenMonsterRequest
         WHERE IsFinished = 0
+        ORDER BY Timestamp ASC
     """
 
     let GetGenReqCost = """

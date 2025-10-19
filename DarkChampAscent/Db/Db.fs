@@ -2870,12 +2870,14 @@ type SqliteStorage(cs: string)=
                             |> Db.newCommandForTransaction SQL.InitGenRequest
                             |> Db.setParams [
                                 "userId", SqlType.Int64 uid
-                                "status", SqlType.Int <| int GenStatus.RequstCreated
+                                "status", SqlType.Int <| int payload.Status
                                 "payload", SqlType.String json
                                 "cost", SqlType.Decimal subs
+                                "type", SqlType.Int <| int mtype
+                                "subtype", SqlType.Int <| int msubtype
                             ]
                             |> Db.exec
-                            Ok(())
+                            Ok("Request received. Please wait while it processing. It may take a while")
                     | None, Some _ -> Error("Can't fetch balance. Try again later")
                     | Some _, None -> Error("Can't fetch price. Try again later")
                     | _, _ -> Error("Can't fetch balance and price")         
@@ -2884,6 +2886,50 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, $"CreateGenRequest {discordId}: {mtype}, {msubtype}")
             Error("Unexpected error")
+
+    member _.GetAllUnfinishedGenRequests() =
+        try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.SelectUnfinishedRequests conn
+            |> Db.query(fun r -> {|
+                    ID = r.GetInt32(0)
+                    Status = r.GetInt32(1) |> enum<GenStatus>
+                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(2), options)
+                    Cost = r.GetDecimal(3)
+                    MType = r.GetInt32(4) |> enum<MonsterType>
+                    MSubType = r.GetInt32(5) |> enum<MonsterSubType>
+                |}
+            )
+        with exn ->
+            Log.Error(exn, "GetAllUnfinishedGenRequests")
+            []
+
+    member _.UpdateGenRequest(rId:int, payload:GenPayload) =
+        try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            let json = JsonSerializer.Serialize(payload, options)
+            let status = payload.Status
+            let isFinished = status = GenStatus.Success
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UpdateGenRequest conn
+            |> Db.setParams [
+                "status", SqlType.Int <| int status
+                "payload", SqlType.String json
+                "isFinished", SqlType.Boolean isFinished
+                "id", SqlType.Int rId
+            ]
+            |> Db.query(fun r -> {|
+                    Status = r.GetInt32(0) |> enum<GenStatus>
+                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(1), options)
+                    Cost = r.GetDecimal(2)
+                    MType = r.GetInt32(3) |> enum<MonsterType>
+                    MSubType = r.GetInt32(4) |> enum<MonsterSubType>
+                |}
+            )
+        with exn ->
+            Log.Error(exn, "GetAllUnfinishedGenRequests")
+            []
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
