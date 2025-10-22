@@ -140,7 +140,6 @@ module internal SQL =
             MonsterId INTEGER NOT NULL UNIQUE,
             UserId INTEGER NOT NULL,
             RequestId INTEGER NOT NULL,
-            UNIQUE(MonsterId, UserId),
             FOREIGN KEY (MonsterId)
                REFERENCES Monster (ID),
             FOREIGN KEY (UserId)
@@ -685,7 +684,8 @@ module internal SQL =
 
     let CreateMonster = """
         INSERT INTO Monster(Name, Description, Picture, Xp, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType)
-        VALUES(@name, @description, @img, 0, @health, @magic, @accuracy, @luck, @attack, @mattack, @defense, @mdefense, @type, @subtype)
+        VALUES(@name, @description, @img, 0, @health, @magic, @accuracy, @luck, @attack, @mattack, @defense, @mdefense, @type, @subtype);
+        SELECT last_insert_rowid();
     """
 
     let MonsterDefeat = """
@@ -1025,20 +1025,23 @@ module internal SQL =
             Status = @status,
             Payload = @payload,
             IsFinished = @isFinished
-        WHERE ID = @id AND
+        WHERE ID = @id
     """
 
     let SelectUnfinishedRequests = """
-        SELECT ID, Status, Payload, Cost, Type, SubType
+        SELECT ID, UserId, Status, Payload, Cost, Type, SubType
         FROM UserGenMonsterRequest
         WHERE IsFinished = 0
         ORDER BY Timestamp ASC
     """
 
-    let GetGenReqCost = """
-        SELECT Cost FROM UserGenMonsterRequest
-        WHERE ID = @id
+    let ConnectMonsterToUser = "INSERT INTO UserMonster(MonsterId, UserId, RequestId) VALUES(@monsterId, @userId, @requestId)"
+    
+    let IsMonsterNameExists = """
+        SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name);
     """
+
+    let CountMonsterByTypes = """SELECT Count(*) FROM Monster WHERE Type = @type AND SubType = @subtype"""
 
     let UserEarnings = """
         SELECT Sum(Rewards) FROM Action

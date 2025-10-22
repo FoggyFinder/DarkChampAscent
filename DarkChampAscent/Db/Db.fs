@@ -2893,43 +2893,139 @@ type SqliteStorage(cs: string)=
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.SelectUnfinishedRequests conn
             |> Db.query(fun r -> {|
-                    ID = r.GetInt32(0)
-                    Status = r.GetInt32(1) |> enum<GenStatus>
-                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(2), options)
-                    Cost = r.GetDecimal(3)
-                    MType = r.GetInt32(4) |> enum<MonsterType>
-                    MSubType = r.GetInt32(5) |> enum<MonsterSubType>
+                    ID = r.GetInt64(0)
+                    UserId = r.GetInt64(1)
+                    Status = r.GetInt32(2) |> enum<GenStatus>
+                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), options)
+                    Cost = r.GetDecimal(4)
+                    MType = r.GetInt32(5) |> enum<MonsterType>
+                    MSubType = r.GetInt32(6) |> enum<MonsterSubType>
                 |}
             )
         with exn ->
             Log.Error(exn, "GetAllUnfinishedGenRequests")
             []
 
-    member _.UpdateGenRequest(rId:int, payload:GenPayload) =
+    member _.UpdateGenRequest(rId:int64, payload:GenPayload) =
         try
             let options = JsonFSharpOptions().ToJsonSerializerOptions()
             let json = JsonSerializer.Serialize(payload, options)
             let status = payload.Status
-            let isFinished = status = GenStatus.Success
+            let isFinished = payload.IsFinished
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.UpdateGenRequest conn
             |> Db.setParams [
                 "status", SqlType.Int <| int status
                 "payload", SqlType.String json
                 "isFinished", SqlType.Boolean isFinished
-                "id", SqlType.Int rId
+                "id", SqlType.Int64 rId
             ]
-            |> Db.query(fun r -> {|
-                    Status = r.GetInt32(0) |> enum<GenStatus>
-                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(1), options)
-                    Cost = r.GetDecimal(2)
-                    MType = r.GetInt32(3) |> enum<MonsterType>
-                    MSubType = r.GetInt32(4) |> enum<MonsterSubType>
-                |}
-            )
+            |> Db.exec
+            // ToDo: return coins to a user in case of final failure
+            true
         with exn ->
-            Log.Error(exn, "GetAllUnfinishedGenRequests")
-            []
+            Log.Error(exn, $"UpdateGenRequest: {rId}")
+            false
+
+    member _.CreateCustomMonster(monster:MonsterRecord, mi:MonsterImg, reqId:int64, uid:int64, cost:decimal) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.batch (fun tn ->
+                let options = JsonFSharpOptions().ToJsonSerializerOptions()
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(mi, options)
+
+                let isMonsterNameExists =
+                    Db.newCommandForTransaction SQL.IsMonsterNameExists tn
+                    |> Db.setParams [
+                        "name", SqlType.String monster.Name
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+                let name' = 
+                    if isMonsterNameExists then
+                        let count = 
+                            Db.newCommandForTransaction SQL.CountMonsterByTypes tn
+                            |> Db.setParams [
+                                "type", SqlType.Int <| int monster.Monster.MType
+                                "subtype", SqlType.Int <| int monster.Monster.MSubType
+                            ]
+                            |> Db.scalar (fun v ->
+                                tryUnbox<int64> v
+                                |> Option.map(fun v -> v.ToString())
+                                |> Option.defaultValue (Guid.NewGuid().ToString()))
+                        $"{monster.Name} {count}"
+                    else monster.Name
+                // - create monster
+                let monsterIdO = 
+                    Db.newCommandForTransaction SQL.CreateMonster tn
+                    |> Db.setParams [
+                        "name", SqlType.String name'
+                        "description", SqlType.String monster.Description
+                        "img", SqlType.Bytes bytes
+                        "health", SqlType.Int64 <| int64 monster.Stats.Health
+                        "magic", SqlType.Int64 <| int64 monster.Stats.Magic
+                            
+                        "accuracy", SqlType.Int64 <| int64 monster.Stats.Accuracy
+                        "luck", SqlType.Int64 <| int64 monster.Stats.Luck
+                        "attack", SqlType.Int64 <| int64 monster.Stats.Attack
+                        "mattack", SqlType.Int64 <| int64 monster.Stats.MagicAttack
+                        "defense", SqlType.Int64 <| int64 monster.Stats.Defense
+                        "mdefense", SqlType.Int64 <| int64 monster.Stats.MagicDefense
+                        "type", SqlType.Int <| int monster.Monster.MType
+                        "subtype", SqlType.Int <| int monster.Monster.MSubType
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                
+                // - connect monster and user
+                match monsterIdO with
+                | Some mid ->
+                    tn
+                    |> Db.newCommandForTransaction SQL.ConnectMonsterToUser
+                    |> Db.setParams [ 
+                        "monsterId", SqlType.Int64 mid
+                        "userId", SqlType.Int64 uid
+                        "requestId", SqlType.Int64 reqId
+                    ]
+                    |> Db.exec
+                    
+                    // - remove coins from locked
+                    tn
+                    |> Db.newCommandForTransaction SQL.AddToKeyNum
+                    |> Db.setParams [
+                        "amount", SqlType.Decimal -cost
+                        "key", SqlType.String (DbKeysNum.Locked.ToString())
+                    ]
+                    |> Db.exec
+                    
+                    // add coins to rewards
+                    tn
+                    |> Db.newCommandForTransaction SQL.AddToKeyNum
+                    |> Db.setParams [
+                        "amount", SqlType.Decimal cost
+                        "key", SqlType.String (DbKeysNum.Rewards.ToString())
+                    ]
+                    |> Db.exec
+                    
+                    // - change status to success and mark as finished
+                    let payload = GenPayload.Success
+                    let json = JsonSerializer.Serialize(payload, options)
+                    let status = payload.Status
+                    Db.newCommandForTransaction SQL.UpdateGenRequest tn
+                    |> Db.setParams [
+                        "status", SqlType.Int <| int status
+                        "payload", SqlType.String json
+                        "isFinished", SqlType.Boolean true
+                        "id", SqlType.Int64 reqId
+                    ]
+                    |> Db.exec
+                    true
+                | None ->
+                    tn.Rollback()
+                    false
+            ) conn
+        with exn ->
+            Log.Error(exn, $"CreateNewMonster: {monster}")
+            false
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)

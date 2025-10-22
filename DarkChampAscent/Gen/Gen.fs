@@ -27,7 +27,7 @@ type GenPayload =
     | TextPayloadReceived of TextPayload
     | ImgReqReceived of id:string * TextPayload
     | ImgPayloadReceived of ImgPayload * TextPayload
-    | Failure of prevStep:GenPayload
+    | Failure of prevStep:GenFailure
     | Success
     member t.Status =
         match t with
@@ -38,6 +38,19 @@ type GenPayload =
         | ImgPayloadReceived _ -> GenStatus.ImgPayloadReceived
         | Failure _ -> GenStatus.Failure
         | Success -> GenStatus.Success
+    member t.IsFinished =
+        match t with
+        | Success -> true
+        | Failure f ->
+            match f with
+            | GenFailure.Final _ -> true
+            | GenFailure.Repeat _ -> false
+        | _ -> false
+
+and [<RequireQualifiedAccess>]
+GenFailure =
+    | Final of string
+    | Repeat of count: int * GenPayload
 
 [<RequireQualifiedAccess>]
 module Prompt =

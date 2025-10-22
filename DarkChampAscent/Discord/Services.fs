@@ -564,7 +564,9 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                 match res with
                                 | Ok id -> GenPayload.TextReqReceived id
                                 | Error err ->
-                                    GenPayload.Failure req.Payload
+                                    Log.Error($"GEN Err [TextReqCreated] : {err}")
+                                    GenFailure.Repeat(0, req.Payload)
+                                    |> GenPayload.Failure
                             db.UpdateGenRequest(req.ID, newPayload) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextReqReceived id ->
@@ -575,7 +577,9 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                     deserialize<TextPayload> json
                                     |> GenPayload.TextPayloadReceived 
                                 | Error err ->
-                                    GenPayload.Failure req.Payload
+                                    Log.Error($"GEN Err [TextReqReceived] : {err}")
+                                    GenFailure.Repeat(0, req.Payload)
+                                    |> GenPayload.Failure
                             db.UpdateGenRequest(req.ID, newPayload) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextPayloadReceived tp ->
@@ -587,7 +591,9 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                 match res with
                                 | Ok id -> GenPayload.ImgReqReceived(id, tp)
                                 | Error err ->
-                                    GenPayload.Failure req.Payload
+                                    Log.Error($"GEN Err [TextPayloadReceived] : {err}")
+                                    GenFailure.Repeat(0, req.Payload)
+                                    |> GenPayload.Failure
                             db.UpdateGenRequest(req.ID, newPayload) |> ignore
                             do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
                         | GenPayload.ImgReqReceived (id, tp) ->
@@ -604,19 +610,26 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                 // save img locally
                                 System.IO.File.WriteAllBytes(filepath, bytes)
                                 let mi = MonsterImg.File filepath
-                                // tx:
-                                // - create monster
-                                // - connect monster and user
-                                // - move coins from locked to rewards
-                                // - change status to success and mark as finished
-                                ()
+                                match Monster.TryCreate(req.MType, req.MSubType) with
+                                | Some monster ->
+                                    let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL)
+                                    if db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) then
+                                        ()
+                                    else
+                                        let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
+                                        db.UpdateGenRequest(req.ID, newPayload) |> ignore                                        
+                                | None ->
+                                    let newPayload = GenFailure.Final("Invalid monster") |> GenPayload.Failure
+                                    db.UpdateGenRequest(req.ID, newPayload) |> ignore
                             | Error err ->
-                                let newPayload = GenPayload.Failure req.Payload
+                                Log.Error($"GEN Err [ImgReqReceived] : {err}")
+                                let newPayload = GenFailure.Repeat(0, req.Payload) |> GenPayload.Failure
                                 db.UpdateGenRequest(req.ID, newPayload) |> ignore
                         | GenPayload.Failure prevStep ->
                             ()
                         | GenPayload.Success ->
-                            // ToDo: log error and mark as finished
+                            Log.Error($"GenPayload is Success but status is unfinished: {req.ID}")
+                            db.UpdateGenRequest(req.ID, req.Payload) |> ignore
                             ()
                         | _ -> ()
                     do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
