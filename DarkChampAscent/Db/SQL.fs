@@ -129,7 +129,7 @@ module internal SQL =
             Cost NUMERIC NOT NULL,
             IsFinished BOOL NOT NULL,
             Type INTEGER NOT NULL,
-            SubType INTEGER NOT NULL
+            SubType INTEGER NOT NULL,
             FOREIGN KEY (UserId)
                REFERENCES User (ID),
             CHECK (Cost > 0)
@@ -145,7 +145,7 @@ module internal SQL =
             FOREIGN KEY (UserId)
                REFERENCES User (ID),
             FOREIGN KEY (RequestId)
-               REFERENCES UserGenMonsterRequest (ID),
+               REFERENCES UserGenMonsterRequest (ID)
         );
 
         CREATE TABLE IF NOT EXISTS Battle (

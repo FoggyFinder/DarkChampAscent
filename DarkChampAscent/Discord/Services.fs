@@ -534,7 +534,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
 open Gen
 open GenAIPG
-type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
+type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.GenConfiguration>) =
     inherit BackgroundService()
     let aipgGen = GenAIPG.AipgGen(options)
 
@@ -544,7 +544,7 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
     let getImgRequest(tp:TextPayload) =
         GenerateRequest(prompt = tp.Description,
             models = [| "FLUX.1-dev" |],
-            parameters = Params(samplerName = "k_dpmpp_2m"))
+            parameters = Params(height = 1024, width = 1024, samplerName = "k_dpmpp_2m"))
 
     override this.ExecuteAsync(cancellationToken) =
         task {
@@ -614,7 +614,26 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                 | Some monster ->
                                     let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL)
                                     if db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) then
-                                        ()
+                                        try
+                                           let minfo = {
+                                                XP = monsterRecord.Xp
+                                                Name = monsterRecord.Name
+                                                Description = monsterRecord.Description
+                                                Picture = mi
+                                                Stat = monsterRecord.Stats
+                                                MType = monsterRecord.Monster.MType
+                                                MSubType = monsterRecord.Monster.MSubType
+                                           }
+                                           let monsterCard = Components.monsterCreatedComponent minfo
+                        
+                                           let mp =
+                                              MessageProperties()
+                                                .WithAttachments([Components.monsterAttachnment minfo])
+                                                .WithComponents([monsterCard])
+                                                .WithFlags(MessageFlags.IsComponentsV2)
+                                           do! Utils.sendMsgToLogChannelWithNotifications gclient mp
+                                        with ex ->
+                                            Log.Error(ex, "CreateCustomMonster msg")
                                     else
                                         let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
                                         db.UpdateGenRequest(req.ID, newPayload) |> ignore                                        
@@ -625,7 +644,8 @@ type GenService(db:SqliteStorage, options:IOptions<Conf.GenConfiguration>) =
                                 Log.Error($"GEN Err [ImgReqReceived] : {err}")
                                 let newPayload = GenFailure.Repeat(0, req.Payload) |> GenPayload.Failure
                                 db.UpdateGenRequest(req.ID, newPayload) |> ignore
-                        | GenPayload.Failure prevStep ->
+                        | GenPayload.Failure genFailure ->
+                            // ToDo: implement
                             ()
                         | GenPayload.Success ->
                             Log.Error($"GenPayload is Success but status is unfinished: {req.ID}")

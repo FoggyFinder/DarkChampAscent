@@ -51,10 +51,10 @@ builder.Services
 
 builder.Logging.AddSerilog(dispose=true) |> ignore
 builder.Services.AddOptions<Configuration>().BindConfiguration(nameof Configuration) |> ignore
-builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Wallet") |> ignore
-builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Chain") |> ignore
-builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Db") |> ignore
-builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Gen") |> ignore
+builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Configuration:Wallet") |> ignore
+builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Configuration:Chain") |> ignore
+builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Configuration:Db") |> ignore
+builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Configuration:Gen") |> ignore
 
 let host = builder.Build()
 
@@ -81,6 +81,7 @@ host
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect))
     .AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup))
     .AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn))
+    .AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate))
     |> ignore
 
 Monster.DefaultsMonsters

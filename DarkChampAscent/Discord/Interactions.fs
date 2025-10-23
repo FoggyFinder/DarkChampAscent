@@ -192,6 +192,23 @@ let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName
     return callback
 }
 
+open GameLogic.Monsters
+let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string) (msubtype:string) = task {
+    let str = 
+        match Enum.TryParse<MonsterType>(mtype), Enum.TryParse<MonsterSubType>(msubtype) with
+        | (true, mtype), (true, msubtype) ->
+            match db.CreateGenRequest(context.User.Id, mtype, msubtype) with
+            | Ok str -> str
+            | Error err -> $"Error: {err}"
+        | _, _ -> "Error: Incorrect input"
+                
+    let callback = InteractionCallback.ModifyMessage(fun options ->
+        options.Components <- [ TextDisplayProperties(str) ]
+    )
+
+    return callback
+}
+
 let renameItem (db:SqliteStorage) (context:StringMenuInteractionContext) (str:string) = task {
     let darkCoinPrice = db.GetNumKey DbKeysNum.DarkCoinPrice
     let priceStr =
