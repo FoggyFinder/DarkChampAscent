@@ -571,18 +571,29 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextReqReceived id ->
                             let! res = aipgGen.GetGeneratedTextAsync id
-                            let newPayload = 
+                            let res' =
                                 match res with
                                 | Ok json ->
                                     try
                                         deserialize<TextPayload> json
-                                        |> GenPayload.TextPayloadReceived
+                                        |> Some
                                     with exn ->
-                                        Log.Error(exn, $"GenService: deserialize {json}")
-                                        GenFailure.Repeat(0, req.Payload)
-                                        |> GenPayload.Failure
+                                        Log.Error(exn, $"deserialize {json}")
+                                        None
                                 | Error err ->
                                     Log.Error($"GEN Err [TextReqReceived] : {err}")
+                                    None
+                            let newPayload = 
+                                match res' with
+                                | Some tp ->
+                                    // rare case: duplicate description
+                                    if db.IsMonsterDescriptionExists tp.Description then
+                                        Log.Error($"Duplicate description: {tp.Description}")
+                                        Prompt.createMonsterNameDesc req.MType req.MSubType
+                                        |> GenPayload.TextReqCreated
+                                    else
+                                        GenPayload.TextPayloadReceived tp
+                                | None ->
                                     GenFailure.Repeat(0, req.Payload)
                                     |> GenPayload.Failure
                             db.UpdateGenRequest(req.ID, newPayload) |> ignore

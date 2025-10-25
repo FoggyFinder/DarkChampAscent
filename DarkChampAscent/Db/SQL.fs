@@ -1041,6 +1041,10 @@ module internal SQL =
         SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name);
     """
 
+    let IsMonsterDescriptionExists = """
+        SELECT EXISTS(SELECT 1 FROM Monster WHERE Description = @description);
+    """
+
     let CountMonsterByTypes = """SELECT Count(*) FROM Monster WHERE Type = @type AND SubType = @subtype"""
 
     let UserEarnings = """

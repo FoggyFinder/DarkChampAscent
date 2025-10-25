@@ -3025,6 +3025,19 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
+    
+    member _.IsMonsterDescriptionExists(description:string) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.IsMonsterDescriptionExists conn
+            |> Db.setParams [
+                "description", SqlType.String description
+            ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+        with exn ->
+            Log.Error(exn, $"IsMonsterDescriptionExists: {description}")
+            false
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
