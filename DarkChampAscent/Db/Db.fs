@@ -1385,7 +1385,7 @@ type SqliteStorage(cs: string)=
                             match item with
                             | ShopItem.RevivalSpell ->
                                 let deathIdO =
-                                    Db.newCommand SQL.GetEffectItemIdByItem conn
+                                    Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
                                     |> Db.setParams [
                                         "item", SqlType.Int <| int Effect.Death
                                     ]
@@ -2821,29 +2821,32 @@ type SqliteStorage(cs: string)=
     member _.CreateGenRequest(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
         try
             use conn = new SqliteConnection(cs)
-            Db.batch (fun tn ->
-                let userId = 
-                    tn
-                    |> Db.newCommandForTransaction SQL.GetUserIdByDiscordId
-                    |> Db.setParams [ 
-                        "discordId", SqlType.Int64 <| int64 discordId
+            let prompt = Prompt.createMonsterNameDesc mtype msubtype
+            let payload = GenPayload.TextReqCreated prompt
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            let json = JsonSerializer.Serialize(payload, options)
+            
+            let userId = 
+                Db.newCommand SQL.GetUserIdByDiscordId conn
+                |> Db.setParams [ 
+                    "discordId", SqlType.Int64 <| int64 discordId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            match userId with
+            | Some uid ->
+                let balance =
+                    Db.newCommand SQL.GetUserBalance conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 uid 
                     ]
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                match userId with
-                | Some uid ->
-                    let balance =
-                        tn
-                        |> Db.newCommandForTransaction SQL.GetUserBalance
-                        |> Db.setParams [
-                            "userId", SqlType.Int64 uid 
-                        ]
-                        |> Db.querySingle (fun r -> r.GetDecimal(0))
-                    let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
-                    match balance, darkCoinPrice with
-                    | Some b, Some dcPrice ->
-                        let subs = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
-                        if subs > b then Error($"Your balance is {b} while {subs} is required")
-                        else
+                    |> Db.querySingle (fun r -> r.GetDecimal(0))
+                let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
+                match balance, darkCoinPrice with
+                | Some b, Some dcPrice ->
+                    let subs = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
+                    if subs > b then Error($"Your balance is {b} while {subs} is required")
+                    else
+                        Db.batch (fun tn ->
                             let newBalance = Math.Round(b - subs, 6)
                             tn
                             |> Db.newCommandForTransaction SQL.UpdateUserBalance
@@ -2861,11 +2864,6 @@ type SqliteStorage(cs: string)=
                             ]
                             |> Db.exec
 
-                            let prompt = Prompt.createMonsterNameDesc mtype msubtype
-                            let payload = GenPayload.TextReqCreated prompt
-                            let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                            let json = JsonSerializer.Serialize(payload, options)
-
                             tn
                             |> Db.newCommandForTransaction SQL.InitGenRequest
                             |> Db.setParams [
@@ -2877,12 +2875,13 @@ type SqliteStorage(cs: string)=
                                 "subtype", SqlType.Int <| int msubtype
                             ]
                             |> Db.exec
-                            Ok("Request received. Please wait while it processing. It may take a while")
-                    | None, Some _ -> Error("Can't fetch balance. Try again later")
-                    | Some _, None -> Error("Can't fetch price. Try again later")
-                    | _, _ -> Error("Can't fetch balance and price")         
-                | None ->
-                    Error("User not found")) conn
+                            Ok("Request received. It may take ~5 minutes to process")        
+                        ) conn
+                | None, Some _ -> Error("Can't fetch balance. Try again later")
+                | Some _, None -> Error("Can't fetch price. Try again later")
+                | _, _ -> Error("Can't fetch balance and price") 
+            | None ->
+                Error("User not found")
         with exn ->
             Log.Error(exn, $"CreateGenRequest {discordId}: {mtype}, {msubtype}")
             Error("Unexpected error")

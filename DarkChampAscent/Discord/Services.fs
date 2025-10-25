@@ -541,8 +541,8 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
     let getTextRequest(prompt:string) =
         GenerateTextRequest(prompt, [| "grid/llama-3.3-70b-versatile" |], TextRequestParams(512, 512, 0.7, 0.9))
 
-    let getImgRequest(tp:TextPayload) =
-        GenerateRequest(prompt = tp.Description,
+    let getImgRequest (mfulltype:string) (tp:TextPayload) =
+        GenerateRequest(prompt = $"{mfulltype}. {tp.Description}",
             models = [| "FLUX.1-dev" |],
             parameters = Params(height = 1024, width = 1024, samplerName = "k_dpmpp_2m"))
 
@@ -550,10 +550,10 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
         task {
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
-                try
-                    // get all request that aren't finished
-                    let requests = db.GetAllUnfinishedGenRequests()
-                    for req in requests do
+                // get all request that aren't finished
+                let requests = db.GetAllUnfinishedGenRequests()
+                for req in requests do
+                    try
                         match req.Payload with
                         | GenPayload.TextReqCreated prompt ->
                             let! res =
@@ -574,8 +574,13 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                             let newPayload = 
                                 match res with
                                 | Ok json ->
-                                    deserialize<TextPayload> json
-                                    |> GenPayload.TextPayloadReceived 
+                                    try
+                                        deserialize<TextPayload> json
+                                        |> GenPayload.TextPayloadReceived
+                                    with exn ->
+                                        Log.Error(exn, $"GenService: deserialize {json}")
+                                        GenFailure.Repeat(0, req.Payload)
+                                        |> GenPayload.Failure
                                 | Error err ->
                                     Log.Error($"GEN Err [TextReqReceived] : {err}")
                                     GenFailure.Repeat(0, req.Payload)
@@ -583,9 +588,10 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                             db.UpdateGenRequest(req.ID, newPayload) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextPayloadReceived tp ->
+                            let subType = match req.MSubType with | MonsterSubType.None -> "" | _ -> $"({req.MSubType})"
+                            let mfulltype = $"{subType} {req.MType}"
                             let! res =
-                                tp
-                                |> getImgRequest
+                                getImgRequest mfulltype tp
                                 |> aipgGen.GenerateImageAsync
                             let newPayload = 
                                 match res with
@@ -652,7 +658,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                             db.UpdateGenRequest(req.ID, req.Payload) |> ignore
                             ()
                         | _ -> ()
-                    do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
-                with exn ->
-                    Log.Error(exn, "GenService")
+                    with exn ->
+                        Log.Error(exn, "GenService")
+                        do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
         }

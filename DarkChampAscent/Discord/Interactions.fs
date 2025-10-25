@@ -13,48 +13,51 @@ open Components
 open GameLogic.Champs
 open GameLogic.Battle
   
-let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) = task {
-    let! res =
-        task {
-            match Decimal.TryParse str with
-            | true, d ->
-                let r = db.Donate(context.User.Id, d)
-                match r with
-                | Ok () ->
-                    let donationCard =
-                        ComponentContainerProperties([
-                            TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
-                            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
-                            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            TextDisplayProperties($"Thank you, {context.User}")
-                        ])
+let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
+    task {
+        let callback = InteractionCallback.ModifyMessage(fun options ->
+            options.Components <- [ TextDisplayProperties("Processing") ])
+        let! m = context.Interaction.SendResponseAsync(callback)
+        let! res =
+            task {
+                match Decimal.TryParse str with
+                | true, d ->
+                    let r = db.Donate(context.User.Id, d)
+                    match r with
+                    | Ok () ->
+                        let donationCard =
+                            ComponentContainerProperties([
+                                TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
+                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                                TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
+                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                                TextDisplayProperties($"Thank you, {context.User}")
+                            ])
                             
-                    let newInGameDonationMessage =
-                        MessageProperties()
-                            .WithComponents([ donationCard ])
-                            .WithFlags(MessageFlags.IsComponentsV2)
-                            .WithAllowedMentions(AllowedMentionsProperties.None)
+                        let newInGameDonationMessage =
+                            MessageProperties()
+                                .WithComponents([ donationCard ])
+                                .WithFlags(MessageFlags.IsComponentsV2)
+                                .WithAllowedMentions(AllowedMentionsProperties.None)
 
-                    Utils.sendMsgToLogChannel context.Client newInGameDonationMessage |> ignore
-                    return Ok(())
-                | Error err -> return Error(err)
-            | false, _ ->
-                Log.Error($"Can't parse {str} to decimal")
-                return Error("Something went wrong")
-        }
+                        Utils.sendMsgToLogChannel context.Client newInGameDonationMessage |> ignore
+                        return Ok(())
+                    | Error err -> return Error(err)
+                | false, _ ->
+                    Log.Error($"Can't parse {str} to decimal")
+                    return Error("Something went wrong")
+            }
 
-    let str = 
-        match res with
-        | Ok(()) -> "Thanks!"
-        | Error err -> err
+        let str = 
+            match res with
+            | Ok(()) -> "Thanks!"
+            | Error err -> err
                 
-    let callback = InteractionCallback.ModifyMessage(fun options ->
-        options.Components <- [ TextDisplayProperties(str) ]
-    )
+        let! m = context.Interaction.ModifyResponseAsync(fun options ->
+            options.Components <- [ TextDisplayProperties(str) ])
 
-    return callback
-}
+        ()
+    } :> System.Threading.Tasks.Task
 
 
 let buyItem (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) = task {
@@ -193,21 +196,28 @@ let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName
 }
 
 open GameLogic.Monsters
-let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string) (msubtype:string) = task {
-    let str = 
-        match Enum.TryParse<MonsterType>(mtype), Enum.TryParse<MonsterSubType>(msubtype) with
-        | (true, mtype), (true, msubtype) ->
-            match db.CreateGenRequest(context.User.Id, mtype, msubtype) with
-            | Ok str -> str
-            | Error err -> $"Error: {err}"
-        | _, _ -> "Error: Incorrect input"
-                
-    let callback = InteractionCallback.ModifyMessage(fun options ->
-        options.Components <- [ TextDisplayProperties(str) ]
-    )
+open System.Diagnostics
+let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string) (msubtype:string) =
+    task {
+        let callback = InteractionCallback.ModifyMessage(fun options ->
+            options.Components <- [ TextDisplayProperties("Processing") ])
+        let! m = context.Interaction.SendResponseAsync(callback)
+        let sw = Stopwatch.StartNew()
+        let str = 
+            match Enum.TryParse<MonsterType>(mtype), Enum.TryParse<MonsterSubType>(msubtype) with
+            | (true, mtype), (true, msubtype) ->
+                match db.CreateGenRequest(context.User.Id, mtype, msubtype) with
+                | Ok str -> str
+                | Error err -> $"Error: {err}"
+            | _, _ -> "Error: Incorrect input"
+        Log.Information(sw.ToString())
+        sw.Stop()
 
-    return callback
-}
+        let! m = context.Interaction.ModifyResponseAsync(fun options ->
+            options.Components <- [ TextDisplayProperties(str) ])
+
+        ()
+    } :> System.Threading.Tasks.Task
 
 let renameItem (db:SqliteStorage) (context:StringMenuInteractionContext) (str:string) = task {
     let darkCoinPrice = db.GetNumKey DbKeysNum.DarkCoinPrice
