@@ -16,9 +16,8 @@ type GenStatus =
     | TextRequestReceived = 1 // text request send to API and its id is returned
     | TextPayloadReceived = 2 // name and description was generated
     | ImgRequestReceived = 3 // img request sent to API and its id is returned
-    | ImgPayloadReceived = 4 // complete data is received
-    | Failure = 5 // failure
-    | Success = 6
+    | Failure = 4 // failure
+    | Success = 5
 
 [<RequireQualifiedAccess>]
 type GenPayload =
@@ -26,7 +25,6 @@ type GenPayload =
     | TextReqReceived of id:string
     | TextPayloadReceived of TextPayload
     | ImgReqReceived of id:string * TextPayload
-    | ImgPayloadReceived of ImgPayload * TextPayload
     | Failure of prevStep:GenFailure
     | Success
     member t.Status =
@@ -35,7 +33,6 @@ type GenPayload =
         | TextReqReceived _ -> GenStatus.TextRequestReceived
         | TextPayloadReceived _ -> GenStatus.TextPayloadReceived
         | ImgReqReceived _ -> GenStatus.ImgRequestReceived
-        | ImgPayloadReceived _ -> GenStatus.ImgPayloadReceived
         | Failure _ -> GenStatus.Failure
         | Success -> GenStatus.Success
     member t.IsFinished =
@@ -46,11 +43,18 @@ type GenPayload =
             | GenFailure.Final _ -> true
             | GenFailure.Repeat _ -> false
         | _ -> false
+    member t.IsFinalError =
+        match t with
+        | Failure f ->
+            match f with
+            | GenFailure.Final _ -> true
+            | GenFailure.Repeat _ -> false
+        | _ -> false
 
 and [<RequireQualifiedAccess>]
 GenFailure =
     | Final of string
-    | Repeat of count: int * GenPayload
+    | Repeat of GenPayload
 
 [<RequireQualifiedAccess>]
 module Prompt =

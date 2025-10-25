@@ -534,8 +534,12 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
 open Gen
 open GenAIPG
+open System.Collections.Immutable
+
 type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.GenConfiguration>) =
     inherit BackgroundService()
+    let MaxRetry = 5
+    let mutable errors = ImmutableDictionary.Create<int64, int>()
     let aipgGen = GenAIPG.AipgGen(options)
 
     let getTextRequest(prompt:string) =
@@ -565,9 +569,9 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                 | Ok id -> GenPayload.TextReqReceived id
                                 | Error err ->
                                     Log.Error($"GEN Err [TextReqCreated] : {err}")
-                                    GenFailure.Repeat(0, req.Payload)
+                                    GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextReqReceived id ->
                             let! res = aipgGen.GetGeneratedTextAsync id
@@ -594,9 +598,9 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                     else
                                         GenPayload.TextPayloadReceived tp
                                 | None ->
-                                    GenFailure.Repeat(0, req.Payload)
+                                    GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextPayloadReceived tp ->
                             let subType = match req.MSubType with | MonsterSubType.None -> "" | _ -> $"({req.MSubType})"
@@ -609,9 +613,9 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                 | Ok id -> GenPayload.ImgReqReceived(id, tp)
                                 | Error err ->
                                     Log.Error($"GEN Err [TextPayloadReceived] : {err}")
-                                    GenFailure.Repeat(0, req.Payload)
+                                    GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
                             do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
                         | GenPayload.ImgReqReceived (id, tp) ->
                             // fetch img and save locally
@@ -653,22 +657,51 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                             Log.Error(ex, "CreateCustomMonster msg")
                                     else
                                         let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
-                                        db.UpdateGenRequest(req.ID, newPayload) |> ignore                                        
+                                        db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore                                        
                                 | None ->
                                     let newPayload = GenFailure.Final("Invalid monster") |> GenPayload.Failure
-                                    db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                                    db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
                             | Error err ->
                                 Log.Error($"GEN Err [ImgReqReceived] : {err}")
-                                let newPayload = GenFailure.Repeat(0, req.Payload) |> GenPayload.Failure
-                                db.UpdateGenRequest(req.ID, newPayload) |> ignore
+                                let newPayload = GenFailure.Repeat(req.Payload) |> GenPayload.Failure
+                                db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
                         | GenPayload.Failure genFailure ->
-                            // ToDo: implement
-                            ()
+                            match genFailure with
+                            | GenFailure.Final _ ->
+                                Log.Error($"Invalid case")
+                                db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
+                            | GenFailure.Repeat prevPayload ->
+                                if errors.ContainsKey req.ID |> not then
+                                    errors <- errors.Add(req.ID, 0)
+                                let count = errors.[req.ID]
+                                Log.Information($"Retry...{req.ID} ({prevPayload.Status}); attempts = {count}")
+                                if count <= MaxRetry then
+                                    match prevPayload with
+                                    | GenPayload.Success
+                                    | GenPayload.Failure _ ->
+                                        Log.Error($"Invalid case")
+                                        None
+                                    | GenPayload.TextReqCreated prompt ->
+                                        GenPayload.TextReqCreated prompt
+                                        |> Some
+                                    | GenPayload.TextReqReceived _ ->
+                                        Prompt.createMonsterNameDesc req.MType req.MSubType
+                                        |> GenPayload.TextReqCreated
+                                        |> Some
+                                    | GenPayload.TextPayloadReceived tp ->
+                                        prevPayload |> Some
+                                    | GenPayload.ImgReqReceived (_, tp) ->
+                                        GenPayload.TextPayloadReceived tp |> Some
+                                else
+                                    GenFailure.Final "Max retry reached"
+                                    |> GenPayload.Failure
+                                    |> Some
+                                |> Option.iter(fun newPayload ->
+                                    if db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) then
+                                        errors <- errors.SetItem(req.ID, count + 1))
                         | GenPayload.Success ->
                             Log.Error($"GenPayload is Success but status is unfinished: {req.ID}")
-                            db.UpdateGenRequest(req.ID, req.Payload) |> ignore
-                            ()
-                        | _ -> ()
+                            db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
                     with exn ->
                         Log.Error(exn, "GenService")
                         do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)

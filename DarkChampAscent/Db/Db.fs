@@ -2891,37 +2891,79 @@ type SqliteStorage(cs: string)=
             let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.SelectUnfinishedRequests conn
-            |> Db.query(fun r -> {|
-                    ID = r.GetInt64(0)
-                    UserId = r.GetInt64(1)
-                    Status = r.GetInt32(2) |> enum<GenStatus>
-                    Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), options)
-                    Cost = r.GetDecimal(4)
-                    MType = r.GetInt32(5) |> enum<MonsterType>
-                    MSubType = r.GetInt32(6) |> enum<MonsterSubType>
-                |}
+            |> Db.query(fun r ->
+                try
+                    {|
+                        ID = r.GetInt64(0)
+                        UserId = r.GetInt64(1)
+                        Status = r.GetInt32(2) |> enum<GenStatus>
+                        Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), options)
+                        Cost = r.GetDecimal(4)
+                        MType = r.GetInt32(5) |> enum<MonsterType>
+                        MSubType = r.GetInt32(6) |> enum<MonsterSubType>
+                    |}
+                    |> Some
+                with exn ->
+                    Log.Error(exn, "GetAllUnfinishedGenRequests.Query")
+                    None
             )
+            |> List.choose id
         with exn ->
             Log.Error(exn, "GetAllUnfinishedGenRequests")
             []
 
-    member _.UpdateGenRequest(rId:int64, payload:GenPayload) =
+    member _.UpdateGenRequest(rId:int64, payload:GenPayload, userId:int64, cost:decimal) =
         try
             let options = JsonFSharpOptions().ToJsonSerializerOptions()
             let json = JsonSerializer.Serialize(payload, options)
             let status = payload.Status
             let isFinished = payload.IsFinished
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UpdateGenRequest conn
-            |> Db.setParams [
-                "status", SqlType.Int <| int status
-                "payload", SqlType.String json
-                "isFinished", SqlType.Boolean isFinished
-                "id", SqlType.Int64 rId
-            ]
-            |> Db.exec
-            // ToDo: return coins to a user in case of final failure
-            true
+            Db.batch (fun tn ->
+                Db.newCommandForTransaction SQL.UpdateGenRequest tn
+                |> Db.setParams [
+                    "status", SqlType.Int <| int status
+                    "payload", SqlType.String json
+                    "isFinished", SqlType.Boolean isFinished
+                    "id", SqlType.Int64 rId
+                ]
+                |> Db.exec
+
+                if payload.IsFinalError then
+                    // get user balance
+                    let balanceO =
+                        Db.newCommand SQL.GetUserBalance conn
+                        |> Db.setParams [
+                            "userId", SqlType.Int64 userId
+                        ]
+                        |> Db.querySingle (fun r -> r.GetDecimal(0))
+                    match balanceO with
+                    | Some balance ->
+                        // remove coins from locked
+                        tn
+                        |> Db.newCommandForTransaction SQL.AddToKeyNum
+                        |> Db.setParams [
+                            "amount", SqlType.Decimal -cost
+                            "key", SqlType.String (DbKeysNum.Locked.ToString())
+                        ]
+                        |> Db.exec
+
+                        let newBalance = balance + cost
+                        // add coins to user balance
+                        tn
+                        |> Db.newCommandForTransaction SQL.UpdateUserBalance
+                        |> Db.setParams [
+                            "balance", SqlType.Decimal newBalance
+                            "userId", SqlType.Int64 userId
+                        ]
+                        |> Db.exec
+                        true
+                    | None ->
+                        tn.Rollback()
+                        false
+                else
+                    true
+            ) conn
         with exn ->
             Log.Error(exn, $"UpdateGenRequest: {rId}")
             false
@@ -2943,11 +2985,7 @@ type SqliteStorage(cs: string)=
                 let name' = 
                     if isMonsterNameExists then
                         let count = 
-                            Db.newCommandForTransaction SQL.CountMonsterByTypes tn
-                            |> Db.setParams [
-                                "type", SqlType.Int <| int monster.Monster.MType
-                                "subtype", SqlType.Int <| int monster.Monster.MSubType
-                            ]
+                            Db.newCommandForTransaction SQL.CountMonster tn
                             |> Db.scalar (fun v ->
                                 tryUnbox<int64> v
                                 |> Option.map(fun v -> v.ToString())

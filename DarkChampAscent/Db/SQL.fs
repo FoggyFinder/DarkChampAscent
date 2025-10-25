@@ -1045,7 +1045,7 @@ module internal SQL =
         SELECT EXISTS(SELECT 1 FROM Monster WHERE Description = @description);
     """
 
-    let CountMonsterByTypes = """SELECT Count(*) FROM Monster WHERE Type = @type AND SubType = @subtype"""
+    let CountMonster = """SELECT Count(*) FROM Monster"""
 
     let UserEarnings = """
         SELECT Sum(Rewards) FROM Action
