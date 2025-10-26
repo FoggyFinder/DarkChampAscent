@@ -17,7 +17,7 @@ open DiscordBot.Components
 open Serilog
 
 [<SlashCommand("wallet", "Wallet command")>]
-type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
+type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
 
     [<SubSlashCommand("register", "Register Algorand wallet, nfd not supported yet")>]
@@ -34,7 +34,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                 Error($"Invalid Algorand address. Please, check correctness: {wallet'}")
         let str =
             match res with
-            | Ok code -> $"Good, to confirm your wallet ({wallet'}) send 0-cost Algo tx to {options.Value.Wallet.GameWallet} with following note: {code}"
+            | Ok code -> $"Good, to confirm your wallet ({wallet'}) send 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}"
             | Error err -> $"Oh, no...there was error: {err}"
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
@@ -74,7 +74,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
 
     [<SubSlashCommand("gamewallets", "Get wallets used in game")>]
     member x.GetGameWallets() =
-        let w = options.Value.Wallet
+        let w = options.Value
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
             let! _ = x.Context.Interaction.SendResponseAsync(callback)
@@ -604,6 +604,38 @@ type MonsterModule(db:SqliteStorage) =
                                 ]))
                 | Error err ->
                     options.Content <- $"Oh, no...there was error: {err}")
+            ()
+        } :> Task
+
+    [<SubSlashCommand("create", "create custom monster")>]
+    member x.Create(
+        [<SlashCommandParameter(Name = "mtype", Description = "action")>] mtype:MonsterType,
+        [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
+    ): Task =
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+            // ToDo: add limits and check amount of created monsters?
+            // or at least check that there is no pending requests
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match priceO with
+                | Some dcPrice ->
+                    let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    options.Components <- [
+                        ComponentContainerProperties([
+                            TextDisplayProperties($"Are you sure you want to create custom monster for {amount} {Emoj.Coin}")
+                            ActionRowProperties(
+                                [
+                                    ButtonProperties($"mcreate:{mtype}:{msubtype}", "Confirm", ButtonStyle.Success)
+                                ]
+                            )
+                         ]
+                        )
+                    ]
+                | None -> 
+                    options.Content <- $"Oh, no...there was error")
             ()
         } :> Task
 

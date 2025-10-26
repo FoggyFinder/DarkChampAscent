@@ -120,6 +120,34 @@ module internal SQL =
             SubType INTEGER NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS UserGenMonsterRequest (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            UserId INTEGER NOT NULL,
+            Timestamp DATETIME NOT NULL,
+            Status INT NOT NULL,
+            Payload TEXT,
+            Cost NUMERIC NOT NULL,
+            IsFinished BOOL NOT NULL,
+            Type INTEGER NOT NULL,
+            SubType INTEGER NOT NULL,
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            CHECK (Cost > 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS UserMonster (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            MonsterId INTEGER NOT NULL UNIQUE,
+            UserId INTEGER NOT NULL,
+            RequestId INTEGER NOT NULL,
+            FOREIGN KEY (MonsterId)
+               REFERENCES Monster (ID),
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            FOREIGN KEY (RequestId)
+               REFERENCES UserGenMonsterRequest (ID)
+        );
+
         CREATE TABLE IF NOT EXISTS Battle (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             MonsterId INT NOT NULL,
@@ -656,7 +684,8 @@ module internal SQL =
 
     let CreateMonster = """
         INSERT INTO Monster(Name, Description, Picture, Xp, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType)
-        VALUES(@name, @description, @img, 0, @health, @magic, @accuracy, @luck, @attack, @mattack, @defense, @mdefense, @type, @subtype)
+        VALUES(@name, @description, @img, 0, @health, @magic, @accuracy, @luck, @attack, @mattack, @defense, @mdefense, @type, @subtype);
+        SELECT last_insert_rowid();
     """
 
     let MonsterDefeat = """
@@ -984,6 +1013,39 @@ module internal SQL =
         VALUES(@monsterId, @itemId, @roundId, @duration, 1);
         SELECT last_insert_rowid();
     """
+
+    let InitGenRequest = """
+        INSERT INTO UserGenMonsterRequest(UserId, Timestamp, Status, Payload, Cost, IsFinished, Type, SubType)
+        VALUES(@userId, DATETIME('now'), @status, @payload, @cost, 0, @type, @subtype);
+        SELECT last_insert_rowid();
+    """
+
+    let UpdateGenRequest = """
+        UPDATE UserGenMonsterRequest SET 
+            Status = @status,
+            Payload = @payload,
+            IsFinished = @isFinished
+        WHERE ID = @id
+    """
+
+    let SelectUnfinishedRequests = """
+        SELECT ID, UserId, Status, Payload, Cost, Type, SubType
+        FROM UserGenMonsterRequest
+        WHERE IsFinished = 0
+        ORDER BY Timestamp ASC
+    """
+
+    let ConnectMonsterToUser = "INSERT INTO UserMonster(MonsterId, UserId, RequestId) VALUES(@monsterId, @userId, @requestId)"
+    
+    let IsMonsterNameExists = """
+        SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name);
+    """
+
+    let IsMonsterDescriptionExists = """
+        SELECT EXISTS(SELECT 1 FROM Monster WHERE Description = @description);
+    """
+
+    let CountMonster = """SELECT Count(*) FROM Monster"""
 
     let UserEarnings = """
         SELECT Sum(Rewards) FROM Action
