@@ -20,6 +20,17 @@ let total = 900000M
 //    printfn $"{i} | {state} | {battleRewards} | {roundRewards}"
 //    state - battleRewards
 //) total |> ignore
+let getRandomStat() =
+    {
+        Health = Random.Shared.NextInt64(50L, 100L)
+        Magic = Random.Shared.NextInt64(50L, 100L)
+        Accuracy = Random.Shared.NextInt64(3L, 10L)
+        Luck = Random.Shared.NextInt64(3L, 10L)
+        Attack = Random.Shared.NextInt64(5L, 10L)
+        MagicAttack = Random.Shared.NextInt64(5L, 10L)
+        Defense = Random.Shared.NextInt64(4L, 8L)
+        MagicDefense = Random.Shared.NextInt64(4L, 8L)
+    }
 
 let createAction (id:uint64) (move:Move) : RoundAction =
     {
@@ -27,16 +38,7 @@ let createAction (id:uint64) (move:Move) : RoundAction =
         Timestamp = DateTime.Now.Subtract(TimeSpan.FromDays(1)).AddMinutes(float <| Random.Shared.NextInt64(1L, 10000L))
         ChampId = id
         ChampName = ""
-        Stat = {
-            Health = Random.Shared.NextInt64(50L, 100L)
-            Magic = Random.Shared.NextInt64(50L, 100L)
-            Accuracy = Random.Shared.NextInt64(3L, 10L)
-            Luck = Random.Shared.NextInt64(3L, 10L)
-            Attack = Random.Shared.NextInt64(5L, 10L)
-            MagicAttack = Random.Shared.NextInt64(5L, 10L)
-            Defense = Random.Shared.NextInt64(4L, 8L)
-            MagicDefense = Random.Shared.NextInt64(4L, 8L)
-        }
+        Stat = getRandomStat()
         ChampLvl = 0UL
     }
 
@@ -51,7 +53,7 @@ let actions = [
 
 open System.Text
 let statShort (stat:Stat) =
-    $"[{stat.Health}H|{stat.Magic}M|{stat.Attack}A|{stat.Defense}D|{stat.MagicAttack}MA|{stat.MagicDefense}MD|{stat.Luck}L|{stat.Accuracy}Acc]"
+    $"[{stat.Health}H|{stat.Magic}M|{stat.Attack}A|{stat.Defense}D|{stat.MagicDefense}MD|]"
 let battle(monster:Monster) (rounds:int) =
     let mStat = Monster.getStats monster
     printfn "Rounds %A" rounds
@@ -99,3 +101,52 @@ monsters
     printfn $"{statShort stat}"
     printfn ""
 )
+
+type TestChamp(id:uint64, name:string, stat:Stat) =
+    member _.CID = id
+    member _.Name = name
+    member _.Stat = stat
+
+type TestRound(rid:uint64, mchar:MonsterChar, ractions:RoundAction list, champs:TestChamp list) =
+    member _.RID = rid
+    member _.MChar = mchar
+    member _.RActions = ractions
+    member _.Champs = champs
+
+let emulateBattle(chCount:int) =
+    let champs = List.init chCount (fun i ->
+        TestChamp(uint64 i, $"Champ #{i}", getRandomStat())
+    )
+    let monster = Monster.TryCreate(MonsterType.Demon, MonsterSubType.Fire).Value
+    let mstat = Monster.getStats monster
+    
+    let monsterChar = MonsterChar(0UL, monster, mstat, 1000UL, "Monster")
+    let randActions (champs:TestChamp list) =
+        champs
+        |> List.map(fun ch ->
+            {
+                Move = Move.Attack
+                Timestamp = DateTime.Now
+                ChampId = ch.CID
+                ChampName = ch.Name
+                ChampLvl = 0UL
+                Stat = ch.Stat
+            }
+        )
+    let startRound = TestRound(0UL, monsterChar, randActions champs, champs)
+
+    Seq.unfold(fun (tr:TestRound) ->
+        match Battle.fight(tr.RID, 0UL, tr.RActions, Map.empty, Map.empty, tr.MChar, 1000.0M) with
+        | Ok res ->
+            let champs' = tr.Champs |> List.filter(fun ch -> res.DeadChamps |> List.contains ch.CID |> not)
+            let tr' = TestRound(res.RoundId + 1UL, res.MonsterChar, randActions champs', champs')
+            System.Diagnostics.Debug.Assert(tr.MChar.Stat.Defense = res.MonsterChar.Stat.Defense)
+            if tr'.Champs.IsEmpty || (not res.MonsterChar.Stat.IsAlive) then None
+            else (res, tr') |> Some
+        | Error err ->
+            printfn "%A" err
+            None
+
+    ) startRound
+
+emulateBattle 1 |> Seq.iter(fun br -> printfn "%A" br)
