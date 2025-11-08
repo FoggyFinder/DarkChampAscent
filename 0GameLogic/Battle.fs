@@ -368,24 +368,29 @@ module Battle =
             |> Map.ofList
 
         let monsterFinalStat =
+            // we should substract lvl stats boost first
+            let monsterStatReduced = monsterState.Stat - monsterLvlStats
             match monsterAction with
             // in case of shield reduce to basic afterwards
             | Move.Shield | Move.MagicShield ->
-                { monsterState.Stat with
-                    Defense = min monsterState.Stat.Defense monster.Stat.Defense
-                    MagicDefense = min monsterState.Stat.MagicDefense monster.Stat.MagicDefense
+                { monsterStatReduced with
+                    Defense = min monsterStatReduced.Defense monster.Stat.Defense
+                    MagicDefense = min monsterStatReduced.MagicDefense monster.Stat.MagicDefense
                 }
             | Move.Attack | Move.MagicAttack
             | Move.Heal | Move.Meditate ->
-                monsterState.Stat
+                monsterStatReduced
 
         let champsFinalStat =
             actions'
             |> List.map(fun (ra, pa) ->
+                let lvlStat = Map.tryFind ra.ChampId lvlsStat |> Option.defaultValue Stat.Zero
+                let boostStat = Map.tryFind ra.ChampId boostsStat |> Option.defaultValue Stat.Zero
                 let stat =
                     match monsterActions'.TryFind ra.ChampId with
                     | Some (cs, _, _) -> cs
                     | None -> ra.Stat
+                let baseStat = stat - lvlStat - boostStat
                 let stat' =
                     match ra.Move with
                     | Move.Shield | Move.MagicShield ->
@@ -395,23 +400,21 @@ module Battle =
                                 if rm.ChampId = ra.ChampId then rm.Stat |> Some
                                 else None)
                         { stat with
-                            Defense = min stat.Defense champOriginalStat.Defense
-                            MagicDefense = min stat.MagicDefense champOriginalStat.MagicDefense
+                            Defense = min baseStat.Defense champOriginalStat.Defense
+                            MagicDefense = min baseStat.MagicDefense champOriginalStat.MagicDefense
                         }
                     | Move.Attack | Move.MagicAttack
                     | Move.Heal | Move.Meditate ->
-                        stat
-                let lvlStat = Map.tryFind ra.ChampId lvlsStat |> Option.defaultValue Stat.Zero
-                let boostStat = Map.tryFind ra.ChampId boostsStat |> Option.defaultValue Stat.Zero
-                let baseStat = stat' - lvlStat - boostStat
-                ra.ChampId, baseStat, stat.IsAlive)
+                        baseStat
+                
+                ra.ChampId, stat', stat.IsAlive)
             
 
         rewardsRes |> Result.map(fun rewards ->
             {
                 RoundId = roundId
                 BattleId = battleId
-                MonsterChar = monster.UpdateStat (monsterFinalStat - monsterLvlStats)
+                MonsterChar = monster.UpdateStat monsterFinalStat
 
                 Rewards = rewards
             

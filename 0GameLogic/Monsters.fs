@@ -29,6 +29,8 @@ type MonsterChar(id: uint64, monster:Monster, stat:Stat, xp: uint64, name:string
     member _.XP = xp
     member _.Name = name
     member t.UpdateStat(nStat:Stat) = MonsterChar(id, monster, nStat, xp, name)
+    override x.ToString (): string = 
+        $"{id}. {monster}: {stat} ({xp})"
 
 type MonsterRecord(name:string, description:string, monster:Monster, stats:Stat, xp: uint64) =
     member _.Name = name
