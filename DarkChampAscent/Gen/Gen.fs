@@ -65,4 +65,4 @@ module Prompt =
             For example, name for a monster with zombie type - Rotting Cadaver and for a monster with demon type and frost subtype - Glacial Abomination."""
         let v2 = $"""Generate a unique name and description for a monster in a fantasy Discord game. The monster is a {mtype} with {subtype'} subtype.
             Create a title that is 2 words and a description that is 2-3 sentences. The tone should be dark, mystical, and ominous. For example, a zombie monster could be named 'Rotting Cadaver' and a demon with frost subtype could be named 'Glacial Abomination'. Use a similar style to create a name and description for this monster."""
-        $"{v1}. Return reply in form of json with 2 fields - name and description without leading json tag"
+        $"{v2}. Return reply in form of json with 2 fields - name and description without leading json tag"
