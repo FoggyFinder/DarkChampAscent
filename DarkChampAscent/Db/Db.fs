@@ -1,9 +1,10 @@
 ﻿namespace Db
+
 open GameLogic.Rewards
 open GameLogic.Champs
 open GameLogic.Monsters
 open Db.Sqlite
-open System.Threading.Tasks
+open Gen
 
 type DbKeys =
     | LastTrackedChampCfg = 0
@@ -19,6 +20,7 @@ type DbKeysNum =
     | Burn = 3
     | DAO = 4
     | DarkCoinPrice = 5 // => itemPriceDarkCoin = itemPriceUsd / darkCoinPriceUsd
+    | Locked = 6
 
 type WalletType =
     | DAO = 0
@@ -29,7 +31,8 @@ type WalletType =
 type DbKeysBool =
     | InitBalanceIsSet = 0
     | BalanceCheckIsPassed = 1
-    
+    | LockedKeyIsSet = 2
+
 type NewChampDb = {
     Name: string
     AssetId: uint64
@@ -215,6 +218,37 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, "SetInitBalance")
             false
+    let setLockedKey(conn:SqliteConnection) =
+        try
+            let sql = "INSERT INTO KeyValueNum(Key, Value) VALUES (@key, 0.000000)"
+            Db.batch(fun tn ->
+                let isInit =
+                    Db.newCommandForTransaction SQL.GetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.LockedKeyIsSet.ToString())
+                        "value", SqlType.Boolean false
+                    ]
+                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
+                    |> Option.defaultValue false
+                if isInit |> not then
+                    Db.newCommandForTransaction sql tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysNum.Locked.ToString())
+                    ]
+                    |> Db.exec
+
+                    Db.newCommandForTransaction SQL.SetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.LockedKeyIsSet.ToString())
+                        "value", SqlType.Boolean true
+                    ]
+                    |> Db.exec
+            ) conn
+            
+            true
+        with exn ->
+            Log.Error(exn, "setLockedKey")
+            false
 
     do Log.Information("Db is init....")
 
@@ -224,6 +258,7 @@ type SqliteStorage(cs: string)=
     do updateShop(_conn) |> ignore
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
+    do setLockedKey(_conn) |> ignore
 
     do _conn.Dispose()
     do Log.Information("Db init is finished")
@@ -1244,8 +1279,13 @@ type SqliteStorage(cs: string)=
             let champO =
                 Db.newCommand SQL.GetChampsBalance conn
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-            match poolO, reserveO, devO, daoO, burnO, userO, champO with
-            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some user, Some champ ->
+            let lockedO = 
+                Db.newCommand SQL.GetKeyNum conn
+                |> Db.setParams [ "key", SqlType.String (DbKeysNum.Locked.ToString()) ]
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
+
+            match poolO, reserveO, devO, daoO, burnO, userO, champO, lockedO with
+            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some user, Some champ, Some locked ->
                 {
                     DAO = dao
                     Reserve = reserve
@@ -1254,10 +1294,11 @@ type SqliteStorage(cs: string)=
                     Rewards = pool
                     Users = user
                     Champs = champ
+                    Locked = locked
                 }
                 |> Ok
-            | _, _, _, _, _,_,_ ->
-                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; User: {userO.IsSome}; Champ:{champO.IsSome}"
+            | _, _, _, _, _,_,_,_ ->
+                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; User: {userO.IsSome}; Champ:{champO.IsSome}; Locked:{lockedO.IsSome}"
                 Error(err)
 
         with exn ->
@@ -1344,7 +1385,7 @@ type SqliteStorage(cs: string)=
                             match item with
                             | ShopItem.RevivalSpell ->
                                 let deathIdO =
-                                    Db.newCommand SQL.GetEffectItemIdByItem conn
+                                    Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
                                     |> Db.setParams [
                                         "item", SqlType.Int <| int Effect.Death
                                     ]
@@ -2776,6 +2817,265 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, "SendToSpecialWallet")
             None
+
+    member _.CreateGenRequest(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
+        try
+            use conn = new SqliteConnection(cs)
+            let prompt = Prompt.createMonsterNameDesc mtype msubtype
+            let payload = GenPayload.TextReqCreated prompt
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            let json = JsonSerializer.Serialize(payload, options)
+            
+            let userId = 
+                Db.newCommand SQL.GetUserIdByDiscordId conn
+                |> Db.setParams [ 
+                    "discordId", SqlType.Int64 <| int64 discordId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            match userId with
+            | Some uid ->
+                let balance =
+                    Db.newCommand SQL.GetUserBalance conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 uid 
+                    ]
+                    |> Db.querySingle (fun r -> r.GetDecimal(0))
+                let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
+                match balance, darkCoinPrice with
+                | Some b, Some dcPrice ->
+                    let subs = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
+                    if subs > b then Error($"Your balance is {b} while {subs} is required")
+                    else
+                        Db.batch (fun tn ->
+                            let newBalance = Math.Round(b - subs, 6)
+                            tn
+                            |> Db.newCommandForTransaction SQL.UpdateUserBalance
+                            |> Db.setParams [
+                                "balance", SqlType.Decimal newBalance
+                                "userId", SqlType.Int64 uid
+                            ]
+                            |> Db.exec
+
+                            tn
+                            |> Db.newCommandForTransaction SQL.AddToKeyNum
+                            |> Db.setParams [
+                                "amount", SqlType.Decimal subs
+                                "key", SqlType.String (DbKeysNum.Locked.ToString())
+                            ]
+                            |> Db.exec
+
+                            tn
+                            |> Db.newCommandForTransaction SQL.InitGenRequest
+                            |> Db.setParams [
+                                "userId", SqlType.Int64 uid
+                                "status", SqlType.Int <| int payload.Status
+                                "payload", SqlType.String json
+                                "cost", SqlType.Decimal subs
+                                "type", SqlType.Int <| int mtype
+                                "subtype", SqlType.Int <| int msubtype
+                            ]
+                            |> Db.exec
+                            Ok("Request received. It may take ~5 minutes to process")        
+                        ) conn
+                | None, Some _ -> Error("Can't fetch balance. Try again later")
+                | Some _, None -> Error("Can't fetch price. Try again later")
+                | _, _ -> Error("Can't fetch balance and price") 
+            | None ->
+                Error("User not found")
+        with exn ->
+            Log.Error(exn, $"CreateGenRequest {discordId}: {mtype}, {msubtype}")
+            Error("Unexpected error")
+
+    member _.GetAllUnfinishedGenRequests() =
+        try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.SelectUnfinishedRequests conn
+            |> Db.query(fun r ->
+                try
+                    {|
+                        ID = r.GetInt64(0)
+                        UserId = r.GetInt64(1)
+                        Status = r.GetInt32(2) |> enum<GenStatus>
+                        Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), options)
+                        Cost = r.GetDecimal(4)
+                        MType = r.GetInt32(5) |> enum<MonsterType>
+                        MSubType = r.GetInt32(6) |> enum<MonsterSubType>
+                    |}
+                    |> Some
+                with exn ->
+                    Log.Error(exn, "GetAllUnfinishedGenRequests.Query")
+                    None
+            )
+            |> List.choose id
+        with exn ->
+            Log.Error(exn, "GetAllUnfinishedGenRequests")
+            []
+
+    member _.UpdateGenRequest(rId:int64, payload:GenPayload, userId:int64, cost:decimal) =
+        try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            let json = JsonSerializer.Serialize(payload, options)
+            let status = payload.Status
+            let isFinished = payload.IsFinished
+            use conn = new SqliteConnection(cs)
+            Db.batch (fun tn ->
+                Db.newCommandForTransaction SQL.UpdateGenRequest tn
+                |> Db.setParams [
+                    "status", SqlType.Int <| int status
+                    "payload", SqlType.String json
+                    "isFinished", SqlType.Boolean isFinished
+                    "id", SqlType.Int64 rId
+                ]
+                |> Db.exec
+
+                if payload.IsFinalError then
+                    // get user balance
+                    let balanceO =
+                        Db.newCommand SQL.GetUserBalance conn
+                        |> Db.setParams [
+                            "userId", SqlType.Int64 userId
+                        ]
+                        |> Db.querySingle (fun r -> r.GetDecimal(0))
+                    match balanceO with
+                    | Some balance ->
+                        // remove coins from locked
+                        tn
+                        |> Db.newCommandForTransaction SQL.AddToKeyNum
+                        |> Db.setParams [
+                            "amount", SqlType.Decimal -cost
+                            "key", SqlType.String (DbKeysNum.Locked.ToString())
+                        ]
+                        |> Db.exec
+
+                        let newBalance = balance + cost
+                        // add coins to user balance
+                        tn
+                        |> Db.newCommandForTransaction SQL.UpdateUserBalance
+                        |> Db.setParams [
+                            "balance", SqlType.Decimal newBalance
+                            "userId", SqlType.Int64 userId
+                        ]
+                        |> Db.exec
+                        true
+                    | None ->
+                        tn.Rollback()
+                        false
+                else
+                    true
+            ) conn
+        with exn ->
+            Log.Error(exn, $"UpdateGenRequest: {rId}")
+            false
+
+    member _.CreateCustomMonster(monster:MonsterRecord, mi:MonsterImg, reqId:int64, uid:int64, cost:decimal) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.batch (fun tn ->
+                let options = JsonFSharpOptions().ToJsonSerializerOptions()
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(mi, options)
+
+                let isMonsterNameExists =
+                    Db.newCommandForTransaction SQL.IsMonsterNameExists tn
+                    |> Db.setParams [
+                        "name", SqlType.String monster.Name
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+                let name' = 
+                    if isMonsterNameExists then
+                        let count = 
+                            Db.newCommandForTransaction SQL.CountMonster tn
+                            |> Db.scalar (fun v ->
+                                tryUnbox<int64> v
+                                |> Option.map(fun v -> v.ToString())
+                                |> Option.defaultValue (Guid.NewGuid().ToString()))
+                        $"{monster.Name} {count}"
+                    else monster.Name
+                // - create monster
+                let monsterIdO = 
+                    Db.newCommandForTransaction SQL.CreateMonster tn
+                    |> Db.setParams [
+                        "name", SqlType.String name'
+                        "description", SqlType.String monster.Description
+                        "img", SqlType.Bytes bytes
+                        "health", SqlType.Int64 <| int64 monster.Stats.Health
+                        "magic", SqlType.Int64 <| int64 monster.Stats.Magic
+                            
+                        "accuracy", SqlType.Int64 <| int64 monster.Stats.Accuracy
+                        "luck", SqlType.Int64 <| int64 monster.Stats.Luck
+                        "attack", SqlType.Int64 <| int64 monster.Stats.Attack
+                        "mattack", SqlType.Int64 <| int64 monster.Stats.MagicAttack
+                        "defense", SqlType.Int64 <| int64 monster.Stats.Defense
+                        "mdefense", SqlType.Int64 <| int64 monster.Stats.MagicDefense
+                        "type", SqlType.Int <| int monster.Monster.MType
+                        "subtype", SqlType.Int <| int monster.Monster.MSubType
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                
+                // - connect monster and user
+                match monsterIdO with
+                | Some mid ->
+                    tn
+                    |> Db.newCommandForTransaction SQL.ConnectMonsterToUser
+                    |> Db.setParams [ 
+                        "monsterId", SqlType.Int64 mid
+                        "userId", SqlType.Int64 uid
+                        "requestId", SqlType.Int64 reqId
+                    ]
+                    |> Db.exec
+                    
+                    // - remove coins from locked
+                    tn
+                    |> Db.newCommandForTransaction SQL.AddToKeyNum
+                    |> Db.setParams [
+                        "amount", SqlType.Decimal -cost
+                        "key", SqlType.String (DbKeysNum.Locked.ToString())
+                    ]
+                    |> Db.exec
+                    
+                    // add coins to rewards
+                    tn
+                    |> Db.newCommandForTransaction SQL.AddToKeyNum
+                    |> Db.setParams [
+                        "amount", SqlType.Decimal cost
+                        "key", SqlType.String (DbKeysNum.Rewards.ToString())
+                    ]
+                    |> Db.exec
+                    
+                    // - change status to success and mark as finished
+                    let payload = GenPayload.Success
+                    let json = JsonSerializer.Serialize(payload, options)
+                    let status = payload.Status
+                    Db.newCommandForTransaction SQL.UpdateGenRequest tn
+                    |> Db.setParams [
+                        "status", SqlType.Int <| int status
+                        "payload", SqlType.String json
+                        "isFinished", SqlType.Boolean true
+                        "id", SqlType.Int64 reqId
+                    ]
+                    |> Db.exec
+                    true
+                | None ->
+                    tn.Rollback()
+                    false
+            ) conn
+        with exn ->
+            Log.Error(exn, $"CreateNewMonster: {monster}")
+            false
+    
+    member _.IsMonsterDescriptionExists(description:string) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.IsMonsterDescriptionExists conn
+            |> Db.setParams [
+                "description", SqlType.String description
+            ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+        with exn ->
+            Log.Error(exn, $"IsMonsterDescriptionExists: {description}")
+            false
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)

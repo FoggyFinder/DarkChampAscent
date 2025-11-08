@@ -17,7 +17,7 @@ open NetCord
 open System.IO
 open GameLogic.Battle
 
-type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
+type BackupService(db:SqliteStorage, options: IOptions<Conf.DbConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -35,7 +35,7 @@ type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                         | None -> true
                     if backupIsRequired then
                         let datasource =
-                            let dir = options.Value.Db.BackupFolder
+                            let dir = options.Value.BackupFolder
                             if Directory.Exists(dir) |> not then
                                 Directory.CreateDirectory(dir) |> ignore
                             let dbname = now.ToString("yyyyMMddhhmm") + ".sqlite"
@@ -51,7 +51,7 @@ type BackupService(db:SqliteStorage, options: IOptions<Conf.Configuration>) =
                     Log.Error(exn, "BackupService")
         }
 
-type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.Configuration>) =
+type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -64,7 +64,7 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                         let dt = DateTime.UtcNow
                         let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
                         let confirmations =
-                            Blockchain.getNotesForWallet(options.Value.Wallet.GameWallet, lpd)
+                            Blockchain.getNotesForWallet(options.Value.GameWallet, lpd)
                             |> Seq.choose(fun (wallet, barr) ->
                                 try
                                     Some(wallet, System.Text.Encoding.UTF8.GetString barr)
@@ -167,7 +167,7 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                     Log.Error(exn, "UpdatePriceService")
         }
 
-type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
+type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -177,7 +177,7 @@ type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<C
                 try
                     let dt = DateTime.UtcNow
                     let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
-                    let deposits = Blockchain.getDarkCoinDepositForWallet(options.Value.Wallet.GameWallet, lpd) |> Seq.toArray
+                    let deposits = Blockchain.getDarkCoinDepositForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
                     let statuses =
                         deposits
                         |> Array.map(fun (txid, sender, value) -> {|
@@ -529,4 +529,180 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     
                 with exn ->
                     Log.Error(exn, "BattleService")
+        }
+
+
+open Gen
+open GenAIPG
+open System.Collections.Immutable
+
+type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.GenConfiguration>) =
+    inherit BackgroundService()
+    let MaxRetry = 5
+    let mutable errors = ImmutableDictionary.Create<int64, int>()
+    let aipgGen = GenAIPG.AipgGen(options)
+
+    let getTextRequest(prompt:string) =
+        GenerateTextRequest(prompt, [| "grid/llama-3.3-70b-versatile" |], TextRequestParams(512, 512, 0.7, 0.9))
+
+    let getImgRequest (mfulltype:string) (tp:TextPayload) =
+        GenerateRequest(prompt = $"{mfulltype}. {tp.Description}",
+            models = [| "FLUX.1-dev" |],
+            parameters = Params(height = 1024, width = 1024, samplerName = "k_dpmpp_2m"))
+
+    override this.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                // get all request that aren't finished
+                let requests = db.GetAllUnfinishedGenRequests()
+                for req in requests do
+                    try
+                        match req.Payload with
+                        | GenPayload.TextReqCreated prompt ->
+                            let! res =
+                                prompt
+                                |> getTextRequest
+                                |> aipgGen.GenerateTextAsync
+                            let newPayload = 
+                                match res with
+                                | Ok id -> GenPayload.TextReqReceived id
+                                | Error err ->
+                                    Log.Error($"GEN Err [TextReqCreated] : {err}")
+                                    GenFailure.Repeat(req.Payload)
+                                    |> GenPayload.Failure
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
+                        | GenPayload.TextReqReceived id ->
+                            let! res = aipgGen.GetGeneratedTextAsync id
+                            let res' =
+                                match res with
+                                | Ok json ->
+                                    try
+                                        deserialize<TextPayload> json
+                                        |> Some
+                                    with exn ->
+                                        Log.Error(exn, $"deserialize {json}")
+                                        None
+                                | Error err ->
+                                    Log.Error($"GEN Err [TextReqReceived] : {err}")
+                                    None
+                            let newPayload = 
+                                match res' with
+                                | Some tp ->
+                                    // rare case: duplicate description
+                                    if db.IsMonsterDescriptionExists tp.Description then
+                                        Log.Error($"Duplicate description: {tp.Description}")
+                                        Prompt.createMonsterNameDesc req.MType req.MSubType
+                                        |> GenPayload.TextReqCreated
+                                    else
+                                        GenPayload.TextPayloadReceived tp
+                                | None ->
+                                    GenFailure.Repeat(req.Payload)
+                                    |> GenPayload.Failure
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
+                        | GenPayload.TextPayloadReceived tp ->
+                            let subType = match req.MSubType with | MonsterSubType.None -> "" | _ -> $"({req.MSubType})"
+                            let mfulltype = $"{subType} {req.MType}"
+                            let! res =
+                                getImgRequest mfulltype tp
+                                |> aipgGen.GenerateImageAsync
+                            let newPayload = 
+                                match res with
+                                | Ok id -> GenPayload.ImgReqReceived(id, tp)
+                                | Error err ->
+                                    Log.Error($"GEN Err [TextPayloadReceived] : {err}")
+                                    GenFailure.Repeat(req.Payload)
+                                    |> GenPayload.Failure
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                        | GenPayload.ImgReqReceived (id, tp) ->
+                            // fetch img and save locally
+                            let! res = aipgGen.FetchCompleteResponseAsync id
+                            match res with
+                            | Ok bytes ->
+                                let dir = options.Value.ImgFolder
+                                if Directory.Exists(dir) |> not then
+                                    Directory.CreateDirectory(dir) |> ignore
+                                let filename =
+                                    req.MType.ToString().ToLower() + "_" + req.MSubType.ToString().ToLower() + "_" + req.ID.ToString() + ".png"
+                                let filepath = Path.Combine(dir, filename)
+                                // save img locally
+                                System.IO.File.WriteAllBytes(filepath, bytes)
+                                let mi = MonsterImg.File filepath
+                                match Monster.TryCreate(req.MType, req.MSubType) with
+                                | Some monster ->
+                                    let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL)
+                                    if db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) then
+                                        try
+                                           let minfo = {
+                                                XP = monsterRecord.Xp
+                                                Name = monsterRecord.Name
+                                                Description = monsterRecord.Description
+                                                Picture = mi
+                                                Stat = monsterRecord.Stats
+                                                MType = monsterRecord.Monster.MType
+                                                MSubType = monsterRecord.Monster.MSubType
+                                           }
+                                           let monsterCard = Components.monsterCreatedComponent minfo
+                        
+                                           let mp =
+                                              MessageProperties()
+                                                .WithAttachments([Components.monsterAttachnment minfo])
+                                                .WithComponents([monsterCard])
+                                                .WithFlags(MessageFlags.IsComponentsV2)
+                                           do! Utils.sendMsgToLogChannelWithNotifications gclient mp
+                                        with ex ->
+                                            Log.Error(ex, "CreateCustomMonster msg")
+                                    else
+                                        let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
+                                        db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore                                        
+                                | None ->
+                                    let newPayload = GenFailure.Final("Invalid monster") |> GenPayload.Failure
+                                    db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            | Error err ->
+                                Log.Error($"GEN Err [ImgReqReceived] : {err}")
+                                let newPayload = GenFailure.Repeat(req.Payload) |> GenPayload.Failure
+                                db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                        | GenPayload.Failure genFailure ->
+                            match genFailure with
+                            | GenFailure.Final _ ->
+                                Log.Error($"Invalid case")
+                                db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
+                            | GenFailure.Repeat prevPayload ->
+                                if errors.ContainsKey req.ID |> not then
+                                    errors <- errors.Add(req.ID, 0)
+                                let count = errors.[req.ID]
+                                Log.Information($"Retry...{req.ID} ({prevPayload.Status}); attempts = {count}")
+                                if count <= MaxRetry then
+                                    match prevPayload with
+                                    | GenPayload.Success
+                                    | GenPayload.Failure _ ->
+                                        Log.Error($"Invalid case")
+                                        None
+                                    | GenPayload.TextReqCreated prompt ->
+                                        GenPayload.TextReqCreated prompt
+                                        |> Some
+                                    | GenPayload.TextReqReceived _ ->
+                                        Prompt.createMonsterNameDesc req.MType req.MSubType
+                                        |> GenPayload.TextReqCreated
+                                        |> Some
+                                    | GenPayload.TextPayloadReceived tp ->
+                                        prevPayload |> Some
+                                    | GenPayload.ImgReqReceived (_, tp) ->
+                                        GenPayload.TextPayloadReceived tp |> Some
+                                else
+                                    GenFailure.Final "Max retry reached"
+                                    |> GenPayload.Failure
+                                    |> Some
+                                |> Option.iter(fun newPayload ->
+                                    if db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) then
+                                        errors <- errors.SetItem(req.ID, count + 1))
+                        | GenPayload.Success ->
+                            Log.Error($"GenPayload is Success but status is unfinished: {req.ID}")
+                            db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
+                    with exn ->
+                        Log.Error(exn, "GenService")
+                        do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
         }

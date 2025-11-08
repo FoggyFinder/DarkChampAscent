@@ -46,7 +46,8 @@ type RoundBoost = {
 module Shop =
     // ToDo: investigate why adding [<Literal>] breaks program
     let RenamePrice = 5M
-    
+    let GenMonsterPrice = 0.5M
+
     let getPrice =
         function
         | ShopItem.ElixirOfLife -> 0.02M

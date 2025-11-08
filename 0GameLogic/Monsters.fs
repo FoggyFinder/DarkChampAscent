@@ -401,4 +401,11 @@ module Monster =
         |> List.map(fun (m, name, desc) ->
             MonsterRecord(name, desc, m.Value, getStats(m.Value), 0UL))
     
+[<RequireQualifiedAccess>]
+module Format =
+    let createMsg (mtype:MonsterType) =
+        match mtype with
+        | MonsterType.Zombie -> "resurrected"
+        | MonsterType.Demon -> "summoned"
+        | MonsterType.Necromancer -> "invited"
 

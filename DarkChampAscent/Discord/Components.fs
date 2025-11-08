@@ -109,13 +109,32 @@ let monsterComponent (monster:MonsterInfo) =
         ])
     ])
 
-//let monsterAttachnment(monster:MonsterInfo) =
-//    let filename =
-//        match monster.Picture with
-//        | MonsterImg.File fn -> fn
-//    let bytes = System.IO.File.ReadAllBytes(filename)
-//    let imageStream = new System.IO.MemoryStream(bytes)
-//    AttachmentProperties("image.png", imageStream)
+let monsterAttachnment(monster:MonsterInfo) =
+    let filename =
+        match monster.Picture with
+        | MonsterImg.File fn -> fn
+    let bytes = System.IO.File.ReadAllBytes(filename)
+    let imageStream = new System.IO.MemoryStream(bytes)
+    AttachmentProperties("image.png", imageStream)
+
+let monsterCreatedComponent (monster:MonsterInfo) =
+    ComponentContainerProperties([
+        TextDisplayProperties($"** {monster.Name} is {Format.createMsg monster.MType}! **")
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                            
+        ComponentSectionProperties
+            (ComponentSectionThumbnailProperties(
+                ComponentMediaProperties("attachment://image.png")),
+            [
+                TextDisplayProperties(monster.Description)
+            ])
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        TextDisplayProperties(xp monster.XP)
+        TextDisplayProperties(health monster.Stat.Health)
+        TextDisplayProperties(magic monster.Stat.Magic)
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
+    ])
 
 let battleResults(br:BattleResult) (names:Map<uint64, string>) =
     let movesComponent =
