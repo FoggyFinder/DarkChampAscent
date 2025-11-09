@@ -271,7 +271,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     let err = $"Balance doesn't match {bal.Total} >= {walletBalance}"
                     Log.Error(err)
                     // if diff isn't significant then log error and allow game to continue
-                    if bal.Total <= walletBalance + 1000M then
+                    // ToDo: reduce
+                    if bal.Total <= walletBalance + 5000M then
                         Ok(())
                     else Error(err)
             | Error err ->
@@ -501,7 +502,6 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                             do! Task.Delay(TimeSpan.FromMinutes(0.5))
                                         
                                         while db.AnyChampJoinedRound roundId |> Option.defaultValue false |> not do
-                                            Log.Information("waiting for players...")
                                             do! Task.Delay(TimeSpan.FromMinutes(1.0))
 
                                         do! finishRound(roundId)
@@ -647,12 +647,14 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                            }
                                            let monsterCard = Components.monsterCreatedComponent minfo
                         
-                                           let mp =
+                                           let createMP() =
                                               MessageProperties()
                                                 .WithAttachments([Components.monsterAttachnment minfo])
                                                 .WithComponents([monsterCard])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
-                                           do! Utils.sendMsgToLogChannelWithNotifications gclient mp
+                                           
+                                           do! Utils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false
+
                                         with ex ->
                                             Log.Error(ex, "CreateCustomMonster msg")
                                     else
