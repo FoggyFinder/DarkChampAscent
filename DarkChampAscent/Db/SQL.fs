@@ -249,6 +249,7 @@ module internal SQL =
             Reserve NUMERIC NOT NULL,
             Devs NUMERIC NOT NULL,
             Champs NUMERIC NOT NULL,
+            Staking NUMERIC NOT NULL,
             FOREIGN KEY (RoundId)
                REFERENCES Round (ID),
             CHECK (
@@ -257,7 +258,8 @@ module internal SQL =
                 DAO >= 0 AND
                 Reserve >= 0 AND
                 Devs >= 0 AND
-                Champs >= 0
+                Champs >= 0 AND
+                Staking >= 0 
             )
         );
 
@@ -911,8 +913,8 @@ module internal SQL =
     """
 
     let InsertRoundRewards = """
-        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs)
-        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs)
+        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
+        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs, @staking)
     """
 
     let InsertRewardsPayed = """

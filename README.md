@@ -119,7 +119,8 @@ For each round rewards are splitted by following logic:
 84% - champ's rewards
 7% - dao
 5% - to devs
-3% - reserve
+2% - reserve
+1% - staking
 1% - burn
 ```
 

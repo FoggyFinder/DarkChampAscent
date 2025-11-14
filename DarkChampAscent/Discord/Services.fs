@@ -329,6 +329,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | WalletType.Dev -> wallets.DevsWallet
                 | WalletType.Reserve -> wallets.ReserveWallet
                 | WalletType.Burn -> wallets.BurnWallet
+                | WalletType.Staking -> wallets.StakingWallet
             match db.SendToSpecialWallet(wt, battleId, send wallet) with
             | Some (tx, v) ->
                 let tnComponent = Components.tnSend $"{v} {Emoj.Coin} was send to {wt}" tx

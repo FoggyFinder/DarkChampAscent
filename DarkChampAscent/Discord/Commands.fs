@@ -98,6 +98,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
                     toComponent "DAO Wallet" w.DAOWallet
                     toComponent "Devs Wallet" w.DevsWallet
                     toComponent "Reserve Wallet" w.ReserveWallet
+                    toComponent "Staking Wallet" w.StakingWallet
                 ]
             )
             ()

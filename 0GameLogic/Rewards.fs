@@ -9,12 +9,13 @@ type Balances = {
     Dev: decimal
     Reserve: decimal
     DAO: decimal
+    Staking: decimal
     Users: decimal
     Champs: decimal
     Locked: decimal
 } with
     member t.Total =
-        t.Rewards + t.Burn + t.Dev + t.Reserve + t.DAO + t.Users + t.Champs + t.Locked
+        t.Rewards + t.Burn + t.Dev + t.Reserve + t.DAO + t.Staking + t.Users + t.Champs + t.Locked
 
 let [<Literal>] Window = 90
 
@@ -32,10 +33,11 @@ type RoundRewardSplit private (
         reserve: decimal,
         burn: decimal,
         dev: decimal,
+        staking: decimal,
         unclaimed: decimal) =
 
     let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
-    let claimed = champsTotal + dao + reserve + burn + dev
+    let claimed = champsTotal + dao + reserve + burn + dev + staking
     
     member _.Champs = champs
     member _.DAO = dao
@@ -45,6 +47,7 @@ type RoundRewardSplit private (
     member _.ChampsTotal = champsTotal
     member _.Claimed = claimed
     member _.Unclaimed = unclaimed
+    member _.Staking = staking
 
     static member CalculateRewards (roundRewards:decimal) (monsterDefeater:uint64 option) (actions:(Move * uint64 * Dmg option) list) =
 
@@ -137,21 +140,23 @@ type RoundRewardSplit private (
         // 84% - champ's rewards
         // 7% - dao
         // 5% - to devs
-        // 3% - reserve
+        // 2% - reserve
+        // 1% - staking
         // 1% - burn
         let dao = Math.Round(7M * x, 6)
         let devs = Math.Round(5M * x, 6)
-        let reserve = Math.Round(3M * x, 6)
+        let reserve = Math.Round(2M * x, 6)
+        let staking = Math.Round(x, 6)
         let burn = Math.Round(x, 6)
         let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
         
-        let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - burn
+        let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - burn - staking
         // rounding error?
         //let reserve' =
         //    if unclaimed < 0M && unclaimed >= -0.0001M then
         //        reserve + unclaimed
         //    else reserve
         if unclaimed < -0.0001M then
-            Error($"Unclaimed is less than prec: {roundRewards};ChampsTotal = {champsTotal};DAO = {dao}; Devs = {devs}; Reserve = {reserve}; Burn = {burn};")
-        else RoundRewardSplit(champs, dao, reserve, burn, devs, unclaimed) |> Ok
+            Error($"Unclaimed is less than prec: {roundRewards};ChampsTotal = {champsTotal};DAO = {dao}; Devs = {devs}; Reserve = {reserve}; Burn = {burn}; Staking = {staking}")
+        else RoundRewardSplit(champs, dao, reserve, burn, devs, staking, unclaimed) |> Ok
         

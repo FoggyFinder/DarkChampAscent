@@ -6,6 +6,7 @@ type WalletConfiguration() =
     member val BurnWallet: string = "" with get, set
     member val DevsWallet: string = "" with get, set
     member val ReserveWallet: string = "" with get, set
+    member val StakingWallet: string = "" with get, set
 
 type ChainConfiguration() =
     member val GameWalletKeys: string = "" with get, set

@@ -21,17 +21,20 @@ type DbKeysNum =
     | DAO = 4
     | DarkCoinPrice = 5 // => itemPriceDarkCoin = itemPriceUsd / darkCoinPriceUsd
     | Locked = 6
+    | Staking = 7
 
 type WalletType =
     | DAO = 0
     | Dev = 1
     | Reserve = 2
     | Burn = 3
+    | Staking = 4
 
 type DbKeysBool =
     | InitBalanceIsSet = 0
     | BalanceCheckIsPassed = 1
     | LockedKeyIsSet = 2
+    | StakingKeyIsSet = 3
 
 type NewChampDb = {
     Name: string
@@ -218,6 +221,8 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, "SetInitBalance")
             false
+    
+    // ToDo: move to setInitBalance
     let setLockedKey(conn:SqliteConnection) =
         try
             let sql = "INSERT INTO KeyValueNum(Key, Value) VALUES (@key, 0.000000)"
@@ -250,6 +255,89 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, "setLockedKey")
             false
 
+    // ToDo: move to setInitBalance
+    let setStakingKey(conn:SqliteConnection) =
+        try
+            let sql = "INSERT INTO KeyValueNum(Key, Value) VALUES (@key, 0.000000)"
+            Db.batch(fun tn ->
+                let isInit =
+                    Db.newCommandForTransaction SQL.GetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.StakingKeyIsSet.ToString())
+                        "value", SqlType.Boolean false
+                    ]
+                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
+                    |> Option.defaultValue false
+                if isInit |> not then
+                    Db.newCommandForTransaction sql tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysNum.Staking.ToString())
+                    ]
+                    |> Db.exec
+
+                    Db.newCommandForTransaction SQL.SetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.StakingKeyIsSet.ToString())
+                        "value", SqlType.Boolean true
+                    ]
+                    |> Db.exec
+            ) conn
+            
+            true
+        with exn ->
+            Log.Error(exn, "setStakingKey")
+            false
+
+    let addStakingColumn(conn:SqliteConnection) = 
+        let sql = """
+            CREATE TABLE IF NOT EXISTS RewardsHistoryNew (
+                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                RoundId INT NOT NULL,
+                Unclaimed NUMERIC NOT NULL,
+                Burn NUMERIC NOT NULL,
+                DAO NUMETIC NOT NULL,
+                Reserve NUMERIC NOT NULL,
+                Devs NUMERIC NOT NULL,
+                Champs NUMERIC NOT NULL,
+                Staking NUMERIC NOT NULL,
+                FOREIGN KEY (RoundId)
+                    REFERENCES Round (ID),
+                CHECK (
+                    Unclaimed > -0.0001 AND
+                    Burn >= 0 AND
+                    DAO >= 0 AND
+                    Reserve >= 0 AND
+                    Devs >= 0 AND
+                    Champs >= 0 AND
+                    Staking >= 0 
+                )
+            );
+
+        INSERT INTO RewardsHistoryNew(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
+        SELECT RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, 0.000000
+        FROM RewardsHistory;
+
+        DROP TABLE RewardsHistory;
+
+        ALTER TABLE RewardsHistoryNew RENAME TO RewardsHistory;
+        """
+
+        let stakingColumnCount = """
+            SELECT COUNT(*) FROM
+            pragma_table_info('RewardsHistory')
+            WHERE name='Staking'
+        """
+        try
+            Db.newCommand stakingColumnCount conn
+            |> Db.scalar(fun v -> tryUnbox<int64> v)
+            |> Option.iter(fun i ->
+                if i = 0L then
+                    Db.newCommand sql conn
+                    |> Db.exec)
+            true
+        with exn ->
+            Log.Error(exn, $"addStakingColumn")
+            false
     do Log.Information("Db is init....")
 
     let _conn = new SqliteConnection(cs)
@@ -259,6 +347,8 @@ type SqliteStorage(cs: string)=
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
     do setLockedKey(_conn) |> ignore
+    do setStakingKey(_conn) |> ignore
+    do addStakingColumn(_conn)|> ignore
 
     do _conn.Dispose()
     do Log.Information("Db init is finished")
@@ -1283,9 +1373,13 @@ type SqliteStorage(cs: string)=
                 Db.newCommand SQL.GetKeyNum conn
                 |> Db.setParams [ "key", SqlType.String (DbKeysNum.Locked.ToString()) ]
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
+            let stakingO = 
+                Db.newCommand SQL.GetKeyNum conn
+                |> Db.setParams [ "key", SqlType.String (DbKeysNum.Staking.ToString()) ]
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
 
-            match poolO, reserveO, devO, daoO, burnO, userO, champO, lockedO with
-            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some user, Some champ, Some locked ->
+            match poolO, reserveO, devO, daoO, burnO, userO, champO, lockedO, stakingO with
+            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some user, Some champ, Some locked, Some staking ->
                 {
                     DAO = dao
                     Reserve = reserve
@@ -1295,10 +1389,11 @@ type SqliteStorage(cs: string)=
                     Users = user
                     Champs = champ
                     Locked = locked
+                    Staking = staking
                 }
                 |> Ok
-            | _, _, _, _, _,_,_,_ ->
-                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; User: {userO.IsSome}; Champ:{champO.IsSome}; Locked:{lockedO.IsSome}"
+            | _, _, _, _, _,_,_,_,_ ->
+                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; User: {userO.IsSome}; Champ:{champO.IsSome}; Locked:{lockedO.IsSome}; Staking:{stakingO.IsSome}"
                 Error(err)
 
         with exn ->
@@ -2293,6 +2388,7 @@ type SqliteStorage(cs: string)=
                     "reserve", SqlType.Decimal roundRewards.Reserve
                     "devs", SqlType.Decimal roundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
+                    "staking", SqlType.Decimal roundRewards.Staking
                 ]
                 |> Db.exec
 
@@ -2334,6 +2430,14 @@ type SqliteStorage(cs: string)=
                 |> Db.setParams [
                     "amount", SqlType.Decimal roundRewards.Burn
                     "key", SqlType.String (DbKeysNum.Burn.ToString())
+                ]
+                |> Db.exec
+
+                tn
+                |> Db.newCommandForTransaction SQL.AddToKeyNum
+                |> Db.setParams [
+                    "amount", SqlType.Decimal roundRewards.Staking
+                    "key", SqlType.String (DbKeysNum.Staking.ToString())
                 ]
                 |> Db.exec
                 // rewards data inserted to ChampAction table is handled elsewhere
@@ -2781,6 +2885,7 @@ type SqliteStorage(cs: string)=
                 | WalletType.Dev -> DbKeysNum.Dev
                 | WalletType.Reserve -> DbKeysNum.Reserve
                 | WalletType.Burn -> DbKeysNum.Burn
+                | WalletType.Staking -> DbKeysNum.Staking
             use conn = new SqliteConnection(cs)
             match getKeyNum conn numKey with
             | Some v when v > 0M ->
