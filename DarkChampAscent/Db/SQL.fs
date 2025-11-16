@@ -1046,8 +1046,41 @@ module internal SQL =
     let IsMonsterDescriptionExists = """
         SELECT EXISTS(SELECT 1 FROM Monster WHERE Description = @description);
     """
+    
+    let CountUserMonsters = """
+        SELECT Count(*) FROM UserMonster
+        JOIN Monster m ON m.ID = UserMonster.MonsterId
+        WHERE UserId = @userId AND Type = @type AND SubType = @subtype
+    """
+
+    let CountUserRequests = """
+        SELECT Count(*) FROM UserGenMonsterRequest
+        WHERE UserId = @userId AND IsFinished = 0 AND Type = @type AND SubType = @subtype
+    """
+
+    let CountUnfinishedUserRequests = """
+        SELECT Count(*) FROM UserGenMonsterRequest
+        WHERE UserId = @userId AND IsFinished = 0
+    """
 
     let CountMonster = """SELECT Count(*) FROM Monster"""
+
+    let GetUserMonsters = """
+        SELECT m.ID, Name, Type, SubType FROM UserMonster
+        JOIN Monster m ON m.ID = UserMonster.MonsterId
+        WHERE UserId = @userId
+    """
+
+    let FilterUserMonsters = """
+        SELECT m.ID, Name FROM UserMonster
+        JOIN Monster m ON m.ID = UserMonster.MonsterId
+        WHERE UserId = @userId AND Type = @type AND SubType = @subtype
+    """
+
+    let GetPendingUserRequests = """
+        SELECT ID, Timestamp, Status  FROM UserGenMonsterRequest
+        WHERE UserId = @userId AND IsFinished = 0
+    """
 
     let UserEarnings = """
         SELECT Sum(Rewards) FROM Action

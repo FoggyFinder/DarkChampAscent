@@ -647,11 +647,12 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                                 MSubType = monsterRecord.Monster.MSubType
                                            }
                                            let monsterCard = Components.monsterCreatedComponent minfo
-                        
+                                           let name = "image.png"
+                                           let uri = $"attachment://{name}"
                                            let createMP() =
                                               MessageProperties()
-                                                .WithAttachments([Components.monsterAttachnment minfo])
-                                                .WithComponents([monsterCard])
+                                                .WithAttachments([Components.monsterAttachnment name minfo])
+                                                .WithComponents([monsterCard uri])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
                                            
                                            do! Utils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false

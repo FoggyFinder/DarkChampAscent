@@ -10,6 +10,7 @@ open NetCord.Rest
 
 open NetCord
 open GameLogic.Shop
+open GameLogic.Limits
 open Display
 open System.Threading.Tasks
 open Microsoft.Extensions.Options
@@ -617,11 +618,11 @@ type MonsterModule(db:SqliteStorage) =
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
             let! _ = x.Context.Interaction.SendResponseAsync(callback)
             let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-            // ToDo: add limits and check amount of created monsters?
-            // or at least check that there is no pending requests
+            let monstersCreatedR = db.MonstersByTypeSubtype(x.Context.User.Id, mtype, msubtype)
+            let pendingRequestsR = db.UnfinishedRequestsByUser(x.Context.User.Id)
             let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match priceO with
-                | Some dcPrice ->
+                match monstersCreatedR, pendingRequestsR, priceO with
+                | Ok m, Ok r, Some dcPrice when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
                     let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     options.Components <- [
@@ -635,8 +636,114 @@ type MonsterModule(db:SqliteStorage) =
                          ]
                         )
                     ]
-                | None -> 
-                    options.Content <- $"Oh, no...there was error")
+                // ToDo: fix
+                | Ok m, _, Some _ ->
+                    options.Content <- $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
+                | _, Ok r, Some _ ->
+                    options.Content <- $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                | Error err1, _, _ -> 
+                    options.Content <- $"Oh, no...there was error: {err1}"
+                | _, Error err2, _ -> 
+                    options.Content <- $"Oh, no...there was error: {err2}"
+                | Ok _, Ok _, None ->
+                    options.Content <- $"Oh, no...can't get price, try again later")
+            ()
+        } :> Task
+
+
+[<SlashCommand("my", "Custom commands")>]
+type CustomModule(db:SqliteStorage) =
+    inherit ApplicationCommandModule<ApplicationCommandContext>()
+
+    [<SubSlashCommand("requests", "shows list of requests to create monsters")>]
+    member x.Requests(): Task =
+        let res = db.GetPendingUserRequests(x.Context.User.Id)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match res with
+                | Ok requests ->
+                    if requests.IsEmpty then
+                        options.Content <- $"No pending requests found"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <- [ 
+                          ComponentContainerProperties(
+                            requests
+                            |> List.sortByDescending(fun (_, dt, _) -> dt)
+                            |> List.map(fun (id, dt, status) ->
+                                TextDisplayProperties($"{id} : [{dt}] : {status}")
+                            )
+                          )
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
+            ()
+        } :> Task
+    
+    [<SubSlashCommand("monsters", "shows list of created monsters and allow to select one")>]
+    member x.Monsters(): Task =
+        let monstersR = db.GetUserMonsters(x.Context.User.Id)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match monstersR with
+                | Ok monsters ->
+                    if monsters.IsEmpty then
+                        options.Content <- $"No monsters found"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        let selectMenu = 
+                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name, mt, mst) ->
+                                let label = $"{name} | {mt} | {mst}"
+                                StringMenuSelectOptionProperties(label, id.ToString())),
+                                Placeholder = "Choose an option")
+                        
+                        options.Components <- [
+                            ComponentContainerProperties([
+                               TextDisplayProperties("Select a monster")
+                               selectMenu
+                            ])
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
+            ()
+        } :> Task
+
+    [<SubSlashCommand("monster", "shows list of created monsters and allow to select one")>]
+    member x.Monster(
+        [<SlashCommandParameter(Name = "mtype", Description = "action")>] mtype:MonsterType,
+        [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
+    ): Task =
+        let monstersR = db.FilterUserMonsters(x.Context.User.Id, mtype, msubtype)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match monstersR with
+                | Ok monsters ->
+                    if monsters.IsEmpty then
+                        options.Content <- $"No monsters found with these filters"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        let selectMenu = 
+                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name) ->
+                                StringMenuSelectOptionProperties(name, id.ToString())),
+                                Placeholder = "Choose an option")
+                        
+                        options.Components <- [
+                            ComponentContainerProperties([
+                               TextDisplayProperties("Select a monster")
+                               selectMenu
+                            ])
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
             ()
         } :> Task
 

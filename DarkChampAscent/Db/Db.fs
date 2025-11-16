@@ -1649,7 +1649,7 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, "GetMonsters")
             None
-    
+
     member t.RoundsExists() =
         try
             use conn = new SqliteConnection(cs)
@@ -3181,6 +3181,112 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, $"IsMonsterDescriptionExists: {description}")
             false
+
+    /// includes unprocesses requests
+    member _.MonstersByTypeSubtype(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try       
+                use conn = new SqliteConnection(cs)
+
+                let monsters = 
+                    Db.newCommand SQL.CountUserMonsters conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 userId
+                        "type", SqlType.Int <| int mtype
+                        "subtype", SqlType.Int <| int msubtype
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                
+                let requests =
+                    Db.newCommand SQL.CountUserRequests conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 userId
+                        "type", SqlType.Int <| int mtype
+                        "subtype", SqlType.Int <| int msubtype
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    
+                match monsters, requests with
+                | Some m, Some r -> (m + r) |> Ok
+                | Some _, None -> Error("Unable to count requests")
+                | None, Some _ -> Error("Unable to count monsters")
+                | None, None -> Error("Unable to count monsters and requests")
+            with exn ->
+                Log.Error(exn, $"MonstersByTypeSubtype: {discordId} | {mtype} | {msubtype}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
+
+    member _.UnfinishedRequestsByUser(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try       
+                use conn = new SqliteConnection(cs)
+
+                let requests =
+                    Db.newCommand SQL.CountUnfinishedUserRequests conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 userId
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    
+                match requests with
+                | Some m -> m |> Ok
+                | None -> Error("Unable to count requests")
+            with exn ->
+                Log.Error(exn, $"UnfinishedRequestsByUser: {discordId}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
+
+     member _.GetPendingUserRequests(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try 
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetPendingUserRequests conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                ]
+                |> Db.query (fun v -> v.GetInt64(0), v.GetDateTime(1), v.GetInt32(2) |> enum<GenStatus>)
+                |> Ok
+            with exn ->
+                Log.Error(exn, $"GetPendingUserRequests: {userId}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user") 
+
+     member _.GetUserMonsters(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try 
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserMonsters conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                ]
+                |> Db.query (fun v -> v.GetInt64(0), v.GetString(1), v.GetInt32(2) |> enum<MonsterType>, v.GetInt32(3) |> enum<MonsterSubType>)
+                |> Ok
+            with exn ->
+                Log.Error(exn, $"GetUserMonsters: {userId}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")         
+
+     member _.FilterUserMonsters(discordId: uint64, mtype:MonsterType, msubtype: MonsterSubType) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try 
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.FilterUserMonsters conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                    "type", SqlType.Int <| int mtype
+                    "subtype", SqlType.Int <| int msubtype
+                ]
+                |> Db.query (fun v -> v.GetInt64(0), v.GetString(1))
+                |> Ok
+            with exn ->
+                Log.Error(exn, $"FilterUserMonsters: {userId} | {mtype} | {msubtype}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)

@@ -287,6 +287,29 @@ let mselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
     return callback
 }
 
+let cmselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
+    let res =
+        let str = (context.SelectedValues |> Seq.tryHead |> Option.defaultValue "").Trim()
+        match Int64.TryParse(str) with
+        | true, id ->
+            db.GetMonsterById id
+        | false, _ ->
+            Log.Error($"Unable to parse {str}")
+            None
+    
+    let callback = InteractionCallback.ModifyMessage(fun options ->
+        match res with
+        | Some monster ->
+            let name = "image.png"
+            let uri = $"attachment://{name}"
+            options.Components <- [ DiscordBot.Components.customMonsterComponent monster uri ]
+            options.Attachments <- [ DiscordBot.Components.monsterAttachnment name monster ]
+        | None ->
+            options.Content <- $"Oh, no...something went wrong"
+    )
+
+    return callback
+}
 let actionselect (db:SqliteStorage) (context:StringMenuInteractionContext) (move:string) = task {
     let res =
         let str = (context.SelectedValues |> Seq.tryHead |> Option.defaultValue "").Trim()

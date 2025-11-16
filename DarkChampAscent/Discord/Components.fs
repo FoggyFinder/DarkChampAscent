@@ -109,22 +109,22 @@ let monsterComponent (monster:MonsterInfo) =
         ])
     ])
 
-let monsterAttachnment(monster:MonsterInfo) =
+let monsterAttachnment (name:string) (monster:MonsterInfo) =
     let filename =
         match monster.Picture with
         | MonsterImg.File fn -> fn
     let bytes = System.IO.File.ReadAllBytes(filename)
     let imageStream = new System.IO.MemoryStream(bytes)
-    AttachmentProperties("image.png", imageStream)
+    AttachmentProperties(name, imageStream)
 
-let monsterCreatedComponent (monster:MonsterInfo) =
+let monsterCreatedComponent (monster:MonsterInfo) (url:string)=
     ComponentContainerProperties([
         TextDisplayProperties($"** {monster.Name} is {Format.createMsg monster.MType}! **")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             
         ComponentSectionProperties
             (ComponentSectionThumbnailProperties(
-                ComponentMediaProperties("attachment://image.png")),
+                ComponentMediaProperties(url)),
             [
                 TextDisplayProperties(monster.Description)
             ])
@@ -134,6 +134,30 @@ let monsterCreatedComponent (monster:MonsterInfo) =
         TextDisplayProperties(magic monster.Stat.Magic)
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
         yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
+    ])
+
+let customMonsterComponent (monster:MonsterInfo) (url:string) =
+    ComponentContainerProperties([
+        TextDisplayProperties($"** {monster.Name} **")
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                            
+        ComponentSectionProperties
+            (ComponentSectionThumbnailProperties(
+                ComponentMediaProperties(url)),
+            [
+                TextDisplayProperties(monster.Description)
+            ])
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        TextDisplayProperties(xp monster.XP)
+        TextDisplayProperties(health monster.Stat.Health)
+        TextDisplayProperties(magic monster.Stat.Magic)
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
+        MediaGalleryProperties([
+            MediaGalleryItemProperties(
+                ComponentMediaProperties(url)    
+            )
+        ])
     ])
 
 let battleResults(br:BattleResult) (names:Map<uint64, string>) =

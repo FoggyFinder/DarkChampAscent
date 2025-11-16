@@ -69,6 +69,7 @@ host
     .AddApplicationCommandModule(typeof<BattleModule>)
     .AddApplicationCommandModule(typeof<TopModule>)
     .AddApplicationCommandModule(typeof<GeneralModule>)
+    .AddApplicationCommandModule(typeof<CustomModule>)
 
     .AddComponentInteraction<StringMenuInteractionContext>("rename", Func<_,_,_,_>(Interactions.renameItem))
     .AddComponentInteraction<ButtonInteractionContext>("donate", Func<_,_,_,_>(Interactions.donate))
@@ -78,6 +79,7 @@ host
     .AddComponentInteraction<ButtonInteractionContext>("confrename", Func<_,_,_,_,_>(Interactions.confirmRename))
     .AddComponentInteraction<StringMenuInteractionContext>("select", Func<_,_,_>(Interactions.select))
     .AddComponentInteraction<StringMenuInteractionContext>("mselect", Func<_,_,_>(Interactions.mselect))
+    .AddComponentInteraction<StringMenuInteractionContext>("cmselect", Func<_,_,_>(Interactions.cmselect))
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect))
     .AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup))
     .AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn))
