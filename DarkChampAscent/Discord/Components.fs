@@ -136,7 +136,7 @@ let monsterCreatedComponent (monster:MonsterInfo) (url:string)=
         yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
     ])
 
-let customMonsterComponent (monster:MonsterInfo) (url:string) =
+let customMonsterComponent (monster:MonsterInfo) (mid:int64) (url:string) =
     ComponentContainerProperties([
         TextDisplayProperties($"** {monster.Name} **")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
@@ -158,6 +158,7 @@ let customMonsterComponent (monster:MonsterInfo) (url:string) =
                 ComponentMediaProperties(url)    
             )
         ])
+        ActionRowProperties([ ButtonProperties($"cmrename:{mid}:{monster.Name}", "Rename", ButtonStyle.Success) ])
     ])
 
 let battleResults(br:BattleResult) (names:Map<uint64, string>) =
@@ -169,7 +170,7 @@ let battleResults(br:BattleResult) (names:Map<uint64, string>) =
             yield! br.ChampsMoveAndXp |> Seq.map(fun kv ->
                 let name = names.[kv.Key]
                 let move, xp = kv.Value
-                TextDisplayProperties($"{Display.performedMove move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentProperties
+                TextDisplayProperties($"{Display.performedMove move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
             )
     ])
     
@@ -190,7 +191,7 @@ let battleResults(br:BattleResult) (names:Map<uint64, string>) =
                     yield! br.MonsterActions |> Seq.map(fun kv ->
                         let name = names.[kv.Key]
                         let move, xp = kv.Value
-                        TextDisplayProperties($"{Display.performedMove move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentProperties
+                        TextDisplayProperties($"{Display.performedMove move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
                     )
                 ])
                 |> Some
@@ -215,7 +216,7 @@ let battleResults(br:BattleResult) (names:Map<uint64, string>) =
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
             yield! rewards.Champs |> List.map(fun r ->
                 let name = names.[r.ChampId]
-                TextDisplayProperties($"{name}: {Display.toRound6StrD r.Reward} {Emoj.Coin}") :> IComponentProperties
+                TextDisplayProperties($"{name}: {Display.toRound6StrD r.Reward} {Emoj.Coin}") :> IComponentContainerComponentProperties
             )
         ])
 
@@ -226,7 +227,7 @@ let battleResults(br:BattleResult) (names:Map<uint64, string>) =
                 TextDisplayProperties($"** Defeated Champs **")
                 ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                 yield! br.DeadChamps |> List.map(fun r ->
-                    TextDisplayProperties($"{names.[r]}") :> IComponentProperties
+                    TextDisplayProperties($"{names.[r]}") :> IComponentContainerComponentProperties
                 )
             ]) |> Some
 
@@ -234,12 +235,12 @@ let battleResults(br:BattleResult) (names:Map<uint64, string>) =
         ComponentContainerProperties([
             TextDisplayProperties($"** Basic stats (without boosts and levels) **")
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-            TextDisplayProperties($"{br.MonsterChar.Name}: {br.MonsterChar.Stat.Health} {Emoj.Health} {br.MonsterChar.Stat.Magic} {Emoj.Magic}") :> IComponentProperties
+            TextDisplayProperties($"{br.MonsterChar.Name}: {br.MonsterChar.Stat.Health} {Emoj.Health} {br.MonsterChar.Stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
             yield! br.ChampsFinalStat |> Seq.map(fun kv ->
                 let name = names.[kv.Key]
                 let stat = kv.Value
-                TextDisplayProperties($"{name}: {stat.Health} {Emoj.Health} {stat.Magic} {Emoj.Magic}") :> IComponentProperties
+                TextDisplayProperties($"{name}: {stat.Health} {Emoj.Health} {stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
             )
         ])
     

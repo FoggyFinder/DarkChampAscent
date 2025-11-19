@@ -146,7 +146,7 @@ type UserModule(db:SqliteStorage) =
                                     if v <> 0L then v.ToString() else ""
 
                                 [
-                                    TextDisplayProperties($"{name} {stablePrice}({toRound2StrD sir.Price} {Emoj.Coin}) {sir.Duration} {Emoj.Rounds} {vStr}") :> IComponentProperties
+                                    TextDisplayProperties($"{name} {stablePrice}({toRound2StrD sir.Price} {Emoj.Coin}) {sir.Duration} {Emoj.Rounds} {vStr}") :> IComponentContainerComponentProperties
                                     ActionRowProperties([ ButtonProperties($"buy:{int item}", "Buy!", ButtonStyle.Primary) ])
                                 ]
                             )
@@ -154,7 +154,7 @@ type UserModule(db:SqliteStorage) =
                         options.Components <- [
                             TextDisplayProperties("**Storage**")
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            TextDisplayProperties($"Name Price (DarkCoins) Duration (rounds)") :> IComponentProperties
+                            TextDisplayProperties($"Name Price (DarkCoins) Duration (rounds)") :> IMessageComponentProperties
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             ComponentContainerProperties(items)
                         ]
@@ -196,7 +196,7 @@ type UserModule(db:SqliteStorage) =
                         let items =
                             xs |> List.collect(fun (item, amount) ->
                                 [
-                                    TextDisplayProperties($"{Display.fromShopItem item} {amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{Display.fromShopItem item} {amount}") :> IComponentContainerComponentProperties
                                     ActionRowProperties([ ButtonProperties($"use:{int item}", "Use!", ButtonStyle.Primary) ])
                                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                 ]
@@ -860,7 +860,7 @@ type TopModule(db:SqliteStorage) =
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             yield!
                                 xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentContainerComponentProperties
                                 )
                         ])
                             
@@ -888,7 +888,7 @@ type TopModule(db:SqliteStorage) =
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             yield!
                                 xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentContainerComponentProperties
                                 )
                         ])
                             
