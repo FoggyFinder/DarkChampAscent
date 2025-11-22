@@ -291,7 +291,7 @@ let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:str
 
         let! m = context.Interaction.SendResponseAsync(callback)
 
-        let inputs = 
+        let nNameO = 
             context.Components
                 .OfType<Label>().Select(fun l -> l.Component)
                 .OfType<TextInput>().Select(fun ti ->
@@ -300,10 +300,12 @@ let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:str
             |> Seq.tryPick id
 
         let str = 
-            match Int64.TryParse mids with
-            | (true, mid) ->
-                inputs.ToString()
-            | _ -> "Error: Incorrect input"
+            match Int64.TryParse mids, nNameO with
+            | (true, mid), Some newName ->
+                match db.RenameUserMonster(context.User.Id, newName, mid) with
+                | Ok () -> "Done!"
+                | Error err -> err
+            | _, _ -> "Error: Incorrect input"
 
         let! m = context.Interaction.ModifyResponseAsync(fun options ->
             options.Components <- [ TextDisplayProperties(str) ])

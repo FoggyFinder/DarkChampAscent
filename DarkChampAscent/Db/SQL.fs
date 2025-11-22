@@ -1088,3 +1088,8 @@ module internal SQL =
             ChampId IN (SELECT ChampId FROM UserChamp WHERE UserId = @userId)
             AND RoundId >= @startRound AND RoundId <= @endRound
     """
+
+    let RenameMonster = """
+        UPDATE Monster SET Name = @newName WHERE ID = @id
+    """
+    

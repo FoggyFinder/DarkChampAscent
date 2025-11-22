@@ -3288,6 +3288,34 @@ type SqliteStorage(cs: string)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
+     member _.RenameUserMonster(discordId: uint64, newName:string, mid:int64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try 
+                use conn = new SqliteConnection(cs)
+                let isMonsterNameExists =
+                    Db.newCommand SQL.IsMonsterNameExists conn
+                    |> Db.setParams [
+                        "name", SqlType.String newName
+                    ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+                if isMonsterNameExists then
+                    Error("This name already taken")
+                else
+                    // ToDo: validate that user did create this monster
+                    Db.newCommand SQL.RenameMonster conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 userId
+                        "newName", SqlType.String newName
+                        "id", SqlType.Int64 mid
+                    ]
+                    |> Db.exec
+                    |> Ok
+            with exn ->
+                Log.Error(exn, $"RenameUserMonster: {userId} | {newName} | {mid}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
+
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
         getKeyDateTime conn key
