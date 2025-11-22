@@ -10,11 +10,13 @@ open NetCord.Rest
 
 open NetCord
 open GameLogic.Shop
+open GameLogic.Limits
 open Display
 open System.Threading.Tasks
 open Microsoft.Extensions.Options
 open DiscordBot.Components
 open Serilog
+open System.Text
 
 [<SlashCommand("wallet", "Wallet command")>]
 type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
@@ -145,7 +147,7 @@ type UserModule(db:SqliteStorage) =
                                     if v <> 0L then v.ToString() else ""
 
                                 [
-                                    TextDisplayProperties($"{name} {stablePrice}({toRound2StrD sir.Price} {Emoj.Coin}) {sir.Duration} {Emoj.Rounds} {vStr}") :> IComponentProperties
+                                    TextDisplayProperties($"{name} {stablePrice}({toRound2StrD sir.Price} {Emoj.Coin}) {sir.Duration} {Emoj.Rounds} {vStr}") :> IComponentContainerComponentProperties
                                     ActionRowProperties([ ButtonProperties($"buy:{int item}", "Buy!", ButtonStyle.Primary) ])
                                 ]
                             )
@@ -153,7 +155,7 @@ type UserModule(db:SqliteStorage) =
                         options.Components <- [
                             TextDisplayProperties("**Storage**")
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            TextDisplayProperties($"Name Price (DarkCoins) Duration (rounds)") :> IComponentProperties
+                            TextDisplayProperties($"Name Price (DarkCoins) Duration (rounds)") :> IMessageComponentProperties
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             ComponentContainerProperties(items)
                         ]
@@ -195,7 +197,7 @@ type UserModule(db:SqliteStorage) =
                         let items =
                             xs |> List.collect(fun (item, amount) ->
                                 [
-                                    TextDisplayProperties($"{Display.fromShopItem item} {amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{Display.fromShopItem item} {amount}") :> IComponentContainerComponentProperties
                                     ActionRowProperties([ ButtonProperties($"use:{int item}", "Use!", ButtonStyle.Primary) ])
                                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                 ]
@@ -617,11 +619,11 @@ type MonsterModule(db:SqliteStorage) =
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
             let! _ = x.Context.Interaction.SendResponseAsync(callback)
             let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-            // ToDo: add limits and check amount of created monsters?
-            // or at least check that there is no pending requests
+            let monstersCreatedR = db.MonstersByTypeSubtype(x.Context.User.Id, mtype, msubtype)
+            let pendingRequestsR = db.UnfinishedRequestsByUser(x.Context.User.Id)
             let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match priceO with
-                | Some dcPrice ->
+                match monstersCreatedR, pendingRequestsR, priceO with
+                | Ok m, Ok r, Some dcPrice when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
                     let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     options.Components <- [
@@ -635,8 +637,121 @@ type MonsterModule(db:SqliteStorage) =
                          ]
                         )
                     ]
-                | None -> 
-                    options.Content <- $"Oh, no...there was error")
+                | Ok m, Ok r, Some _ ->
+                    let sb = StringBuilder()
+                    
+                    if m >= Limits.CustomMonstersPerTypeSubtype then
+                        sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
+                        |> ignore
+                    
+                    if r >= Limits.UnfinishedRequests then
+                        sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                        |> ignore
+
+                    options.Content <- sb.ToString()
+                | Error err1, _, _ -> 
+                    options.Content <- $"Oh, no...there was error: {err1}"
+                | _, Error err2, _ -> 
+                    options.Content <- $"Oh, no...there was error: {err2}"
+                | Ok _, Ok _, None ->
+                    options.Content <- $"Oh, no...can't get price, try again later")
+            ()
+        } :> Task
+
+
+[<SlashCommand("my", "Custom commands")>]
+type CustomModule(db:SqliteStorage) =
+    inherit ApplicationCommandModule<ApplicationCommandContext>()
+
+    [<SubSlashCommand("requests", "shows list of requests to create monsters")>]
+    member x.Requests(): Task =
+        let res = db.GetPendingUserRequests(x.Context.User.Id)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match res with
+                | Ok requests ->
+                    if requests.IsEmpty then
+                        options.Content <- $"No pending requests found"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        options.Components <- [ 
+                          ComponentContainerProperties(
+                            requests
+                            |> List.sortByDescending(fun (_, dt, _) -> dt)
+                            |> List.map(fun (id, dt, status) ->
+                                TextDisplayProperties($"{id} : [{dt}] : {status}")
+                            )
+                          )
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
+            ()
+        } :> Task
+    
+    [<SubSlashCommand("monsters", "shows list of created monsters and allow to select one")>]
+    member x.Monsters(): Task =
+        let monstersR = db.GetUserMonsters(x.Context.User.Id)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match monstersR with
+                | Ok monsters ->
+                    if monsters.IsEmpty then
+                        options.Content <- $"No monsters found"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        let selectMenu = 
+                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name, mt, mst) ->
+                                let label = $"{name} | {mt} | {mst}"
+                                StringMenuSelectOptionProperties(label, id.ToString())),
+                                Placeholder = "Choose an option")
+                        
+                        options.Components <- [
+                            ComponentContainerProperties([
+                               TextDisplayProperties("Select a monster")
+                               selectMenu
+                            ])
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
+            ()
+        } :> Task
+
+    [<SubSlashCommand("monster", "shows list of created monsters and allow to select one")>]
+    member x.Monster(
+        [<SlashCommandParameter(Name = "mtype", Description = "action")>] mtype:MonsterType,
+        [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
+    ): Task =
+        let monstersR = db.FilterUserMonsters(x.Context.User.Id, mtype, msubtype)
+        task {
+            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
+            let! _ = x.Context.Interaction.SendResponseAsync(callback)
+            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
+                match monstersR with
+                | Ok monsters ->
+                    if monsters.IsEmpty then
+                        options.Content <- $"No monsters found with these filters"
+                    else
+                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                        let selectMenu = 
+                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name) ->
+                                StringMenuSelectOptionProperties(name, id.ToString())),
+                                Placeholder = "Choose an option")
+                        
+                        options.Components <- [
+                            ComponentContainerProperties([
+                               TextDisplayProperties("Select a monster")
+                               selectMenu
+                            ])
+                        ]
+                | Error err ->
+                    options.Content <- $"Oh, no...something went wrong: {err}"
+                )
             ()
         } :> Task
 
@@ -753,7 +868,7 @@ type TopModule(db:SqliteStorage) =
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             yield!
                                 xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentContainerComponentProperties
                                 )
                         ])
                             
@@ -781,7 +896,7 @@ type TopModule(db:SqliteStorage) =
                             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             yield!
                                 xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentProperties
+                                    TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentContainerComponentProperties
                                 )
                         ])
                             

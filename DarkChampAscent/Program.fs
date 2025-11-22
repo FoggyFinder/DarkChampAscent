@@ -47,6 +47,7 @@ builder.Services
     .AddGatewayHandlers(typeof<DiscordBot.GuildCreateHandler>.Assembly)
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
     .AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
+    .AddComponentInteractions<ModalInteraction, ModalInteractionContext>()
     |> ignore
 
 builder.Logging.AddSerilog(dispose=true) |> ignore
@@ -69,20 +70,24 @@ host
     .AddApplicationCommandModule(typeof<BattleModule>)
     .AddApplicationCommandModule(typeof<TopModule>)
     .AddApplicationCommandModule(typeof<GeneralModule>)
-
-    .AddComponentInteraction<StringMenuInteractionContext>("rename", Func<_,_,_,_>(Interactions.renameItem))
-    .AddComponentInteraction<ButtonInteractionContext>("donate", Func<_,_,_,_>(Interactions.donate))
-    .AddComponentInteraction<ButtonInteractionContext>("use", Func<_,_,_,_>(Interactions.useItem))
-    .AddComponentInteraction<StringMenuInteractionContext>("useselect", Func<_,_,_,_>(Interactions.useSelectItem))
-    .AddComponentInteraction<ButtonInteractionContext>("buy", Func<_,_,_,_>(Interactions.buyItem))
-    .AddComponentInteraction<ButtonInteractionContext>("confrename", Func<_,_,_,_,_>(Interactions.confirmRename))
-    .AddComponentInteraction<StringMenuInteractionContext>("select", Func<_,_,_>(Interactions.select))
-    .AddComponentInteraction<StringMenuInteractionContext>("mselect", Func<_,_,_>(Interactions.mselect))
-    .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect))
-    .AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup))
-    .AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn))
-    .AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate))
-    |> ignore
+    .AddApplicationCommandModule(typeof<CustomModule>)
+    
+    .AddComponentInteraction<StringMenuInteractionContext>("rename", Func<_,_,_,_>(Interactions.renameItem)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("donate", Func<_,_,_,_>(Interactions.donate)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("use", Func<_,_,_,_>(Interactions.useItem)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("useselect", Func<_,_,_,_>(Interactions.useSelectItem)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("buy", Func<_,_,_,_>(Interactions.buyItem)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("confrename", Func<_,_,_,_,_>(Interactions.confirmRename)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("select", Func<_,_,_>(Interactions.select)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("mselect", Func<_,_,_>(Interactions.mselect)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("cmselect", Func<_,_,_>(Interactions.cmselect)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
+host.AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("cmrename", Func<_,_,_,_,_>(Interactions.cmrename)) |> ignore
+host.AddComponentInteraction<ModalInteractionContext>("cmrenamemodal", Func<_,_,_,_>(Interactions.cmrenamemodal)) |> ignore
+       
 
 Monster.DefaultsMonsters
 |> List.iter(db.CreateNewMonster >> ignore)

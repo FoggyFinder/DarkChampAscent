@@ -196,13 +196,11 @@ let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName
 }
 
 open GameLogic.Monsters
-open System.Diagnostics
 let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string) (msubtype:string) =
     task {
         let callback = InteractionCallback.ModifyMessage(fun options ->
             options.Components <- [ TextDisplayProperties("Processing") ])
         let! m = context.Interaction.SendResponseAsync(callback)
-        let sw = Stopwatch.StartNew()
         let str = 
             match Enum.TryParse<MonsterType>(mtype), Enum.TryParse<MonsterSubType>(msubtype) with
             | (true, mtype), (true, msubtype) ->
@@ -210,8 +208,6 @@ let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string)
                 | Ok str -> str
                 | Error err -> $"Error: {err}"
             | _, _ -> "Error: Incorrect input"
-        Log.Information(sw.ToString())
-        sw.Stop()
 
         let! m = context.Interaction.ModifyResponseAsync(fun options ->
             options.Components <- [ TextDisplayProperties(str) ])
@@ -280,6 +276,71 @@ let mselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
         match res with
         | Some monster ->
             options.Components <- [ DiscordBot.Components.monsterComponent monster ]
+        | None ->
+            options.Content <- $"Oh, no...something went wrong"
+    )
+
+    return callback
+}
+
+open System.Linq
+let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:string) =
+    task {
+        let callback = InteractionCallback.ModifyMessage(fun options ->
+            options.Components <- [ TextDisplayProperties($"Renaming...") ])      
+
+        let! m = context.Interaction.SendResponseAsync(callback)
+
+        let nNameO = 
+            context.Components
+                .OfType<Label>().Select(fun l -> l.Component)
+                .OfType<TextInput>().Select(fun ti ->
+                    if ti.CustomId = "newName" then Some(ti.Value)
+                    else None)
+            |> Seq.tryPick id
+
+        let str = 
+            match Int64.TryParse mids, nNameO with
+            | (true, mid), Some newName ->
+                match db.RenameUserMonster(context.User.Id, newName, mid) with
+                | Ok () -> "Done!"
+                | Error err -> err
+            | _, _ -> "Error: Incorrect input"
+
+        let! m = context.Interaction.ModifyResponseAsync(fun options ->
+            options.Components <- [ TextDisplayProperties(str) ])
+
+        ()
+    } :> System.Threading.Tasks.Task
+
+let cmrename (db:SqliteStorage) (context:ButtonInteractionContext) (mid:string) (name:string) =
+    task {
+        let callback = InteractionCallback.Modal(
+            ModalProperties($"cmrenamemodal:{mid}", "Rename custom monster", [
+                LabelProperties("New name", TextInputProperties("newName", TextInputStyle.Short))
+                    .WithDescription($"Current name: {name}")
+            ]))
+        return callback
+    }
+
+let cmselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
+    let res =
+        let str = (context.SelectedValues |> Seq.tryHead |> Option.defaultValue "").Trim()
+        match Int64.TryParse(str) with
+        | true, id ->
+            db.GetMonsterById id
+            |> Option.map(fun mi -> mi, id)
+        | false, _ ->
+            Log.Error($"Unable to parse {str}")
+            None
+    
+    let callback = InteractionCallback.ModifyMessage(fun options ->
+        match res with
+        | Some (monster, id) ->
+            let name = "image.png"
+            let uri = $"attachment://{name}"
+            options.Components <- [ DiscordBot.Components.customMonsterComponent monster id uri ]
+            options.Attachments <- [ DiscordBot.Components.monsterAttachnment name monster ]
         | None ->
             options.Content <- $"Oh, no...something went wrong"
     )
