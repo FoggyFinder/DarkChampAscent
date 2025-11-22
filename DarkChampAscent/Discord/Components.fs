@@ -336,3 +336,15 @@ module Embeds =
         
         let imageStream = new System.IO.MemoryStream(bytes)
         [ ep ], [ AttachmentProperties("image.png", imageStream) ]
+
+let walletComponent (name:string) (wallet:string) =
+    let uri = $"https://allo.info/account/{wallet}"
+    ComponentContainerProperties([
+        TextDisplayProperties(name)
+        TextDisplayProperties(wallet)
+        ActionRowProperties(
+            [
+                LinkButtonProperties(uri, "Explorer")
+            ]
+        )
+    ])  
