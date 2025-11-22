@@ -3182,7 +3182,7 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, $"IsMonsterDescriptionExists: {description}")
             false
 
-    /// includes unprocesses requests
+    /// includes unprocessed requests
     member _.MonstersByTypeSubtype(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
         match getUserIdByDiscordId discordId with
         | Some userId ->

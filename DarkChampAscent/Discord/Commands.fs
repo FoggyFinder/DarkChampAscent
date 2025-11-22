@@ -16,6 +16,7 @@ open System.Threading.Tasks
 open Microsoft.Extensions.Options
 open DiscordBot.Components
 open Serilog
+open System.Text
 
 [<SlashCommand("wallet", "Wallet command")>]
 type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
@@ -636,11 +637,18 @@ type MonsterModule(db:SqliteStorage) =
                          ]
                         )
                     ]
-                // ToDo: fix
-                | Ok m, _, Some _ ->
-                    options.Content <- $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
-                | _, Ok r, Some _ ->
-                    options.Content <- $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                | Ok m, Ok r, Some _ ->
+                    let sb = StringBuilder()
+                    
+                    if m >= Limits.CustomMonstersPerTypeSubtype then
+                        sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
+                        |> ignore
+                    
+                    if r >= Limits.UnfinishedRequests then
+                        sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                        |> ignore
+
+                    options.Content <- sb.ToString()
                 | Error err1, _, _ -> 
                     options.Content <- $"Oh, no...there was error: {err1}"
                 | _, Error err2, _ -> 
