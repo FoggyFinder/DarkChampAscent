@@ -16,6 +16,7 @@ open Display
 open NetCord
 open System.IO
 open GameLogic.Battle
+open DiscordBot.Components
 
 type BackupService(db:SqliteStorage, options: IOptions<Conf.DbConfiguration>) =
     inherit BackgroundService()
@@ -311,7 +312,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | Ok wallet ->
                     match db.SendToWallet(ar.ID, ar.Balance, battleId, send wallet) with
                     | Some tx ->
-                        let tnComponent = Components.tnSend $"{ar.Balance} {Emoj.Coin} was send to {ar.Name} ({ar.AssetId})" tx
+                        let tnComponent = ChainComponent.tnSend $"{ar.Balance} {Emoj.Coin} was send to {ar.Name} ({ar.AssetId})" tx
                         let tnMessage =
                             MessageProperties()
                                 .WithComponents([ tnComponent ])
@@ -332,7 +333,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | WalletType.Staking -> wallets.StakingWallet
             match db.SendToSpecialWallet(wt, battleId, send wallet) with
             | Some (tx, v) ->
-                let tnComponent = Components.tnSend $"{v} {Emoj.Coin} was send to {wt}" tx
+                let tnComponent = ChainComponent.tnSend $"{v} {Emoj.Coin} was send to {wt}" tx
                 let tnMessage =
                     MessageProperties()
                         .WithComponents([ tnComponent ])
@@ -366,7 +367,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                     TextDisplayProperties($" {Emoj.Coin} Rewards: {ar.BattleRewards} {Emoj.Coin}")
                                 ])
-                            let monsterCard = Components.monsterComponent monster
+                            let monsterCard = MonstersComponent.monsterComponent monster
                         
                             MessageProperties()
                                 .WithComponents([battleCard; monsterCard])
@@ -465,7 +466,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 let revivalTime = Monster.getRevivalDuration monsterChar.Monster
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
-                    for msg in Components.battleResults bres champNames do
+                    for msg in BattleComponent.battleResults bres champNames do
                         let mp = MessageProperties().WithComponents([ msg ]).WithFlags(MessageFlags.IsComponentsV2)
                         do! Utils.sendMsgToBattleChannelSilently gclient mp
 
@@ -646,12 +647,12 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                                 MType = monsterRecord.Monster.MType
                                                 MSubType = monsterRecord.Monster.MSubType
                                            }
-                                           let monsterCard = Components.monsterCreatedComponent minfo
+                                           let monsterCard = MonstersComponent.monsterCreatedComponent minfo
                                            let name = "image.png"
                                            let uri = $"attachment://{name}"
                                            let createMP() =
                                               MessageProperties()
-                                                .WithAttachments([Components.monsterAttachnment name mi])
+                                                .WithAttachments([MonstersComponent.monsterAttachnment name mi])
                                                 .WithComponents([monsterCard uri])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
                                            

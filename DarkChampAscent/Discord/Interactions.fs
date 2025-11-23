@@ -254,7 +254,7 @@ let select (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
     let callback = InteractionCallback.ModifyMessage(fun options ->
         options.Components <- 
             match res with
-            | Ok champ -> [ champDetailedComponent champ ]
+            | Ok champ -> [ ChampsComponent.champDetailedComponent champ ]
             | Error str -> [ TextDisplayProperties(str) ]
     )
 
@@ -275,7 +275,7 @@ let mselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
     let callback = InteractionCallback.ModifyMessage(fun options ->
         match res with
         | Some monster ->
-            options.Components <- [ DiscordBot.Components.monsterComponent monster ]
+            options.Components <- [ MonstersComponent.monsterComponent monster ]
         | None ->
             options.Content <- $"Oh, no...something went wrong"
     )
@@ -313,7 +313,7 @@ let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:str
         ()
     } :> System.Threading.Tasks.Task
 
-let cmrename (db:SqliteStorage) (context:ButtonInteractionContext) (mid:string) (name:string) =
+let cmrename (context:ButtonInteractionContext) (mid:string) (name:string) =
     task {
         let callback = InteractionCallback.Modal(
             ModalProperties($"cmrenamemodal:{mid}", "Rename custom monster", [
@@ -339,8 +339,8 @@ let cmselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
         | Some (monster, id) ->
             let name = "image.png"
             let uri = $"attachment://{name}"
-            options.Components <- [ DiscordBot.Components.customMonsterComponent monster id uri ]
-            options.Attachments <- [ DiscordBot.Components.monsterAttachnment name monster.Picture ]
+            options.Components <- [ MonstersComponent.customMonsterComponent monster id uri ]
+            options.Attachments <- [ MonstersComponent.monsterAttachnment name monster.Picture ]
         | None ->
             options.Content <- $"Oh, no...something went wrong"
     )

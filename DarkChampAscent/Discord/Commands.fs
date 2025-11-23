@@ -83,13 +83,13 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
         (fun (moptions:MessageOptions) ->
             moptions.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
             moptions.Components <- [
-                    Components.walletComponent "Game Wallet" w.GameWallet
-                    Components.walletComponent "Burn Wallet" w.BurnWallet
-                    Components.walletComponent "DAO Wallet" w.DAOWallet
-                    Components.walletComponent "Devs Wallet" w.DevsWallet
-                    Components.walletComponent "Reserve Wallet" w.ReserveWallet
-                    Components.walletComponent "Staking Wallet" w.StakingWallet
-                ])
+                ChainComponent.walletComponent "Game Wallet" w.GameWallet
+                ChainComponent.walletComponent "Burn Wallet" w.BurnWallet
+                ChainComponent.walletComponent "DAO Wallet" w.DAOWallet
+                ChainComponent.walletComponent "Devs Wallet" w.DevsWallet
+                ChainComponent.walletComponent "Reserve Wallet" w.ReserveWallet
+                ChainComponent.walletComponent "Staking Wallet" w.StakingWallet
+            ])
         |> ApplicationCommand.deferredMessage x.Context
 
 type UserModule(db:SqliteStorage) =
@@ -358,7 +358,7 @@ type ChampsModule(db:SqliteStorage) =
             match res with
             | Some champ ->
                 options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                options.Components <- [ champComponent champ ]
+                options.Components <- [ ChampsComponent.champComponent champ ]
             | None ->
                 options.Content <- $"Oh, no...something went wrong")
 
@@ -449,10 +449,9 @@ type MonsterModule(db:SqliteStorage) =
             match res with
             | Ok monster ->
                 options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                options.Components <- [ DiscordBot.Components.monsterComponent monster ]
+                options.Components <- [ MonstersComponent.monsterComponent monster ]
             | Error err ->
-                options.Content <- $"Oh, no...something went wrong: {err}"
-            )
+                options.Content <- $"Oh, no...something went wrong: {err}")
 
     [<SubSlashCommand("show", "shows monster info")>]
     member x.Show(
@@ -503,7 +502,7 @@ type MonsterModule(db:SqliteStorage) =
                                         TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} | {xp <| uint64 ar.Xp}")
                                     ])
                             ]) :> IMessageComponentProperties,
-                            Components.monsterAttachnment name ar.Picture)
+                            MonstersComponent.monsterAttachnment name ar.Picture)
                         |> List.unzip
                     options.Components <- components
                     options.Attachments <- attachnments
