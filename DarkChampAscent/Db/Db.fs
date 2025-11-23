@@ -1684,16 +1684,16 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, "GetAssetIdByName")
             Error("Unexpected error")
 
-    member t.GetChampNameById(id:uint64) =
+    member t.GetChampNameIPFSById(id:uint64) =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetChampNameById conn
+            Db.newCommand SQL.GetChampNameIPFSById conn
             |> Db.setParams [
                 "id", SqlType.Int64 <| int64 id
             ]
-            |> Db.querySingle (fun r -> r.GetString(0))
+            |> Db.querySingle (fun r -> r.GetString(0), r.GetString(1))
         with exn ->
-            Log.Error(exn, "GetAssetIdByName")
+            Log.Error(exn, "GetChampNameIPFSById")
             None
 
     member t.StartBattle(monsterId: int64) =

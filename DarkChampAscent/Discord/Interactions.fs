@@ -370,8 +370,18 @@ let actionselect (db:SqliteStorage) (context:StringMenuInteractionContext) (move
         | Some (rar, r) ->
             match r with
             | Ok() ->
-                let name = db.GetChampNameById rar.ChampId |> Option.defaultValue("")
-                let mp = MessageProperties(Content = $"{name} joined round!")
+                let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue("", "")
+                let joinedRoundComponent =
+                    ComponentContainerProperties([
+                            ComponentSectionProperties
+                                (ComponentSectionThumbnailProperties(
+                                    ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                                [
+                                    TextDisplayProperties($"**{name}**")
+                                    TextDisplayProperties("joined round!")
+                                ])
+                        ])
+                let mp = MessageProperties().WithComponents([ joinedRoundComponent ]).WithFlags(MessageFlags.IsComponentsV2)
                 task { 
                     Utils.sendMsgToLogChannel context.Client mp |> ignore
                     return "Action is recorded"

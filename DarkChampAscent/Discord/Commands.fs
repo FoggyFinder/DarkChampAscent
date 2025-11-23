@@ -240,13 +240,8 @@ type UserModule(db:SqliteStorage) =
             options.Components <- [
                 ComponentContainerProperties([
                     TextDisplayProperties($"Are you sure you want to donate {amount} {Emoj.Coin}")
-                    ActionRowProperties(
-                        [
-                            ButtonProperties($"donate:{amount}", "Confirm", ButtonStyle.Success)
-                        ]
-                    )
-                    ]
-                )
+                    ActionRowProperties([ ButtonProperties($"donate:{amount}", "Confirm", ButtonStyle.Success) ])
+                    ])
             ]
         )
 
