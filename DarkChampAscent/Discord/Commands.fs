@@ -500,75 +500,65 @@ type MonsterModule(db:SqliteStorage) =
             match db.GetLastRoundId() with
             | Some roundId -> db.GetMonstersUnderEffect(roundId)
             | None -> Error("Unable to find round")
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match res with
-                | Ok xs ->
-                    if xs.IsEmpty then
-                        options.Content <- "No monsters are under effects currently"
-                    else
-                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        options.Components <-
-                            xs
-                            |> List.sortBy(fun ar -> ar.EndsAt)
-                            |> List.map(fun ar ->
-                                ComponentContainerProperties([
-                                    TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
-                                ]))
-                | Error err ->
-                    options.Content <- $"Oh, no...there was error: {err}")
-            ()
-        } :> Task
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match res with
+            | Ok xs ->
+                if xs.IsEmpty then
+                    options.Content <- "No monsters are under effects currently"
+                else
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    options.Components <-
+                        xs
+                        |> List.sortBy(fun ar -> ar.EndsAt)
+                        |> List.map(fun ar ->
+                            ComponentContainerProperties([
+                                TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                            ]))
+            | Error err ->
+                options.Content <- $"Oh, no...there was error: {err}")
 
     [<SubSlashCommand("create", "create custom monster")>]
     member x.Create(
         [<SlashCommandParameter(Name = "mtype", Description = "action")>] mtype:MonsterType,
         [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
     ): Task =
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-            let monstersCreatedR = db.MonstersByTypeSubtype(x.Context.User.Id, mtype, msubtype)
-            let pendingRequestsR = db.UnfinishedRequestsByUser(x.Context.User.Id)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match monstersCreatedR, pendingRequestsR, priceO with
-                | Ok m, Ok r, Some dcPrice when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
-                    let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
-                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                    options.Components <- [
-                        ComponentContainerProperties([
-                            TextDisplayProperties($"Are you sure you want to create custom monster for {amount} {Emoj.Coin}")
-                            ActionRowProperties(
-                                [
-                                    ButtonProperties($"mcreate:{mtype}:{msubtype}", "Confirm", ButtonStyle.Success)
-                                ]
-                            )
-                         ]
+        let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+        let monstersCreatedR = db.MonstersByTypeSubtype(x.Context.User.Id, mtype, msubtype)
+        let pendingRequestsR = db.UnfinishedRequestsByUser(x.Context.User.Id)
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match monstersCreatedR, pendingRequestsR, priceO with
+            | Ok m, Ok r, Some dcPrice when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
+                let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
+                options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                options.Components <- [
+                    ComponentContainerProperties([
+                        TextDisplayProperties($"Are you sure you want to create custom monster for {amount} {Emoj.Coin}")
+                        ActionRowProperties(
+                            [
+                                ButtonProperties($"mcreate:{mtype}:{msubtype}", "Confirm", ButtonStyle.Success)
+                            ]
                         )
-                    ]
-                | Ok m, Ok r, Some _ ->
-                    let sb = StringBuilder()
+                        ]
+                    )
+                ]
+            | Ok m, Ok r, Some _ ->
+                let sb = StringBuilder()
                     
-                    if m >= Limits.CustomMonstersPerTypeSubtype then
-                        sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
-                        |> ignore
+                if m >= Limits.CustomMonstersPerTypeSubtype then
+                    sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
+                    |> ignore
                     
-                    if r >= Limits.UnfinishedRequests then
-                        sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
-                        |> ignore
+                if r >= Limits.UnfinishedRequests then
+                    sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                    |> ignore
 
-                    options.Content <- sb.ToString()
-                | Error err1, _, _ -> 
-                    options.Content <- $"Oh, no...there was error: {err1}"
-                | _, Error err2, _ -> 
-                    options.Content <- $"Oh, no...there was error: {err2}"
-                | Ok _, Ok _, None ->
-                    options.Content <- $"Oh, no...can't get price, try again later")
-            ()
-        } :> Task
+                options.Content <- sb.ToString()
+            | Error err1, _, _ -> 
+                options.Content <- $"Oh, no...there was error: {err1}"
+            | _, Error err2, _ -> 
+                options.Content <- $"Oh, no...there was error: {err2}"
+            | Ok _, Ok _, None ->
+                options.Content <- $"Oh, no...can't get price, try again later")
 
 
 [<SlashCommand("my", "Custom commands")>]
@@ -578,61 +568,49 @@ type CustomModule(db:SqliteStorage) =
     [<SubSlashCommand("requests", "shows list of requests to create monsters")>]
     member x.Requests(): Task =
         let res = db.GetPendingUserRequests(x.Context.User.Id)
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match res with
-                | Ok requests ->
-                    if requests.IsEmpty then
-                        options.Content <- $"No pending requests found"
-                    else
-                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        options.Components <- [ 
-                          ComponentContainerProperties(
-                            requests
-                            |> List.sortByDescending(fun (_, dt, _) -> dt)
-                            |> List.map(fun (id, dt, status) ->
-                                TextDisplayProperties($"{id} : [{dt}] : {status}")
-                            )
-                          )
-                        ]
-                | Error err ->
-                    options.Content <- $"Oh, no...something went wrong: {err}"
-                )
-            ()
-        } :> Task
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match res with
+            | Ok requests ->
+                if requests.IsEmpty then
+                    options.Content <- $"No pending requests found"
+                else
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    options.Components <- [ 
+                        ComponentContainerProperties(
+                        requests
+                        |> List.sortByDescending(fun (_, dt, _) -> dt)
+                        |> List.map(fun (id, dt, status) ->
+                            TextDisplayProperties($"{id} : [{dt}] : {status}")
+                        )
+                        )
+                    ]
+            | Error err ->
+                options.Content <- $"Oh, no...something went wrong: {err}")
     
     [<SubSlashCommand("monsters", "shows list of created monsters and allow to select one")>]
     member x.Monsters(): Task =
         let monstersR = db.GetUserMonsters(x.Context.User.Id)
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match monstersR with
-                | Ok monsters ->
-                    if monsters.IsEmpty then
-                        options.Content <- $"No monsters found"
-                    else
-                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        let selectMenu = 
-                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name, mt, mst) ->
-                                let label = $"{name} | {mt} | {mst}"
-                                StringMenuSelectOptionProperties(label, id.ToString())),
-                                Placeholder = "Choose an option")
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match monstersR with
+            | Ok monsters ->
+                if monsters.IsEmpty then
+                    options.Content <- $"No monsters found"
+                else
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    let selectMenu = 
+                        StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name, mt, mst) ->
+                            let label = $"{name} | {mt} | {mst}"
+                            StringMenuSelectOptionProperties(label, id.ToString())),
+                            Placeholder = "Choose an option")
                         
-                        options.Components <- [
-                            ComponentContainerProperties([
-                               TextDisplayProperties("Select a monster")
-                               selectMenu
-                            ])
-                        ]
-                | Error err ->
-                    options.Content <- $"Oh, no...something went wrong: {err}"
-                )
-            ()
-        } :> Task
+                    options.Components <- [
+                        ComponentContainerProperties([
+                            TextDisplayProperties("Select a monster")
+                            selectMenu
+                        ])
+                    ]
+            | Error err ->
+                options.Content <- $"Oh, no...something went wrong: {err}")
 
     [<SubSlashCommand("monster", "shows list of created monsters and allow to select one")>]
     member x.Monster(
@@ -640,32 +618,26 @@ type CustomModule(db:SqliteStorage) =
         [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
     ): Task =
         let monstersR = db.FilterUserMonsters(x.Context.User.Id, mtype, msubtype)
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match monstersR with
-                | Ok monsters ->
-                    if monsters.IsEmpty then
-                        options.Content <- $"No monsters found with these filters"
-                    else
-                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        let selectMenu = 
-                            StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name) ->
-                                StringMenuSelectOptionProperties(name, id.ToString())),
-                                Placeholder = "Choose an option")
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match monstersR with
+            | Ok monsters ->
+                if monsters.IsEmpty then
+                    options.Content <- $"No monsters found with these filters"
+                else
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    let selectMenu = 
+                        StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name) ->
+                            StringMenuSelectOptionProperties(name, id.ToString())),
+                            Placeholder = "Choose an option")
                         
-                        options.Components <- [
-                            ComponentContainerProperties([
-                               TextDisplayProperties("Select a monster")
-                               selectMenu
-                            ])
-                        ]
-                | Error err ->
-                    options.Content <- $"Oh, no...something went wrong: {err}"
-                )
-            ()
-        } :> Task
+                    options.Components <- [
+                        ComponentContainerProperties([
+                            TextDisplayProperties("Select a monster")
+                            selectMenu
+                        ])
+                    ]
+            | Error err ->
+                options.Content <- $"Oh, no...something went wrong: {err}")
 
 [<SlashCommand("battle", "Battle command")>]
 type BattleModule(db:SqliteStorage) =
@@ -685,35 +657,29 @@ type BattleModule(db:SqliteStorage) =
                 | None -> Error("Something went wrong - unable to get round status")
             | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
         
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral)
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match champs with
-                | Ok xs ->
-                    if xs.IsEmpty then
-                        options.Content <- $"You do not have any champs left"
-                    else
-                        options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                        let selectMenu = 
-                            StringMenuProperties($"actionselect:{move}", xs |> List.map(fun c -> StringMenuSelectOptionProperties(c.Name, c.Id.ToString())),
-                                Placeholder = "Choose an option")
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match champs with
+            | Ok xs ->
+                if xs.IsEmpty then
+                    options.Content <- $"You do not have any champs left"
+                else
+                    options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    let selectMenu = 
+                        StringMenuProperties($"actionselect:{move}", xs |> List.map(fun c -> StringMenuSelectOptionProperties(c.Name, c.Id.ToString())),
+                            Placeholder = "Choose an option")
                         
-                        options.Components <- [
-                            ComponentContainerProperties([
-                               TextDisplayProperties("Content")
-                               selectMenu
-                            ])
-                        ]
-                | Error err ->
-                    options.Content <- err
-                )
-            ()
-        } :> Task
+                    options.Components <- [
+                        ComponentContainerProperties([
+                            TextDisplayProperties("Content")
+                            selectMenu
+                        ])
+                    ]
+            | Error err ->
+                options.Content <- err)
 
     [<SubSlashCommand("timetonextround", "returns approx time to next round")>]
     member x.TimeToNextRound() =
-        let res =
+        let str =
             match db.GetLastRoundId() with
             | Some roundId ->
                 match db.GetRoundStatus roundId with
@@ -723,43 +689,27 @@ type BattleModule(db:SqliteStorage) =
                         | Some roundStared ->
                             let dt = DateTime.UtcNow
                             let diff = ((roundStared + Battle.RoundDuration) - dt)
-                            if(diff.TotalMinutes > 0.0) then Ok($"approx ~{diff} to the end of the round +2-3 min to process")
-                            else Ok("round is likely processing now")
-                        | None -> Error("Something went wrong - unable to get round timestamp")
+                            if(diff.TotalMinutes > 0.0) then $"approx ~{diff} to the end of the round +2-3 min to process"
+                            else "round is likely processing now"
+                        | None -> "Something went wrong - unable to get round timestamp"
                     else
-                        Error("New round should start in no time. Few minutes if no errors max")
-                | None -> Error("Something went wrong - unable to get round status")
-            | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
+                        "New round should start in no time. Few minutes if no errors max"
+                | None -> "Something went wrong - unable to get round status"
+            | None -> "Something went wrong - unable to get round. Maybe there is no any?"
         
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral)
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                options.Content <- 
-                    match res with
-                    | Ok str -> str
-                    | Error err -> err
-                )
-            ()
-        } :> Task
+        ApplicationCommand.deferredMessage x.Context (fun options -> options.Content <- str)
 
     [<SubSlashCommand("params", "shows battle parameters")>]
     member x.BattleParams() =
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                let ep =
-                    EmbedProperties(Title = "Params:")
-                        .WithFields([
-                            EmbedFieldProperties(Name = "Rounds in battle", Value = $"{Constants.RoundsInBattle}", Inline = true)
-                            EmbedFieldProperties(Name = "Round duration", Value = $"{Battle.RoundDuration}", Inline = true)
-                            EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
-                        ])
-                options.Embeds <- [ ep ]
-            )
-            ()
-        } :> Task
+        ApplicationCommand.deferredMessage x.Context (fun options -> 
+            let ep =
+                EmbedProperties(Title = "Params:")
+                    .WithFields([
+                        EmbedFieldProperties(Name = "Rounds in battle", Value = $"{Constants.RoundsInBattle}", Inline = true)
+                        EmbedFieldProperties(Name = "Round duration", Value = $"{Battle.RoundDuration}", Inline = true)
+                        EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
+                    ])
+            options.Embeds <- [ ep ])
 
 [<SlashCommand("top", "Leaderboard command")>]
 type TopModule(db:SqliteStorage) =
@@ -768,53 +718,43 @@ type TopModule(db:SqliteStorage) =
     [<SubSlashCommand("ingamedonaters", "shows top-10 in-game donaters")>]
     member x.GetTopInGameDonaters(): Task =
         let res = db.GetTopInGameDonaters()
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match res with
-                | Ok xs ->
-                    let topDonationsCard =
-                        ComponentContainerProperties([
-                            TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
-                            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            yield!
-                                xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentContainerComponentProperties
-                                )
-                        ])
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match res with
+            | Ok xs ->
+                let topDonationsCard =
+                    ComponentContainerProperties([
+                        TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
+                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                        yield!
+                            xs |> List.mapi(fun i ar ->
+                                TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentContainerComponentProperties
+                            )
+                    ])
                             
-                    options.Flags <- MessageFlags.IsComponentsV2 ||| MessageFlags.Ephemeral
-                    options.Components <- [ topDonationsCard ]
-                    options.AllowedMentions <- AllowedMentionsProperties.None
-                | Error err -> 
-                    options.Content <- $"Oh, no...there was error: {err}")
-            ()
-        } :> Task
+                options.Flags <- MessageFlags.IsComponentsV2 ||| MessageFlags.Ephemeral
+                options.Components <- [ topDonationsCard ]
+                options.AllowedMentions <- AllowedMentionsProperties.None
+            | Error err -> 
+                options.Content <- $"Oh, no...there was error: {err}")
 
   
     [<SubSlashCommand("donaters", "shows top-10 donaters")>]
     member x.GetTopDonaters(): Task =
         let res = db.GetTopDonaters()
-        task {
-            let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
-            let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
-                match res with
-                | Ok xs ->
-                    let topDonationsCard =
-                        ComponentContainerProperties([
-                            TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
-                            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            yield!
-                                xs |> List.mapi(fun i ar ->
-                                    TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentContainerComponentProperties
-                                )
-                        ])
+        ApplicationCommand.deferredMessage x.Context (fun options ->
+            match res with
+            | Ok xs ->
+                let topDonationsCard =
+                    ComponentContainerProperties([
+                        TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
+                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                        yield!
+                            xs |> List.mapi(fun i ar ->
+                                TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentContainerComponentProperties
+                            )
+                    ])
                             
-                    options.Flags <- MessageFlags.IsComponentsV2 ||| MessageFlags.Ephemeral
-                    options.Components <- [ topDonationsCard ]
-                | Error err -> 
-                    options.Content <- $"Oh, no...there was error: {err}")
-            ()
-        } :> Task
+                options.Flags <- MessageFlags.IsComponentsV2 ||| MessageFlags.Ephemeral
+                options.Components <- [ topDonationsCard ]
+            | Error err -> 
+                options.Content <- $"Oh, no...there was error: {err}")
