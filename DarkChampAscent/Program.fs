@@ -85,7 +85,7 @@ host.AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<
 host.AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("cmrename", Func<_,_,_,_,_>(Interactions.cmrename)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("cmrename", Func<_,_,_,_>(Interactions.cmrename)) |> ignore
 host.AddComponentInteraction<ModalInteractionContext>("cmrenamemodal", Func<_,_,_,_>(Interactions.cmrenamemodal)) |> ignore
        
 

@@ -1684,16 +1684,16 @@ type SqliteStorage(cs: string)=
             Log.Error(exn, "GetAssetIdByName")
             Error("Unexpected error")
 
-    member t.GetChampNameById(id:uint64) =
+    member t.GetChampNameIPFSById(id:uint64) =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetChampNameById conn
+            Db.newCommand SQL.GetChampNameIPFSById conn
             |> Db.setParams [
                 "id", SqlType.Int64 <| int64 id
             ]
-            |> Db.querySingle (fun r -> r.GetString(0))
+            |> Db.querySingle (fun r -> r.GetString(0), r.GetString(1))
         with exn ->
-            Log.Error(exn, "GetAssetIdByName")
+            Log.Error(exn, "GetChampNameIPFSById")
             None
 
     member t.StartBattle(monsterId: int64) =
@@ -2714,6 +2714,7 @@ type SqliteStorage(cs: string)=
 
     member _.GetMonsterLeaderboard() =
         try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterLeaderBoard10 conn
             |> Db.query(fun r ->
@@ -2722,6 +2723,7 @@ type SqliteStorage(cs: string)=
                     MType = enum<MonsterType> <| r.GetInt32(1)
                     MSubType = enum<MonsterSubType> <| r.GetInt32(2)
                     Xp = r.GetInt64(3)
+                    Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, options)
                 |}
             )
             |> Ok

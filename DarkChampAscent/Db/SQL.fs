@@ -453,7 +453,7 @@ module internal SQL =
     let GetChampIdByAssetId = "SELECT ID FROM Champ WHERE AssetId = @assetId LIMIT 1;"
     let GetChampIdByName = "SELECT ID FROM Champ WHERE Name = @name LIMIT 1;"
     let GetAssetIdByName = "SELECT AssetId FROM Champ WHERE Name = @name LIMIT 1;"
-    let GetChampNameById = "SELECT Name FROM Champ WHERE ID = @id LIMIT 1;"
+    let GetChampNameIPFSById = "SELECT Name, IPFS FROM Champ WHERE ID = @id LIMIT 1;"
     let GetShopItemIdByItem = "SELECT Id FROM Shop WHERE Item = @item LIMIT 1"
     let GetEffectItemIdByItem = "SELECT Id FROM Effect WHERE Item = @item LIMIT 1"
     
@@ -891,7 +891,7 @@ module internal SQL =
     """
 
     let GetMonsterLeaderBoard10 = """
-        SELECT Name, Type, Subtype, Xp FROM Monster
+        SELECT Name, Type, Subtype, Xp, Picture FROM Monster
         ORDER BY
             Xp DESC
         LIMIT 10
