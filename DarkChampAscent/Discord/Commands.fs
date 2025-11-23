@@ -334,6 +334,17 @@ type GeneralModule(db:SqliteStorage) =
         
         ApplicationCommand.deferredMessage x.Context (fun options -> options.Content <- str)
 
+    [<SlashCommand("limits", "shows limits")>]
+    member x.Limits() =
+        ApplicationCommand.deferredMessage x.Context (fun options -> 
+            let ep =
+                EmbedProperties(Title = "Limits:")
+                    .WithFields([
+                        EmbedFieldProperties(Name = "Max amount of custom monsters with the same combination of type and subtype", Value = $"{Limits.CustomMonstersPerTypeSubtype}", Inline = true)
+                        EmbedFieldProperties(Name = "Max amount of generation requests", Value = $"{Limits.UnfinishedRequests}", Inline = true)
+                    ])
+            options.Embeds <- [ ep ])
+
 [<SlashCommand("champ", "Champ command")>]
 type ChampsModule(db:SqliteStorage) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
