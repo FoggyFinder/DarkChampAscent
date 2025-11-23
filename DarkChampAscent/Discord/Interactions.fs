@@ -340,7 +340,7 @@ let cmselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
             let name = "image.png"
             let uri = $"attachment://{name}"
             options.Components <- [ DiscordBot.Components.customMonsterComponent monster id uri ]
-            options.Attachments <- [ DiscordBot.Components.monsterAttachnment name monster ]
+            options.Attachments <- [ DiscordBot.Components.monsterAttachnment name monster.Picture ]
         | None ->
             options.Content <- $"Oh, no...something went wrong"
     )

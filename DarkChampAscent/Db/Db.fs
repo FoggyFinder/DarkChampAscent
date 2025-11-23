@@ -2714,6 +2714,7 @@ type SqliteStorage(cs: string)=
 
     member _.GetMonsterLeaderboard() =
         try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterLeaderBoard10 conn
             |> Db.query(fun r ->
@@ -2722,6 +2723,7 @@ type SqliteStorage(cs: string)=
                     MType = enum<MonsterType> <| r.GetInt32(1)
                     MSubType = enum<MonsterSubType> <| r.GetInt32(2)
                     Xp = r.GetInt64(3)
+                    Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, options)
                 |}
             )
             |> Ok

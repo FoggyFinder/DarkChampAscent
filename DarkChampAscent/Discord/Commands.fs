@@ -490,18 +490,23 @@ type MonsterModule(db:SqliteStorage) =
                     options.Content <- "No monsters found"
                 else
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
-                    options.Components <-
+                    let components, attachnments =
                         xs
-                        |> List.map(fun ar ->
-                            let imgUrl = $"https://raw.githubusercontent.com/FoggyFinder/DarkChampAscent/refs/heads/main/DarkChampAscent/Assets/{MonsterImg.DefaultName(ar.MType, ar.MSubType)}"
+                        |> List.mapi(fun i ar ->
+                            let name = $"image{i}.png"
+                            let uri = $"attachment://{name}"
                             ComponentContainerProperties([
                                 ComponentSectionProperties
                                     (ComponentSectionThumbnailProperties(
-                                        ComponentMediaProperties(imgUrl)),
+                                        ComponentMediaProperties(uri)),
                                     [
                                         TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} | {xp <| uint64 ar.Xp}")
                                     ])
-                            ]))
+                            ]) :> IMessageComponentProperties,
+                            Components.monsterAttachnment name ar.Picture)
+                        |> List.unzip
+                    options.Components <- components
+                    options.Attachments <- attachnments
             | Error err -> 
                 options.Content <- $"Oh, no...{err}")
 

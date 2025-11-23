@@ -109,10 +109,8 @@ let monsterComponent (monster:MonsterInfo) =
         ])
     ])
 
-let monsterAttachnment (name:string) (monster:MonsterInfo) =
-    let filename =
-        match monster.Picture with
-        | MonsterImg.File fn -> fn
+let monsterAttachnment (name:string) (mimg:MonsterImg) =
+    let filename = match mimg with | MonsterImg.File fn -> fn
     let bytes = System.IO.File.ReadAllBytes(filename)
     let imageStream = new System.IO.MemoryStream(bytes)
     AttachmentProperties(name, imageStream)

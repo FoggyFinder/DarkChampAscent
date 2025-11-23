@@ -651,7 +651,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                            let uri = $"attachment://{name}"
                                            let createMP() =
                                               MessageProperties()
-                                                .WithAttachments([Components.monsterAttachnment name minfo])
+                                                .WithAttachments([Components.monsterAttachnment name mi])
                                                 .WithComponents([monsterCard uri])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
                                            
