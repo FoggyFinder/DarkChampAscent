@@ -53,6 +53,7 @@ builder.Services.AddOptions<WalletConfiguration>().BindConfiguration("Configurat
 builder.Services.AddOptions<ChainConfiguration>().BindConfiguration("Configuration:Chain") |> ignore
 builder.Services.AddOptions<DbConfiguration>().BindConfiguration("Configuration:Db") |> ignore
 builder.Services.AddOptions<GenConfiguration>().BindConfiguration("Configuration:Gen") |> ignore
+builder.Services.AddOptions<BackupConfiguration>().BindConfiguration("Configuration:Backup") |> ignore
 
 let host = builder.Build()
 
