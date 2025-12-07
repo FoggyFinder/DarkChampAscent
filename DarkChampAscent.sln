@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36121.58
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscent", "DarkChampAscent\DarkChampAscent.fsproj", "{3113BF1C-A22D-479F-A916-A33538C6DD3A}"
 EndProject
@@ -15,6 +15,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		LICENSE = LICENSE
 		README.md = README.md
 	EndProjectSection
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "2DataLayer", "2DataLayer\2DataLayer.fsproj", "{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "3Discord", "3Discord\3Discord.fsproj", "{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -34,6 +38,14 @@ Global
 		{B51BBDCB-6D1C-4B45-AE5F-FA482F89277F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B51BBDCB-6D1C-4B45-AE5F-FA482F89277F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B51BBDCB-6D1C-4B45-AE5F-FA482F89277F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

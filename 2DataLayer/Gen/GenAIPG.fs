@@ -5,7 +5,6 @@ open System.Text.Json
 open System.Net.Http
 open System.Text
 open System
-open System.IO
 open Microsoft.Extensions.Options
 open Conf
 

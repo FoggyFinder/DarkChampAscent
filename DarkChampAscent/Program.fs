@@ -5,7 +5,7 @@ Log.Logger <-
     (new LoggerConfiguration())
           .Enrich.FromLogContext()
           .WriteTo.Console()
-          .WriteTo.File("log.txt", rollingInterval=RollingInterval.Day)
+          .WriteTo.File("log.txt", rollingInterval=RollingInterval.Month)
           .CreateLogger()
 
 open GameLogic.Monsters
@@ -22,13 +22,10 @@ open DiscordBot.Commands
 open Conf
 open NetCord
 
-let cs = "Data Source=darkchampascentdb.sqlite; Cache=Shared;Foreign Keys = True"
-let db = new Db.SqliteStorage(cs)
-
 let builder = Host.CreateApplicationBuilder()
 
 builder.Services
-    .AddSingleton<SqliteStorage>(fun _ -> db)
+    .AddSingleton<SqliteStorage>()
     .AddHostedService<ConfirmationService>()
     .AddHostedService<UpdatePriceService>()
     .AddHostedService<DepositService>()
@@ -87,10 +84,6 @@ host.AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(I
 host.AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("cmrename", Func<_,_,_,_>(Interactions.cmrename)) |> ignore
 host.AddComponentInteraction<ModalInteractionContext>("cmrenamemodal", Func<_,_,_,_>(Interactions.cmrenamemodal)) |> ignore
-       
-
-Monster.DefaultsMonsters
-|> List.iter(db.CreateNewMonster >> ignore)
 
 host.Run()
 

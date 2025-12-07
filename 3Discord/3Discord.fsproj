@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<RootNamespace>_3Discord</RootNamespace>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="Utils.fs" />
+		<Compile Include="Display.fs" />
+		<Compile Include="Components.fs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\0GameLogic\0GameLogic.fsproj" />
+	</ItemGroup>
+	
+	<ItemGroup>
+		<PackageReference Include="NetCord" Version="1.0.0-alpha.448" />
+		<PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
+	</ItemGroup>
+</Project>

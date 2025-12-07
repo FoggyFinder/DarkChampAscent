@@ -2,20 +2,13 @@
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
-		<TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Algorand4" Version="4.1.2.2025080702" />
-		<PackageReference Include="Donald" Version="10.1.0" />
-		<PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
-		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
-		<PackageReference Include="IpfsShipyard.Ipfs.Core" Version="0.7.0" />
-		<PackageReference Include="NetCord" Version="1.0.0-alpha.448" />
 		<PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.448" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.7" />
 		<PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.448" />
-		<PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="FSharp.Control.TaskSeq" Version="0.4.0" />
@@ -28,26 +21,17 @@
 		<None Include="appsettings.json">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<Compile Include="Utils.fs" />
-		<Compile Include="External.fs" />
-		<Compile Include="Blockchain\Blockchain.fs" />
-		<Compile Include="Configuration.fs" />
-		<Compile Include="Gen\Gen.fs" />
-		<Compile Include="Gen\GenAIPG.fs" />
-		<Compile Include="Db\SQL.fs" />
-		<Compile Include="Db\Db.fs" />
-		<Compile Include="Display.fs" />
-		<Compile Include="Discord\Utils.fs" />
-		<Compile Include="Discord\Components.fs" />
-		<Compile Include="Discord\Interactions.fs" />
-		<Compile Include="Discord\Services.fs" />
-		<Compile Include="Discord\Commands.fs" />
-		<Compile Include="Discord\GatewayHandlers.fs" />
+		<Compile Include="Interactions.fs" />
+		<Compile Include="Services.fs" />
+		<Compile Include="Commands.fs" />
+		<Compile Include="GatewayHandlers.fs" />
 		<Compile Include="Program.fs" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\0GameLogic\0GameLogic.fsproj" />
+	  <ProjectReference Include="..\2DataLayer\2DataLayer.fsproj" />
+	  <ProjectReference Include="..\3Discord\3Discord.fsproj" />
 	</ItemGroup>
 
 </Project>

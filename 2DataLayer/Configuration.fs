@@ -13,6 +13,7 @@ type ChainConfiguration() =
 
 type DbConfiguration() =
     member val BackupFolder: string = "" with get, set
+    member val ConnectionString: string = "" with get, set
 
 type GenConfiguration() = 
     member val AIPG: string = "" with get, set
