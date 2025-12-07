@@ -12,7 +12,11 @@ type ChainConfiguration() =
     member val GameWalletKeys: string = "" with get, set
 
 type DbConfiguration() =
-    member val BackupFolder: string = "" with get, set
+    member val ConnectionString: string = "" with get, set
+
+type BackupConfiguration() =
+    member val DBFolder: string = "" with get, set
+    member val PeriodHrs: uint = 24u with get, set
 
 type GenConfiguration() = 
     member val AIPG: string = "" with get, set
@@ -23,3 +27,4 @@ type Configuration() =
     member val Chain: ChainConfiguration = ChainConfiguration() with get, set
     member val Db: DbConfiguration = DbConfiguration() with get, set
     member val Gen: GenConfiguration = GenConfiguration() with get, set
+    member val Backup: BackupConfiguration = BackupConfiguration() with get, set

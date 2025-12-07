@@ -78,8 +78,10 @@ open GameLogic.Battle
 open Serilog
 open System.Text.Json
 open System.Text.Json.Serialization
+open Microsoft.Extensions.Options
+open Conf
 
-type SqliteStorage(cs: string)=
+type SqliteStorage(options:IOptions<DbConfiguration>)=
     let updateShop (conn:SqliteConnection) =
         try
             let items = System.Enum.GetValues<ShopItem>() |> Array.map int |> Set.ofArray
@@ -338,6 +340,42 @@ type SqliteStorage(cs: string)=
         with exn ->
             Log.Error(exn, $"addStakingColumn")
             false
+    
+    let createNewMonster(cs:string, monster:MonsterRecord) =
+        try
+            use conn = new SqliteConnection(cs)
+            let monsterExists =
+                Db.newCommand SQL.MonsterExistsByName conn
+                |> Db.setParams [ "name", SqlType.String monster.Name ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+            if monsterExists |> not then
+                let img = MonsterImg.DefaultFile monster.Monster
+                let options = JsonFSharpOptions().ToJsonSerializerOptions()
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(img, options)
+                Db.newCommand SQL.CreateMonster conn
+                |> Db.setParams [
+                    "name", SqlType.String monster.Name
+                    "description", SqlType.String monster.Description
+                    "img", SqlType.Bytes bytes
+                    "health", SqlType.Int64 <| int64 monster.Stats.Health
+                    "magic", SqlType.Int64 <| int64 monster.Stats.Magic
+                            
+                    "accuracy", SqlType.Int64 <| int64 monster.Stats.Accuracy
+                    "luck", SqlType.Int64 <| int64 monster.Stats.Luck
+                    "attack", SqlType.Int64 <| int64 monster.Stats.Attack
+                    "mattack", SqlType.Int64 <| int64 monster.Stats.MagicAttack
+                    "defense", SqlType.Int64 <| int64 monster.Stats.Defense
+                    "mdefense", SqlType.Int64 <| int64 monster.Stats.MagicDefense
+                    "type", SqlType.Int <| int monster.Monster.MType
+                    "subtype", SqlType.Int <| int monster.Monster.MSubType
+                ]
+                |> Db.exec
+            true
+        with exn ->
+            Log.Error(exn, $"CreateNewMonster: {monster}")
+            false
+
+    let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
 
     let _conn = new SqliteConnection(cs)
@@ -349,9 +387,11 @@ type SqliteStorage(cs: string)=
     do setLockedKey(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
     do addStakingColumn(_conn)|> ignore
-
     do _conn.Dispose()
+
     do Log.Information("Db init is finished")
+
+    do Monster.DefaultsMonsters |> List.iter(fun mr -> createNewMonster(cs, mr) |> ignore)
 
     let userExists(discordId: uint64) =
         try 
@@ -725,38 +765,7 @@ type SqliteStorage(cs: string)=
             false    
     
     member _.CreateNewMonster(monster:MonsterRecord) =
-        try
-            use conn = new SqliteConnection(cs)
-            let monsterExists =
-                Db.newCommand SQL.MonsterExistsByName conn
-                |> Db.setParams [ "name", SqlType.String monster.Name ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
-            if monsterExists |> not then
-                let img = MonsterImg.DefaultFile monster.Monster
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                let bytes = JsonSerializer.SerializeToUtf8Bytes(img, options)
-                Db.newCommand SQL.CreateMonster conn
-                |> Db.setParams [
-                    "name", SqlType.String monster.Name
-                    "description", SqlType.String monster.Description
-                    "img", SqlType.Bytes bytes
-                    "health", SqlType.Int64 <| int64 monster.Stats.Health
-                    "magic", SqlType.Int64 <| int64 monster.Stats.Magic
-                            
-                    "accuracy", SqlType.Int64 <| int64 monster.Stats.Accuracy
-                    "luck", SqlType.Int64 <| int64 monster.Stats.Luck
-                    "attack", SqlType.Int64 <| int64 monster.Stats.Attack
-                    "mattack", SqlType.Int64 <| int64 monster.Stats.MagicAttack
-                    "defense", SqlType.Int64 <| int64 monster.Stats.Defense
-                    "mdefense", SqlType.Int64 <| int64 monster.Stats.MagicDefense
-                    "type", SqlType.Int <| int monster.Monster.MType
-                    "subtype", SqlType.Int <| int monster.Monster.MSubType
-                ]
-                |> Db.exec
-            true
-        with exn ->
-            Log.Error(exn, $"CreateNewMonster: {monster}")
-            false
+        createNewMonster(cs, monster)
 
     member _.ProcessDeposit(wallet:string, tx:string, amount:decimal) =
         try

@@ -1,7 +1,6 @@
 ﻿module Utils
 
 open System.Data
-open System.Text.RegularExpressions
 
 let ofList (xs:Result<_,_> list) =
     if xs |> List.exists(fun r -> r.IsError) then
@@ -17,7 +16,3 @@ let getBytesData (reader : IDataReader) (i:int) =
     let buffer : byte array = Array.zeroCreate (int32 len)
     reader.GetBytes(i, int64 0, buffer, 0, int32 len) |> ignore
     buffer
-
-let splitCamel (s:string) =
-    let pattern = @"(?<!^)([A-Z])"
-    Regex.Replace(s, pattern, " $1")

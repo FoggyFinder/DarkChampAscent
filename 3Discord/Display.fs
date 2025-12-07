@@ -175,24 +175,30 @@ let fullMonsterName(name:string, mt:MonsterType, mst:MonsterSubType) =
     let subType = match mst with | MonsterSubType.None -> "" | _ -> $"({mst})"
     $"**{name}** - {mt} {subType}"
 
+open System.Text.RegularExpressions
+
+let splitCamel (s:string) =
+    let pattern = @"(?<!^)([A-Z])"
+    Regex.Replace(s, pattern, " $1")
+
 let getTraitInfo(t:Trait, traits:Traits) =
     let chs = TraitCharacteristic.impact.[t]
     let name, icon, stat, v =
         match t with
         | Trait.Background ->
-            nameof traits.Background, Emoj.Background, Champ.fromBackground traits.Background, string traits.Background |> Utils.splitCamel
+            nameof traits.Background, Emoj.Background, Champ.fromBackground traits.Background, string traits.Background |> splitCamel
         | Trait.Skin ->
-            nameof traits.Skin, Emoj.Skin, Champ.fromSkin traits.Skin, string traits.Skin |> Utils.splitCamel
+            nameof traits.Skin, Emoj.Skin, Champ.fromSkin traits.Skin, string traits.Skin |> splitCamel
         | Trait.Weapon ->
-            nameof traits.Weapon, Emoj.Weapon, Champ.fromWeapon traits.Weapon, string traits.Weapon |> Utils.splitCamel
+            nameof traits.Weapon, Emoj.Weapon, Champ.fromWeapon traits.Weapon, string traits.Weapon |> splitCamel
         | Trait.Magic ->
-            nameof traits.Magic, Emoj.Magic, Champ.fromMagic traits.Magic, string traits.Magic |> Utils.splitCamel
+            nameof traits.Magic, Emoj.Magic, Champ.fromMagic traits.Magic, string traits.Magic |> splitCamel
         | Trait.Head ->
-            nameof traits.Head, Emoj.Head, Champ.fromHead traits.Head, string traits.Head |> Utils.splitCamel
+            nameof traits.Head, Emoj.Head, Champ.fromHead traits.Head, string traits.Head |> splitCamel
         | Trait.Armour ->
-            nameof traits.Armour, Emoj.Armour, Champ.fromArmour traits.Armour, string traits.Armour |> Utils.splitCamel
+            nameof traits.Armour, Emoj.Armour, Champ.fromArmour traits.Armour, string traits.Armour |> splitCamel
         | Trait.Extra ->
-            nameof traits.Extra, Emoj.Extra, Champ.fromExtra traits.Extra, string traits.Extra |> Utils.splitCamel
+            nameof traits.Extra, Emoj.Extra, Champ.fromExtra traits.Extra, string traits.Extra |> splitCamel
 
     let str =
         chs |> List.map(fun ch ->

@@ -18,7 +18,7 @@ open System.IO
 open GameLogic.Battle
 open DiscordBot.Components
 
-type BackupService(db:SqliteStorage, options: IOptions<Conf.DbConfiguration>) =
+type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguration>) =
     inherit BackgroundService()
 
     override this.ExecuteAsync(cancellationToken) =
@@ -31,12 +31,12 @@ type BackupService(db:SqliteStorage, options: IOptions<Conf.DbConfiguration>) =
                         match db.GetDateTimeKey(Db.DbKeys.LastTimeBackupPerformed) with
                         | Some dt ->
                             let th = (now - dt).TotalHours
-                            // ToDo: move to conf
-                            th >= 24.
+                            let cv = float backupOpt.Value.PeriodHrs
+                            th >= cv
                         | None -> true
                     if backupIsRequired then
                         let datasource =
-                            let dir = options.Value.BackupFolder
+                            let dir = backupOpt.Value.DBFolder
                             if Directory.Exists(dir) |> not then
                                 Directory.CreateDirectory(dir) |> ignore
                             let dbname = now.ToString("yyyyMMddhhmm") + ".sqlite"

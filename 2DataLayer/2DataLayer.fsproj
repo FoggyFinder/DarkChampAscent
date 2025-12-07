@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<RootNamespace>DataLayer</RootNamespace>
+		<GenerateDocumentationFile>false</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="Configuration.fs" />
+		<Compile Include="Utils.fs" />
+		<Compile Include="External.fs" />
+		<Compile Include="Blockchain\Blockchain.fs" />
+		<Compile Include="Gen\Gen.fs" />
+		<Compile Include="Gen\GenAIPG.fs" />
+		<Compile Include="Db\SQL.fs" />
+		<Compile Include="Db\Db.fs" />
+	</ItemGroup>
+	
+	<ItemGroup>
+		<PackageReference Include="Algorand4" Version="4.1.2.2025080702" />
+		<PackageReference Include="Donald" Version="10.1.0" />
+		<PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+		<PackageReference Include="IpfsShipyard.Ipfs.Core" Version="0.7.0" />
+		<PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
+	</ItemGroup>
+	
+	<ItemGroup>
+	  <ProjectReference Include="..\0GameLogic\0GameLogic.fsproj" />
+	</ItemGroup>
+</Project>
