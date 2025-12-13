@@ -208,6 +208,12 @@ open Algorand.Algod.Model
 open Algorand.Utils
 open Algorand.Algod.Model.Transactions
 
+[<RequireQualifiedAccess>]
+type TxStatus =
+    | Confirmed of tx:string * confirmed:Nullable<uint64>
+    | Unconfirmed of tx:string
+    | Error of exn
+
 let sendTx(keys:string, receiver:string, amount:uint64, assetId:uint64, note:string) =
     task {
         try
@@ -227,11 +233,19 @@ let sendTx(keys:string, receiver:string, amount:uint64, assetId:uint64, note:str
                     Note = System.Text.Encoding.UTF8.GetBytes(note))
             let signedTx = assetTransferTx.Sign(src)
             let! id = Utils.SubmitTransaction(algodApiInstance, signedTx)
-            let! resp = Utils.WaitTransactionToComplete(algodApiInstance, id.Txid)
-                
-            return Ok(id.Txid, resp.ConfirmedRound)
+            // default timeout is 3 rounds and it's not enough
+            // https://github.com/FoggyFinder/DarkChampAscent/issues/8
+            try
+                let! resp = Utils.WaitTransactionToComplete(algodApiInstance, id.Txid, 12UL)
+                return TxStatus.Confirmed(id.Txid, resp.ConfirmedRound)
+            with inner ->
+                if inner.Message.StartsWith("Transaction not confirmed") then
+                    return TxStatus.Unconfirmed id.Txid
+                else
+                    return TxStatus.Error <| Exception($"Unable to confirm {id.Txid}", inner)
+            
         with exn ->
-            return Error(exn)
+            return TxStatus.Error(exn)
     }
 
 let isValidAddress = Address.IsValid

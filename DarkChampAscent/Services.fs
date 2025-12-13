@@ -298,10 +298,13 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         Blockchain.DarkCoinAssetId,
                         $"DarkChampAscent: {battleId} battle"
                     ) |> Async.AwaitTask
-                do! Async.Sleep(TimeSpan.FromSeconds(5L))
+                do! Async.Sleep(TimeSpan.FromSeconds(10L))
                 match r with
-                | Ok (tx, _) -> return Some(tx)
-                | Error exn ->
+                | TxStatus.Confirmed(tx, _) ->
+                    return Some(tx, true)
+                | TxStatus.Unconfirmed tx ->
+                    return Some(tx, false)
+                | TxStatus.Error exn ->
                     Log.Error(exn, $"unable to send to {wallet}")
                     return None
             } |> Async.RunSynchronously
