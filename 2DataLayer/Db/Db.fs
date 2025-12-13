@@ -2849,7 +2849,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "FinalizeBattle")
             false
 
-    member _.SendToWallet(champId:uint64, balance: decimal, battleId:uint64, send:(decimal -> string option)) =
+    member _.SendToWallet(champId:uint64, balance: decimal, battleId:uint64, send:(decimal -> (string * bool) option)) =
         try 
             use conn = new SqliteConnection(cs)
             Db.batch(fun tn ->
@@ -2860,12 +2860,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.exec
                 let r = send balance
                 match r with
-                | Some tx ->
+                // ToDo: fix unconfirmed case
+                | Some (tx, b) ->
                     Db.newCommandForTransaction SQL.InsertRewardsPayed tn
                     |> Db.setParams [
                         "champId", SqlType.Int64 <| int64 champId
                         "battleId", SqlType.Int64 <| int64 battleId
-                        "tx", SqlType.String <| string tx
+                        "tx", SqlType.String <| tx
                         "rewards", SqlType.Decimal balance
                     ]
                     |> Db.exec
@@ -2874,7 +2875,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     |> Db.setParams [
                         "champId", SqlType.Int64 <| int64 champId
                         "battleId", SqlType.Int64 <| int64 battleId
-                        "tx", SqlType.String <| string tx
+                        "tx", SqlType.String <| tx
                         "rewards", SqlType.Decimal balance
                     ]
                     |> Db.exec
@@ -2888,7 +2889,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "SendToWallet")
             None
 
-    member _.SendToSpecialWallet(wt:WalletType, battleId:uint64, send:(decimal -> string option)) =
+    member _.SendToSpecialWallet(wt:WalletType, battleId:uint64, send:(decimal -> (string * bool) option)) =
         try 
             let numKey =
                 match wt with
@@ -2909,7 +2910,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     |> Db.exec
                     let r = send v
                     match r with
-                    | Some tx ->
+                    // ToDo: fix unconfirmed case
+                    | Some (tx, _) ->
                         Db.newCommandForTransaction SQL.InsertSpecialWithdrawal tn
                         |> Db.setParams [
                             "walletType", SqlType.Int32 <| int wt
