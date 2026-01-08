@@ -399,7 +399,7 @@ module Battle =
                             |> List.pick(fun rm ->
                                 if rm.ChampId = ra.ChampId then rm.Stat |> Some
                                 else None)
-                        { stat with
+                        { baseStat with
                             Defense = min baseStat.Defense champOriginalStat.Defense
                             MagicDefense = min baseStat.MagicDefense champOriginalStat.MagicDefense
                         }
@@ -419,10 +419,10 @@ module Battle =
                 Rewards = rewards
             
                 ChampsMoveAndXp = champsMoveAndXp
-                ChampsFinalStat = champsFinalStat |> List.map(fun (x,y,z) -> x, y) |> Map.ofList
-                DeadChamps = champsFinalStat |> List.choose(fun (x, y, z) -> if z then None else Some x)
+                ChampsFinalStat = champsFinalStat |> List.map(fun (x,y,_) -> x, y) |> Map.ofList
+                DeadChamps = champsFinalStat |> List.choose(fun (x,_, z) -> if z then None else Some x)
                 MonsterDefeater = monsterDefeater
 
                 MonsterPM = monsterPM
-                MonsterActions = monsterActions' |> Map.map(fun k (_, pm, xp) -> pm, xp)
+                MonsterActions = monsterActions' |> Map.map(fun _ (_, pm, xp) -> pm, xp)
             })
