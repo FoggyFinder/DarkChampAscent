@@ -223,10 +223,10 @@ type UserModule(db:SqliteStorage) =
                     moptions.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     moptions.Components <-
                         xs
-                        |> List.sortBy(fun ar -> ar.EndsAt)
-                        |> List.map(fun ar ->
+                        |> List.sortBy(fun cue -> cue.EndsAt)
+                        |> List.map(fun cue ->
                             ComponentContainerProperties([
-                                TextDisplayProperties($"**{ar.Name}** : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                                TextDisplayProperties($"**{cue.Name}** : {cue.Effect} ({Emoj.Rounds} {cue.RoundsLeft} rounds)")
                             ]))
             | Error err ->
                 moptions.Content <- $"Oh, no...there was error: {err}")
@@ -251,29 +251,6 @@ type UserModule(db:SqliteStorage) =
             Log.Information($"{x.Context.User} uses rescan command")
         with exn ->
             Log.Error(exn, $"rescan command")
-        // ToDo: improve, return results to a user
-        let updateChamps(wallets:string list) =
-            match db.FindUserIdByDiscordId x.Context.User.Id with
-            | Some userId ->
-                wallets
-                |> Seq.collect Blockchain.getChampsForWallet
-                |> Seq.iter(fun assetId ->
-                    let r = db.ChampExists assetId
-                    match r with
-                    | Ok b ->
-                        if b |> not then
-                            Blockchain.tryGetChampInfo assetId
-                            |> Option.iter(fun (trait', ipfs) ->
-                                db.AddOrInsertChamp ({
-                                    Name = Blockchain.getAssetName assetId
-                                    AssetId = assetId
-                                    IPFS = ipfs
-                                    UserId = uint64 userId
-                                    Stats = Champ.generateStats trait'
-                                    Traits = trait'
-                                }) |> ignore)
-                    | Error _ -> ())
-            | None -> ()
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
             let! _ = x.Context.Interaction.SendResponseAsync(callback)
@@ -286,7 +263,8 @@ type UserModule(db:SqliteStorage) =
                     else
                         options.Content <- "Updating...")
                 if xs'.IsEmpty |> not then
-                    updateChamps xs'
+                    // ToDo: improve, return results to a user
+                    CommonHelpers.updateChamps(db, x.Context.User.Id, xs')
                     let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
                         options.Content <- "Done")
                     ()
@@ -486,7 +464,7 @@ type MonsterModule(db:SqliteStorage) =
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     let components, attachnments =
                         xs
-                        |> List.mapi(fun i ar ->
+                        |> List.mapi(fun i msi ->
                             let name = $"image{i}.png"
                             let uri = $"attachment://{name}"
                             ComponentContainerProperties([
@@ -494,10 +472,10 @@ type MonsterModule(db:SqliteStorage) =
                                     (ComponentSectionThumbnailProperties(
                                         ComponentMediaProperties(uri)),
                                     [
-                                        TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} | {xp <| uint64 ar.Xp}")
+                                        TextDisplayProperties($"{Display.fullMonsterName(msi.Name, msi.MType, msi.MSubType)} | {xp <| uint64 msi.XP}")
                                     ])
                             ]) :> IMessageComponentProperties,
-                            MonstersComponent.monsterAttachnment name ar.Picture)
+                            MonstersComponent.monsterAttachnment name msi.Pic)
                         |> List.unzip
                     options.Components <- components
                     options.Attachments <- attachnments
@@ -519,10 +497,10 @@ type MonsterModule(db:SqliteStorage) =
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     options.Components <-
                         xs
-                        |> List.sortBy(fun ar -> ar.EndsAt)
-                        |> List.map(fun ar ->
+                        |> List.sortBy(fun mue -> mue.EndsAt)
+                        |> List.map(fun mue ->
                             ComponentContainerProperties([
-                                TextDisplayProperties($"{Display.fullMonsterName(ar.Name, ar.MType, ar.MSubType)} : {ar.Item} ({Emoj.Rounds} {ar.RoundsLeft} rounds)")
+                                TextDisplayProperties($"{Display.fullMonsterName(mue.Name, mue.MType, mue.MSubType)} : {mue.Effect} ({Emoj.Rounds} {mue.RoundsLeft} rounds)")
                             ]))
             | Error err ->
                 options.Content <- $"Oh, no...there was error: {err}")
@@ -608,9 +586,9 @@ type CustomModule(db:SqliteStorage) =
                 else
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     let selectMenu = 
-                        StringMenuProperties($"cmselect", monsters |> List.map(fun (id, name, mt, mst) ->
-                            let label = $"{name} | {mt} | {mst}"
-                            StringMenuSelectOptionProperties(label, id.ToString())),
+                        StringMenuProperties($"cmselect", monsters |> List.map(fun msi ->
+                            let label = $"{msi.Name} | {msi.MType} | {msi.MSubType}"
+                            StringMenuSelectOptionProperties(label, msi.ID.ToString())),
                             Placeholder = "Choose an option")
                         
                     options.Components <- [

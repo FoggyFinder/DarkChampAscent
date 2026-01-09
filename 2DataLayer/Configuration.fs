@@ -28,3 +28,14 @@ type Configuration() =
     member val Db: DbConfiguration = DbConfiguration() with get, set
     member val Gen: GenConfiguration = GenConfiguration() with get, set
     member val Backup: BackupConfiguration = BackupConfiguration() with get, set
+
+module WebUiConf =
+    
+    type DiscordConfiguration() =
+        member val ClientId = "" with get, set
+        member val ClientSecret = "" with get, set
+        member val CallBack = "" with get, set
+
+    type Configuration() =
+        member val Db: DbConfiguration = DbConfiguration() with get, set
+        member val Discord: DiscordConfiguration = DiscordConfiguration() with get, set

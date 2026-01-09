@@ -20,7 +20,7 @@ module Utils =
     open NetCord
     open System.Threading.Tasks
 
-    let sendMsgToChannel(channel:string) (client:GatewayClient)(mp:MessageProperties)(pin:bool) = task {
+    let sendMsgToChannel(channel:string)(client:GatewayClient)(mp:MessageProperties)(pin:bool) = task {
         for guild in client.Cache.Guilds do
             match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = channel) with
             | Some channel ->

@@ -24,7 +24,7 @@ Dark Champ Ascent - discord game made by and for [Dark Coin](https://dark-coin.i
 ### Requirements
 
 * Algorand wallet.
-* At least 1 NFT from [Dark Coin Champions](https://www.asalytic.app/collection/dark-coin-champions) collection.
+* At least 1 NFT from [Dark Coin Champions](https://www.minthol.art/3%3A0_9846/assets/all?listingTypes=BUY&listingTypes=BID) collection.
 
 **Early stage of development. All numbers are subject to change.**
 

@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DarkChampAscentWeb": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:53656;https://localhost:53655"
+    }
+  }
+}

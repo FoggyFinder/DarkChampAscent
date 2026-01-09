@@ -5,6 +5,7 @@ open GameLogic.Champs
 open GameLogic.Monsters
 open Db.Sqlite
 open Gen
+open Types
 
 type DbKeys =
     | LastTrackedChampCfg = 0
@@ -69,10 +70,30 @@ type ProcessDepositStatus =
     | Donation = 1
     | Error = 2
 
+open GameLogic.Effects
+
+type ChampUnderEffect(id:int64, name:string, endsAt: int64, effect:Effect, roundsLeft:int64, ipfs:string) =
+    member _.ID = id
+    member _.Name = name
+    member _.EndsAt = endsAt
+    member _.Effect = effect
+    member _.RoundsLeft = roundsLeft
+    member _.IPFS = ipfs
+
+type MonsterUnderEffect(id:int64, name:string, mtype:MonsterType, msubtype:MonsterSubType, endsAt: int64, effect:Effect, roundsLeft:int64, mpic:MonsterImg) =
+    member _.ID = id
+    member _.Name = name
+    member _.MType = mtype
+    member _.MSubType = msubtype
+    member _.EndsAt = endsAt
+    member _.Effect = effect
+    member _.RoundsLeft = roundsLeft
+    member _.Pic = mpic
+
 open Microsoft.Data.Sqlite
 open Donald
 open System
-open GameLogic.Effects
+
 open GameLogic.Shop
 open GameLogic.Battle
 open Serilog
@@ -1071,6 +1092,36 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetChampsCount")
             None
 
+    member _.GetUserChampsCount(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserChampsCount conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 <| int64 userId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            with exn ->
+                Log.Error(exn, $"GetUserChampsCount: {discordId}")
+                None
+        | None -> None
+
+    member _.GetUserMonstersCount(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserMonstersCount conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 <| int64 userId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            with exn ->
+                Log.Error(exn, $"GetUserMonstersCount: {discordId}")
+                None
+        | None -> None  
+
     member _.UpdateCfgForChamp(champAssetId:uint64, ipfs:string, t:Traits) =
         try
             use conn = new SqliteConnection(cs)
@@ -1153,6 +1204,24 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 None
         | None -> None        
 
+    member _.GetUserChampsInfo(discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserChampsInfo conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                ]
+                |> Db.query (fun r ->
+                    ChampShortInfo(uint64 <| r.GetInt64(0), r.GetString(1), r.GetString(2),
+                        uint64 <| r.GetInt64(3)), r.GetDecimal(4))
+                |> Some
+            with exn ->
+                Log.Error(exn, $"GetUserChampsInfo {discordId}")
+                None
+        | None -> None  
+
     member _.GetActiveUserChamps(discordId: uint64, roundId: uint64) =
         match getUserIdByDiscordId discordId with
         | Some userId ->
@@ -1187,13 +1256,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 ]
                 |> Db.query (fun r ->
                    let endsAt = (r.GetInt64(2)) + int64 (r.GetInt32(3))
-                   {|
-                        Id = r.GetInt64(0)
-                        Name = r.GetString(1)
-                        EndsAt = endsAt
-                        Item = r.GetInt32(4) |> enum<Effect>
-                        RoundsLeft = endsAt - int64 roundId
-                   |}
+                   ChampUnderEffect(r.GetInt64(0), r.GetString(1), endsAt, r.GetInt32(4) |> enum<Effect>, endsAt - int64 roundId, r.GetString(5))
                 )
                 |> Ok
             with exn ->
@@ -1203,21 +1266,18 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
     member _.GetMonstersUnderEffect(roundId: uint64) =
         try
+            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonstersUnderEffect  conn
             |> Db.setParams [
                 "roundId", SqlType.Int64 <| int64 roundId
             ]
             |> Db.query (fun r ->
-                let endsAt = (r.GetInt64(3)) + int64 (r.GetInt32(4))
-                {|
-                    Name = r.GetString(0)
-                    MType = enum<MonsterType> <| r.GetInt32(1)
-                    MSubType = enum<MonsterSubType> <| r.GetInt32(2)
-                    EndsAt = endsAt
-                    Item = r.GetInt32(5) |> enum<Effect>
-                    RoundsLeft = endsAt - int64 roundId
-                |}
+                let endsAt = (r.GetInt64(4)) + int64 (r.GetInt32(5))
+                MonsterUnderEffect(r.GetInt64(0), r.GetString(1),
+                    enum<MonsterType> <| r.GetInt32(2), enum<MonsterSubType> <| r.GetInt32(3),
+                    endsAt, r.GetInt32(6) |> enum<Effect>, endsAt - int64 roundId,
+                    System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 7, options))
             )
             |> Ok
         with exn ->
@@ -1364,6 +1424,95 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetChampInfo {assetId}")
             None
 
+    member _.GetChampInfoById(champId: int64): ChampInfo option =
+        try
+            use conn = new SqliteConnection(cs)
+            let lvledChars =
+                Db.newCommand SQL.GetLvledCharsForChamp conn
+                |> Db.setParams [
+                    "champId", SqlType.Int64 champId
+                ]
+                |> Db.scalar (fun v -> unbox<int64> v)
+            let baseChampInfoOpt =
+                Db.newCommand SQL.GetChampInfoByID conn
+                |> Db.setParams [
+                    "champId", SqlType.Int64 champId
+                ]
+                |> Db.querySingle (fun r ->
+                {
+                    ID = uint64 <| r.GetInt64(0)
+                    Name = r.GetString(1)
+                    Ipfs = r.GetString(2)
+                    Balance = Math.Round(r.GetDecimal(3), 6)
+                    XP = r.GetInt64(4) |> uint64
+
+                    Stat = {
+                        Health = r.GetInt64(5)
+                        Magic = r.GetInt64(6)
+
+                        Accuracy = r.GetInt64(7)
+                        Luck = r.GetInt64(8)
+
+                        Attack = r.GetInt64(9)
+                        MagicAttack = r.GetInt64(10)
+
+                        Defense = r.GetInt64(11)
+                        MagicDefense = r.GetInt64(12)
+                    }
+
+                    Traits = {
+                        Background = r.GetInt32(13) |> enum<Background>
+                        Skin = r.GetInt32(14) |> enum<Skin>
+                        Weapon = r.GetInt32(15) |> enum<Weapon>
+                        Magic = r.GetInt32(16) |> enum<Magic>
+                        Head = r.GetInt32(17) |> enum<Head>
+                        Armour = r.GetInt32(18) |> enum<Armour>
+                        Extra = r.GetInt32(19) |> enum<Extra>
+                    }
+
+                    BoostStat = None
+                    LevelsStat = None
+                    LeveledChars = uint64 lvledChars
+                })
+            
+            match baseChampInfoOpt with
+            | Some baseChampInfo ->
+                Db.newCommand SQL.GetLastRound conn
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+                |> Option.map(fun roundId ->
+                    let boosts =
+                        Db.newCommand SQL.GetBoostsForChampAtRound conn
+                        |> Db.setParams [
+                            "champId", SqlType.Int64 champId
+                            "roundId", SqlType.Int64 <| int64 roundId
+                        ]
+                        |> Db.query(fun r -> {
+                            StartRoundId = r.GetInt64(0)
+                            Boost = enum<ShopItem> <| r.GetInt32(1)
+                            Duration = r.GetInt32(2)
+                            })
+                        |> List.fold(fun stat boost ->
+                            Battle.processShopItem stat boost (int64 roundId)) Stat.Zero
+
+                    let lvls = 
+                        Db.newCommand SQL.GetLvlsForChamp conn
+                        |> Db.setParams [
+                            "champId", SqlType.Int64 champId
+                        ]
+                        |> Db.query(fun r -> enum<Characteristic> <| r.GetInt32(0))
+                        |> List.countBy(id)
+                        |> dict
+                        |> Levels.statFromCharacteristics
+                
+                    {
+                        baseChampInfo with
+                            BoostStat = Some boosts
+                            LevelsStat = Some lvls
+                    })
+            | None -> None
+        with exn ->
+            Log.Error(exn, $"GetChampInfoById {champId}")
+            None
     member _.GetBalances() =
         try
             use conn = new SqliteConnection(cs)
@@ -2714,6 +2863,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     AssetId = r.GetInt64(1)
                     IPFS = r.GetString(2)
                     Xp = r.GetInt64(3)
+                    Id = r.GetInt64(4)
                 |}
             )
             |> Ok
@@ -2727,14 +2877,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterLeaderBoard10 conn
             |> Db.query(fun r ->
-                {|
-                    Name = r.GetString(0)
-                    MType = enum<MonsterType> <| r.GetInt32(1)
-                    MSubType = enum<MonsterSubType> <| r.GetInt32(2)
-                    Xp = r.GetInt64(3)
-                    Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, options)
-                |}
-            )
+                MonsterShortInfo(
+                   uint64 <| r.GetInt64(0), r.GetString(1),
+                   enum<MonsterType> <| r.GetInt32(2), enum<MonsterSubType> <| r.GetInt32(3),
+                   System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, options),
+                   uint64 <| r.GetInt64(5)
+                ))
             |> Ok
         with exn ->
             Log.Error(exn, "GetMonsterLeaderboard")
@@ -3271,12 +3419,17 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         match getUserIdByDiscordId discordId with
         | Some userId ->
             try 
+                let options = JsonFSharpOptions().ToJsonSerializerOptions()
                 use conn = new SqliteConnection(cs)
                 Db.newCommand SQL.GetUserMonsters conn
                 |> Db.setParams [
                     "userId", SqlType.Int64 userId
                 ]
-                |> Db.query (fun v -> v.GetInt64(0), v.GetString(1), v.GetInt32(2) |> enum<MonsterType>, v.GetInt32(3) |> enum<MonsterSubType>)
+                |> Db.query (fun v ->
+                    MonsterShortInfo(uint64 <| v.GetInt64(0), v.GetString(1), 
+                        v.GetInt32(2) |> enum<MonsterType>, v.GetInt32(3) |> enum<MonsterSubType>,
+                        System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData v 4, options), 
+                        uint64 <| v.GetInt64(5)))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetUserMonsters: {userId}")
@@ -3328,6 +3481,38 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Log.Error(exn, $"RenameUserMonster: {userId} | {newName} | {mid}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
+
+    member _.ChampBelongsToAUser(champId:uint64, discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.ChampBelongsToAUser conn
+                |> Db.setParams [
+                    "champId", SqlType.Int64 <| int64 champId
+                    "userId", SqlType.Int64 <| int64 userId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0))
+            with exn ->
+                Log.Error(exn, "ChampBelongsToAUser")
+                None
+        | None -> None
+
+    member _.MonsterBelongsToAUser(monsterId:uint64, discordId: uint64) =
+        match getUserIdByDiscordId discordId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.MonsterBelongsToAUser conn
+                |> Db.setParams [
+                    "monsterId", SqlType.Int64 <| int64 monsterId
+                    "userId", SqlType.Int64 <| int64 userId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0))
+            with exn ->
+                Log.Error(exn, "MonsterBelongsToAUser")
+                None
+        | None -> None
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
