@@ -16,7 +16,7 @@
 		<Compile Include="Types.fs" />
 		<Compile Include="Db\SQL.fs" />
 		<Compile Include="Db\Db.fs" />
-		<Compile Include="db\ReadOnlyDb.fs" />
+		<Compile Include="Db\ReadOnlyDb.fs" />
 		<Compile Include="CommonHelpers.fs" />
 	</ItemGroup>
 	
