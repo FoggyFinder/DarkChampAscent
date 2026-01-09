@@ -18,13 +18,13 @@
 
 	<ItemGroup>
 		<Compile Include="Routes.fs" />
-		<Compile Include="views\HomeViews.fs" />
-		<Compile Include="views\GenViews.fs" />
-		<Compile Include="views\FAQViews.fs" />
-		<Compile Include="views\ChampViews.fs" />
-		<Compile Include="views\MonsterViews.fs" />
-		<Compile Include="views\LeaderboardViews.fs" />
-		<Compile Include="views\ShopViews.fs" />
+		<Compile Include="Views\HomeViews.fs" />
+		<Compile Include="Views\GenViews.fs" />
+		<Compile Include="Views\FAQViews.fs" />
+		<Compile Include="Views\ChampViews.fs" />
+		<Compile Include="Views\MonsterViews.fs" />
+		<Compile Include="Views\LeaderboardViews.fs" />
+		<Compile Include="Views\ShopViews.fs" />
 		<Compile Include="Views\AccountViews.fs" />
 		<Compile Include="Views\BattleView.fs" />
 		<Compile Include="Program.fs" />
