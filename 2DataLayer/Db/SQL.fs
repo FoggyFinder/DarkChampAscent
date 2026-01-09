@@ -417,6 +417,8 @@ module internal SQL =
     let MonsterExists = "SELECT EXISTS(SELECT 1 FROM Monster WHERE ID = @monsterId LIMIT 1);"
     let MonsterExistsByName = "SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name LIMIT 1);"
     let RoundExists = "SELECT EXISTS(SELECT 1 FROM Round LIMIT 1);"
+    let MonsterBelongsToAUser = "SELECT EXISTS(SELECT 1 FROM UserMonster WHERE MonsterId = @monsterId AND UserId = @userId LIMIT 1);"
+    let ChampBelongsToAUser = "SELECT EXISTS(SELECT 1 FROM UserChamp WHERE ChampId = @champId AND UserId = @userId LIMIT 1);"
 
     let GetAliveMonsters = """
         SELECT ID FROM Monster
@@ -458,6 +460,8 @@ module internal SQL =
     let GetEffectItemIdByItem = "SELECT Id FROM Effect WHERE Item = @item LIMIT 1"
     
     let GetChampsCount = "SELECT Count(*) FROM Champ"
+    let GetUserChampsCount = "SELECT Count(*) FROM UserChamp WHERE UserId = @userId"
+    let GetUserMonstersCount = "SELECT Count(*) FROM UserMonster WHERE UserId = @userId"
 
     let GetLastActiveRound = "SELECT Max(ID) FROM Round WHERE Status = 0"
     let GetLastRound = "SELECT Max(ID) FROM Round";
@@ -537,6 +541,13 @@ module internal SQL =
         WHERE UserId = @userId
     """
 
+    let GetUserChampsInfo = """
+        SELECT uc.ChampId, Name, IPFS, Xp, Balance FROM Champ
+        JOIN UserChamp uc ON uc.ChampId = Champ.ID
+        JOIN ChampStat cs ON cs.ChampId = Champ.ID
+        WHERE UserId = @userId
+    """
+
     let GetActiveUserChamps = """
         SELECT ChampId, Name FROM Champ
         JOIN UserChamp uc ON uc.ChampId = Champ.ID
@@ -552,8 +563,14 @@ module internal SQL =
             )
     """
 
+    let GetChampsFromRound = """
+        SELECT ChampId, Name, IPFS FROM Champ
+        JOIN Action a ON a.ChampId = Champ.ID
+        WHERE RoundId = @roundId
+    """
+
     let GetUserChampsUnderEffect = """
-        SELECT Champ.ID, Name, RoundId, Duration, Item FROM Champ
+        SELECT Champ.ID, Name, RoundId, Duration, Item, IPFS FROM Champ
         JOIN UserChamp uc ON uc.ChampId = Champ.ID
 		JOIN Impact i ON i.ChampId = Champ.ID
         JOIN Effect e ON e.ID = i.ItemId
@@ -564,7 +581,7 @@ module internal SQL =
     """
 
     let GetMonstersUnderEffect = """
-        SELECT Name, Type, SubType, RoundId, Duration, Item FROM Monster
+        SELECT Monster.ID, Name, Type, SubType, RoundId, Duration, Item, Picture FROM Monster
         JOIN MonsterImpact mi ON mi.MonsterId = Monster.ID
         JOIN Effect e ON e.ID = mi.ItemId
         WHERE (RoundId <= @roundId AND 
@@ -599,6 +616,18 @@ module internal SQL =
         JOIN ChampStat cs ON cs.ChampId = Champ.ID
         JOIN ChampTrait ct ON ct.ChampId = Champ.ID
         WHERE AssetId = @assetId
+        LIMIT 1
+    """
+
+    let GetChampInfoByID = """
+        SELECT
+            Champ.ID, Name, IPFS, Balance,
+            Xp, Health, cs.Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense,
+            Background, Skin, Weapon, ct.Magic, Head, Armour, Extra
+        FROM Champ
+        JOIN ChampStat cs ON cs.ChampId = Champ.ID
+        JOIN ChampTrait ct ON ct.ChampId = Champ.ID
+        WHERE Champ.ID = @champId
         LIMIT 1
     """
 
@@ -883,7 +912,7 @@ module internal SQL =
     """
 
     let GetChampsLeaderBoard10 = """
-        SELECT Name, AssetId, IPFS, Xp FROM Champ
+        SELECT Name, AssetId, IPFS, Xp, cs.ChampId FROM Champ
         JOIN ChampStat cs ON cs.ChampId = Champ.ID
         ORDER BY
             Xp DESC
@@ -891,7 +920,7 @@ module internal SQL =
     """
 
     let GetMonsterLeaderBoard10 = """
-        SELECT Name, Type, Subtype, Xp, Picture FROM Monster
+        SELECT ID, Name, Type, Subtype, Picture, Xp FROM Monster
         ORDER BY
             Xp DESC
         LIMIT 10
@@ -1066,7 +1095,7 @@ module internal SQL =
     let CountMonster = """SELECT Count(*) FROM Monster"""
 
     let GetUserMonsters = """
-        SELECT m.ID, Name, Type, SubType FROM UserMonster
+        SELECT m.ID, Name, Type, SubType, m.Picture, m.Xp FROM UserMonster
         JOIN Monster m ON m.ID = UserMonster.MonsterId
         WHERE UserId = @userId
     """
@@ -1093,3 +1122,24 @@ module internal SQL =
         UPDATE Monster SET Name = @newName WHERE ID = @id
     """
     
+    let GetLastBattleInfo = """
+        SELECT b.ID as BattleId, Status, m.* FROM Battle b
+        JOIN Monster m ON m.ID = b.MonsterId
+        WHERE b.ID = (SELECT Max(ID) FROM Battle)
+    """
+
+    let GetBattleChampActions = """
+        SELECT a.RoundId, a.Timestamp, a.MoveRes, c.Name FROM Action a
+        JOIN Round r ON r.ID = a.RoundId
+        JOIN Battle b ON b.ID = r.BattleId
+        JOIN Champ c ON c.ID = a.ChampId
+        WHERE r.BattleId = @battleId AND r.Status = 2
+    """
+
+    let GetBattleMonsterActions = """
+        SELECT a.RoundId, a.MoveRes, c.Name FROM MonsterAction a
+        JOIN Round r ON r.ID = a.RoundId
+        JOIN Battle b ON b.ID = r.BattleId
+        LEFT JOIN Champ c ON c.ID = a.ChampId
+        WHERE r.BattleId = @battleId AND r.Status = 2
+    """

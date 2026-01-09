@@ -5,6 +5,15 @@ open NetCord
 open Display
 open GameLogic.Champs
 
+let donationCard (d:decimal) (uId:uint64) =
+    ComponentContainerProperties([
+        TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
+        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        TextDisplayProperties($"Thank you, <@{uId}>")
+    ])
+
 [<RequireQualifiedAccess>]
 module ChampsComponent =
     let champComponent (champ:ChampInfo) =
@@ -176,7 +185,7 @@ module BattleComponent =
                 yield! br.ChampsMoveAndXp |> Seq.map(fun kv ->
                     let name = names.[kv.Key]
                     let move, xp = kv.Value
-                    TextDisplayProperties($"{Display.performedMove move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
+                    TextDisplayProperties($"{Display.performedMoveDiscord move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
                 )
         ])
     
@@ -184,7 +193,7 @@ module BattleComponent =
             match br.MonsterPM with
             | Some pm ->
                 ComponentContainerProperties([
-                    TextDisplayProperties($"""** Monster Action: ** {Display.performedMove pm br.MonsterChar.Name ""}""")
+                    TextDisplayProperties($"""** Monster Action: ** {Display.performedMoveDiscord pm br.MonsterChar.Name ""}""")
                 ])
                 |> Some
             | None ->
@@ -197,7 +206,7 @@ module BattleComponent =
                         yield! br.MonsterActions |> Seq.map(fun kv ->
                             let name = names.[kv.Key]
                             let move, xp = kv.Value
-                            TextDisplayProperties($"{Display.performedMove move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
+                            TextDisplayProperties($"{Display.performedMoveDiscord move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
                         )
                     ])
                     |> Some

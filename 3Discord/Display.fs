@@ -1,5 +1,4 @@
 ﻿module Display
-open GameLogic
 
 open System      
 open GameLogic.Shop
@@ -68,6 +67,65 @@ module Emoj =
 
     let [<Literal>] ElixirOfDefense = "<:Elixir_of_defense:1401561142970679336>"
     let [<Literal>] ElixirOfMagicalDefense = "<:Elixir_of_magical_defense:1401561170460278815>"
+
+module WebEmoji =
+    let [<Literal>] Gem = "💎"
+    let [<Literal>] Level = "⭐"
+    let [<Literal>] Health = "🌿"
+    let [<Literal>] Magic = "🧪"
+
+    let [<Literal>] Luck = "🎲"
+    let [<Literal>] Accuracy = "🎯"
+
+    let [<Literal>] Attack = "🗡️"
+    let [<Literal>] MagicAttack = "🌀"
+
+    let [<Literal>] Shield = "🛡️"
+    let [<Literal>] MagicShield = "💠"
+
+    let [<Literal>] Background = "◻️"
+    let [<Literal>] Skin = "🧥"
+    let [<Literal>] Weapon = "🏹"
+    let [<Literal>] Head = "🎩"
+    let [<Literal>] Armour = "🛡️"
+    let [<Literal>] Extra = "📦"
+    let [<Literal>] Rounds = "⌛"
+
+    let [<Literal>] Home = "🏠"
+    let [<Literal>] Account = "👤"
+    let [<Literal>] MyStorage = "📦"
+    let [<Literal>] Champs = "🛡️"
+    let [<Literal>] ChampsUnderEffects = "✨"
+    let [<Literal>] Monsters = "👾"
+    let [<Literal>] MyRequests = "✉️"
+
+    let [<Literal>] LogIn = "🔐"
+    let [<Literal>] Battle = "⚔️"
+    let [<Literal>] Shop = "🛒"
+    let [<Literal>] MonstersUnderEffects = "✨"
+
+    let [<Literal>] TopDonaters = "💝"
+    let [<Literal>] TopUnknownDonaters = "💳"
+
+    let [<Literal>] FAQ = "❓"
+    let [<Literal>] SourceCode = "🔗"
+    // TODO: replace with discord icon: https://www.w3schools.com/icons/tryit.asp?icon=fab_fa-discord&unicon=f392
+    let [<Literal>] Discord = "💡"
+    let [<Literal>] USDC = "💲"
+    let [<Literal>] Toggle = "☰"
+    let [<Literal>] Leaderboard = "🏆"
+    let [<Literal>] GameAccountOptions = "🎮"
+
+let webEmojiFromChar (ch:Characteristic) =
+    match ch with
+    | Characteristic.Health -> WebEmoji.Health
+    | Characteristic.Magic -> WebEmoji.Magic
+    | Characteristic.Luck -> WebEmoji.Luck
+    | Characteristic.Accuracy -> WebEmoji.Accuracy
+    | Characteristic.Attack -> WebEmoji.Attack
+    | Characteristic.MagicAttack -> WebEmoji.MagicAttack
+    | Characteristic.Defense -> WebEmoji.Shield
+    | Characteristic.MagicDefense -> WebEmoji.MagicShield
 
 let fromStat (s:Stat) =
     $""" {Emoj.Health} {s.Health} | {Emoj.Magic} {s.Magic} | {Emoj.Attack} {s.Attack} | {Emoj.MagicAttack} {s.MagicAttack} | {Emoj.Luck} {s.Luck} | {Emoj.Accuracy} {s.Accuracy} | {Emoj.Shield} {s.Defense} | {Emoj.MagicShield} {s.MagicDefense}"""
@@ -143,11 +201,20 @@ type FullStat(s:Stat, bs:Stat, ls:Stat) =
         let lvled = if l > 0L then $" +`{l}` {a2}" else ""
         $"{c}{boosted}{lvled}"   
     
-    member _.Health =
-        (fun s -> s.Health) |> property |> format2 Emoj.Health (nameof s.Health)
-    
-    member _.Magic =
-        (fun s -> s.Magic) |> property |> format2 Emoj.Magic (nameof s.Magic)
+    member _.GetValue (ch:Characteristic) =
+        match ch with
+        | Characteristic.Health -> (fun s -> s.Health)
+        | Characteristic.Magic -> (fun s -> s.Magic)
+        | Characteristic.Luck -> (fun s -> s.Luck)
+        | Characteristic.Accuracy -> (fun s -> s.Accuracy)
+        | Characteristic.Attack -> (fun s -> s.Attack)
+        | Characteristic.MagicAttack -> (fun s -> s.MagicAttack)
+        | Characteristic.Defense -> (fun s -> s.Defense)
+        | Characteristic.MagicDefense -> (fun s -> s.MagicDefense)
+        |> property
+
+    member x.Health = x.GetValue Characteristic.Health |> format2 Emoj.Health (nameof s.Health)
+    member x.Magic = x.GetValue Characteristic.Magic |> format2 Emoj.Magic (nameof s.Magic)
 
     member _.WithoutHM =
         [
@@ -171,15 +238,22 @@ let fromMonster(mt:MonsterType, mst:MonsterSubType) =
     let st = fromSubType mst
     $"{st} {mt} {st}"
 
-let fullMonsterName(name:string, mt:MonsterType, mst:MonsterSubType) =
+let monsterClass(mt:MonsterType, mst:MonsterSubType) =
     let subType = match mst with | MonsterSubType.None -> "" | _ -> $"({mst})"
-    $"**{name}** - {mt} {subType}"
+    $"{mt} {subType}"
+
+let fullMonsterName(name:string, mt:MonsterType, mst:MonsterSubType) =
+    $"**{name}** - {monsterClass (mt, mst)}"
 
 open System.Text.RegularExpressions
 
 let splitCamel (s:string) =
     let pattern = @"(?<!^)([A-Z])"
     Regex.Replace(s, pattern, " $1")
+
+let withPlusOrEmpty (v:int64) =
+    if v = 0L then ""
+    else $"+ {v}"
 
 let getTraitInfo(t:Trait, traits:Traits) =
     let chs = TraitCharacteristic.impact.[t]
@@ -215,36 +289,45 @@ let getTraitInfo(t:Trait, traits:Traits) =
 
     $"{icon} {name} : {v} [{str}]"
 
-let performedMove (pm:PerformedMove) (sname:string) (tname:string)=
+let private performedMove (isDiscord:bool) (pm:PerformedMove) (sname:string) (tname:string)  =
+    let attack, mattack, shield, mshield, health, magic =
+        if isDiscord then
+            Emoj.Attack, Emoj.MagicAttack, Emoj.Shield,
+            Emoj.MagicShield, Emoj.Health, Emoj.Magic
+        else
+            WebEmoji.Attack, WebEmoji.MagicAttack, WebEmoji.Shield,
+            WebEmoji.MagicShield, WebEmoji.Health, WebEmoji.Magic
     match pm with
     | PerformedMove.Attack dmg ->
         match dmg with
         | Dmg.Critical v
         | Dmg.Default v ->
-            if v > 0UL then $"{Emoj.Attack} {sname} overpowered {tname} protection and took {v} {Emoj.Health}"
+            if v > 0UL then $"{attack} {sname} overpowered {tname} protection and took {v} {health}"
             else $"{tname} blocked {sname} attack"
         | Dmg.Missed -> $"{sname} missed {tname}. Maybe next time?"
     | PerformedMove.MagicAttack(dmg, m) ->
         match dmg with
         | Dmg.Critical v
         | Dmg.Default v ->
-            if v > 0UL then $"{Emoj.MagicAttack} {sname} overpowered {tname} protection and took {v} {Emoj.Health}"
-            else $"{tname} blocked {sname} attack, {m} {Emoj.Magic} was taken nevertheless"
+            if v > 0UL then $"{mattack} {sname} overpowered {tname} protection and took {v} {health}"
+            else $"{tname} blocked {sname} attack, {m} {magic} was taken nevertheless"
         | Dmg.Missed -> $"{sname} missed {tname}. Maybe next time?"
-    | PerformedMove.Shield v -> $"{sname} increased their defense: + {v} to {Emoj.Shield}"
+    | PerformedMove.Shield v -> $"{sname} increased their defense: + {v} to {shield}"
     | PerformedMove.MagicShield(v1, v2) ->
         if v1 > 0UL && v2 > 0UL then 
-            $"{sname} casted magical protection with {v1} {Emoj.MagicShield} and spend {v2} {Emoj.Magic}"
+            $"{sname} casted magical protection with {v1} {mshield} and spend {v2} {magic}"
         elif v1 = 0UL && v2 > 0UL then
-            $"{sname} casted magical protection, used {v2} {Emoj.Magic} but failed to produce anything sustainable"
+            $"{sname} casted magical protection, used {v2} {magic} but failed to produce anything sustainable"
         else
             $"{sname} don't have enough magic power to cast magic shield"
     | PerformedMove.Heal(v1, v2) ->
         if v1 > 0UL && v2 > 0UL then 
-            $"{sname} healed {v1} {Emoj.Health} life with {v2} {Emoj.Magic} magic"
+            $"{sname} healed {v1} {health} life with {v2} {magic} magic"
         elif v1 = 0UL && v2 > 0UL then
-            $"{sname} used {v2} {Emoj.Magic} but failed to heal themself"
+            $"{sname} used {v2} {magic} but failed to heal themself"
         else
             $"{sname} don't have enough magic power to heal"
-        
-    | PerformedMove.Meditate v -> $"{sname} gained {v} {Emoj.Magic}"
+    | PerformedMove.Meditate v -> $"{sname} gained {v} {magic}"
+
+let performedMoveDiscord = performedMove true
+let performedMoveWebUi = performedMove false

@@ -12,7 +12,7 @@ open Display
 open Components
 open GameLogic.Champs
 open GameLogic.Battle
-  
+
 let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
     task {
         let callback = InteractionCallback.ModifyMessage(fun options ->
@@ -25,18 +25,10 @@ let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
                     let r = db.Donate(context.User.Id, d)
                     match r with
                     | Ok () ->
-                        let donationCard =
-                            ComponentContainerProperties([
-                                TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
-                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
-                                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                TextDisplayProperties($"Thank you, {context.User}")
-                            ])
-                            
+                        let card = donationCard d context.User.Id
                         let newInGameDonationMessage =
                             MessageProperties()
-                                .WithComponents([ donationCard ])
+                                .WithComponents([ card ])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                 .WithAllowedMentions(AllowedMentionsProperties.None)
 

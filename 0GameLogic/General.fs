@@ -329,6 +329,27 @@ type Stat = {
             Defense = x.Defense - y.Defense
             MagicDefense = x.MagicDefense - y.MagicDefense            
         }
+    member s.GetValueBy(ch:Characteristic) =
+        match ch with
+        | Characteristic.Health -> s.Health
+        | Characteristic.Magic -> s.Magic
+        | Characteristic.Luck -> s.Luck
+        | Characteristic.Accuracy -> s.Accuracy
+        | Characteristic.Attack -> s.Attack
+        | Characteristic.MagicAttack -> s.MagicAttack
+        | Characteristic.Defense -> s.Defense
+        | Characteristic.MagicDefense -> s.MagicDefense
+
+    static member GetValueByCharacteristic (ch:Characteristic) =
+        match ch with
+        | Characteristic.Health -> (fun s -> s.Health)
+        | Characteristic.Magic -> (fun s -> s.Magic)
+        | Characteristic.Luck -> (fun s -> s.Luck)
+        | Characteristic.Accuracy -> (fun s -> s.Accuracy)
+        | Characteristic.Attack -> (fun s -> s.Attack)
+        | Characteristic.MagicAttack -> (fun s -> s.MagicAttack)
+        | Characteristic.Defense -> (fun s -> s.Defense)
+        | Characteristic.MagicDefense -> (fun s -> s.MagicDefense)
 
 [<RequireQualifiedAccess>]
 module Constants = 

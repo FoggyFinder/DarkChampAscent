@@ -13,8 +13,11 @@
 		<Compile Include="Blockchain\Blockchain.fs" />
 		<Compile Include="Gen\Gen.fs" />
 		<Compile Include="Gen\GenAIPG.fs" />
+		<Compile Include="Types.fs" />
 		<Compile Include="Db\SQL.fs" />
 		<Compile Include="Db\Db.fs" />
+		<Compile Include="db\ReadOnlyDb.fs" />
+		<Compile Include="CommonHelpers.fs" />
 	</ItemGroup>
 	
 	<ItemGroup>
