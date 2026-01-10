@@ -98,17 +98,18 @@ let accountHandler : HttpHandler =
                     match opt with
                     | Some du ->
                         let db = ctx.Plug<SqliteStorage>()
-                        match db.GetUserWallets du.DiscordId, 
-                            db.GetUserChampsCount du.DiscordId, 
-                            db.GetUserMonstersCount du.DiscordId,
-                            db.GetUserBalance du.DiscordId with
-                        | Ok ar, Some champs, Some monsters, Some balance ->
-                            let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                            let ua = UserAccount(du, wallets, balance, int champs, int monsters)
-                            let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-                            AccountView.accountView ua dcprice
-                        | _ -> Ui.defError
-                    | None -> Ui.defError
+                        let wallets =
+                            match db.GetUserWallets du.DiscordId with
+                            | Ok ar -> ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
+                            | Error _ -> []
+                        let champs = db.GetUserChampsCount du.DiscordId |> Option.defaultValue 0L |> int
+                        let monsters = db.GetUserMonstersCount du.DiscordId |> Option.defaultValue 0L |> int
+                        let balance = db.GetUserBalance du.DiscordId |> Option.defaultValue 0m
+                        let ua = UserAccount(du, wallets, balance, champs, monsters)
+                        let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+                        AccountView.accountView ua dcprice
+                    | None ->
+                        Ui.defError
                 | None ->
                     Elem.main [
                         Attr.class' "dashboard"
@@ -296,12 +297,11 @@ let shopHandler : HttpHandler =
             let isAuth = getDiscordUser result |> Option.isSome
             let view =
                 let db = ctx.Plug<SqliteStorage>()
-                match db.GetShopItems(), db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
-                | Some items, Some price ->
-                    items
-                    |> List.map(fun item -> Display.ShopItemRow(item, price))
-                    |> ShopView.shop isAuth
-                | _ -> Ui.defError
+                let items = db.GetShopItems() |> Option.defaultValue []
+                let price = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) |> Option.defaultValue 0m
+                items
+                |> List.map(fun item -> Display.ShopItemRow(item, price))
+                |> ShopView.shop isAuth
 
             let response =
                 view

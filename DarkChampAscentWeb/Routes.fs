@@ -81,22 +81,25 @@ module FileUtils =
     let private wwwroot = "wwwroot"
     
     let getLocalImg (mpic:MonsterImg) =
-        
+
         let imgDir = Path.Combine(wwwroot, monstrsDir)
-        
+
         if Directory.Exists(imgDir) |> not then
             Directory.CreateDirectory(imgDir) |> ignore
 
         let fullpath = (match mpic with | MonsterImg.File fn -> fn)
 
-        let filename = 
+        let filename =
             Path.Combine(monstrsDir, Path.GetFileName(fullpath))
-            
+
         let destFileName = Path.Combine(wwwroot, filename)
         if File.Exists destFileName |> not then
-            File.Copy(fullpath, destFileName)
-        
-        filename
+            try
+                File.Copy(fullpath, destFileName)
+            with
+            | _ -> () // Ignore if source file doesn't exist
+
+        if File.Exists destFileName then filename else ""
 
 module NavBar =
     type NavMode = Top | Side
@@ -195,12 +198,11 @@ module Ui =
 
                 Elem.link [ Attr.href "/styles.css"; Attr.rel "stylesheet" ]
                 Elem.link [ Attr.href "https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.bootstrap5.min.css"; Attr.rel "stylesheet" ]
-                Elem.link [ Attr.href "/tom-select-nightshade.css"; Attr.rel "stylesheet" ]
 
                 Elem.script [ Attr.src "https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"; Attr.defer ] [ ]
                 Elem.script [ Attr.src "/custom-select.js"; Attr.defer ] [ ]             
                 Elem.script [ Attr.src "/nav.js"; Attr.defer ] [ ]
-                Elem.script [ Attr.src "https://kit.fontawesome.com/a076d05399.js"; Attr.crossorigin "anonymous" ] [ ]
+                Elem.link [ Attr.rel "stylesheet"; Attr.href "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"; Attr.crossorigin "anonymous" ]
 
                 Elem.link [ Attr.rel "shortcut icon"; Attr.href "/favicon.ico"; Attr.type' "image/x-icon" ]
 
