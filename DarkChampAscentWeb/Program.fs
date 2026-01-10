@@ -117,8 +117,8 @@ let accountHandler : HttpHandler =
                     ] [
                         Text.raw "Log-in to view account details"
                         Elem.form [
-                            Attr.methodPost
-                            Attr.action "/login"
+                            Attr.methodGet
+                            Attr.action Route.login
                         ] [
                             Elem.input [
                                 Attr.class' "btn-primary"
@@ -170,8 +170,8 @@ let battleHandler : HttpHandler =
                     Elem.div [ ] [
                         Text.raw "Sign-in to join battle"
                         Elem.form [
-                            Attr.methodPost
-                            Attr.action "/login"
+                            Attr.methodGet
+                            Attr.action Route.login
                         ] [
                     
                             Elem.input [
@@ -859,7 +859,7 @@ module LeaderboardHandlers =
                                         | true, n -> n
                                         | false, _ -> string ar.DiscordId
                                     name, ar.Amount)
-                                |> LeaderboardView.donaters
+                                |> LeaderboardView.donaters "Name"
                             
                             return view
                         }
@@ -884,7 +884,7 @@ module LeaderboardHandlers =
                     | Ok xs ->
                         xs
                         |> List.map(fun ar -> ar.Wallet, ar.Amount)
-                        |> LeaderboardView.donaters
+                        |> LeaderboardView.donaters "Wallet"
                     | _ -> Ui.defError
 
                 let response =
@@ -1014,7 +1014,7 @@ let endpoints =
         get Route.index homeHandler
         get Route.traits traitsHandler
 
-        get Route.login (fun ctx -> loginHandler ctx)
+        get Route.login loginHandler
 
         get Route.account accountHandler
         post Route.walletRegister registerNewWalletHandler

@@ -7,6 +7,9 @@ open GameLogic.Rewards
 open Display
 open UI
 
+let private getImgSource (filename:string) =
+    System.IO.Path.Combine("imgs", filename)
+
 let home (rewards: decimal) (dcPriceO:decimal option) =
     let usdcs =
         match dcPriceO with
@@ -99,7 +102,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
 
                 Text.p "Each round rewards allocated for players splitted as"
 
-                Elem.img [ Attr.src "/imgs/rewardsSplit.jpg" ]
+                Elem.img [ getImgSource "rewards.jpg" |>  Attr.src ]
 
                 Text.p "in case when no champs used a move those coins returned as rewards for next battles"
             ]
@@ -144,10 +147,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                 Text.b $"All prices are settled in USDC ({WebEmoji.USDC}). DarkCoin price updates periodically every few hours."
 
                 Text.p "For each round rewards are splitted by following logic:"
-
-                Elem.img [
-                    Attr.src "/imgs/tokenomics.jpg"
-                ]
+                Elem.img [ getImgSource "tokenomics.jpg" |>  Attr.src ]
 
                 Text.p "Rewards for specific round is calculated based on total amount as:"
 

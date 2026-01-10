@@ -114,7 +114,7 @@ let monsters (monsters: MonsterShortInfo list) =
         ]
     ]
   
-let donaters (xs: (string * decimal) list) =
+let donaters (title:string) (xs: (string * decimal) list) =
     Elem.main [
         Attr.class' "leaderboard"
         Attr.role "main"
@@ -122,7 +122,7 @@ let donaters (xs: (string * decimal) list) =
         Elem.table [] [
             Elem.tr [] [
                 Elem.th [] [ Text.raw "" ]
-                Elem.th [] [ Text.raw "Name" ]
+                Elem.th [] [ Text.raw title ]
                 Elem.th [] [ Text.raw "Darkcoins" ]
             ]
             for (i, (name, amount)) in xs |> List.indexed do
