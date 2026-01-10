@@ -1,149 +1,141 @@
-/* Body-appended dropdown styling and overrides.
-   These rules target the dropdown when it's appended to <body> (class ts-nightshade-dropdown-body)
-   and ensure it matches the Nightshade theme and does not stretch full width.
+/* TomSelect Nightshade Theme
    Load this AFTER TomSelect base CSS.
+   No body-append hacks - dropdown stays in wrapper.
 */
 
-/* Ensure body-appended dropdown uses our theme and not the bootstrap defaults */
-.ts-nightshade-dropdown-body,
-.ts-nightshade-dropdown-body .dropdown-content {
-    background: linear-gradient(180deg, rgba(18,8,28,0.98), rgba(24,12,40,0.98)) !important;
-    color: var(--moon, #eef6ff) !important;
-    border: 1px solid rgba(127,24,255,0.12) !important;
-    border-radius: 10px !important;
-    box-shadow: 0 12px 40px rgba(2,6,23,0.6) !important;
-    overflow: visible !important;
-    width: auto !important; /* width is set inline by JS to match control */
-    max-width: calc(100vw - 24px) !important; /* keep dropdown inside viewport */
-    box-sizing: border-box !important;
+/* ==========================================================================
+   Control (input area)
+   ========================================================================== */
+
+.ts-wrapper .ts-control {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+    color: var(--text, #eef6ff);
+    border: 1px solid rgba(127, 24, 255, 0.15);
+    border-radius: 10px;
+    min-height: 44px;
+    padding: 8px 12px;
+    box-shadow: none;
+    font-weight: 600;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-    /* Set space/scrolling limit */
-    .ts-nightshade-dropdown-body .dropdown-content {
-        max-height: 360px !important;
-        overflow-y: auto !important;
-        -webkit-overflow-scrolling: touch !important;
-    }
-
-        /* Option basic look */
-        .ts-nightshade-dropdown-body .option,
-        .ts-nightshade-dropdown-body .dropdown-content .option {
-            padding: 10px 12px !important;
-            color: var(--muted, #bfc7d9) !important;
-            background: transparent !important;
-            font-weight: 600 !important;
-        }
-
-            /* Hover/selected must use Nightshade visuals */
-            .ts-nightshade-dropdown-body .option:hover,
-            .ts-nightshade-dropdown-body .option.ts-selected,
-            .ts-nightshade-dropdown-body .dropdown-content .option:hover,
-            .ts-nightshade-dropdown-body .dropdown-content .option.ts-selected {
-                background: linear-gradient(90deg, rgba(127,24,255,0.12), rgba(176,107,255,0.08)) !important;
-                color: #fff !important;
-            }
-
-        /* Scrollbar thumb */
-        .ts-nightshade-dropdown-body .dropdown-content::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        .ts-nightshade-dropdown-body .dropdown-content::-webkit-scrollbar-thumb {
-            background: linear-gradient(180deg, rgba(127,24,255,0.6), rgba(176,107,255,0.8)) !important;
-            border-radius: 10px !important;
-        }
-
-/* caret / arrow should stay visible */
-.ts-nightshade .ts-control .caret,
-.ts-control .caret {
-    z-index: 2 !important;
+.ts-wrapper .ts-control:hover {
+    border-color: rgba(127, 24, 255, 0.3);
 }
 
-/* fallback: keep block overflow visible as well if needed (small perf cost) */
-.block.ts-overflow {
-    overflow: visible !important;
+.ts-wrapper .ts-control.focus,
+.ts-wrapper.focus .ts-control {
+    outline: none;
+    border-color: rgba(176, 107, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(127, 24, 255, 0.15);
 }
 
-
-/* ---------------------------
-   Selected item / control polish
-   --------------------------- */
-
-/* Ensure the control itself uses the Nightshade base look (strong specificity) */
-.ts-nightshade .ts-control,
-.ts-nightshade .ts-control .ts-input,
-.ts-nightshade .ts-control .single_placeholder,
-.ts-nightshade .ts-control input {
-    background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.01)) !important;
-    color: var(--moon, #eef6ff) !important;
-    border: 1px solid rgba(127,24,255,0.12) !important;
-    border-radius: 10px !important;
-    min-height: var(--select-height, 40px) !important;
-    padding: 8px 12px !important;
-    box-shadow: none !important;
-    box-sizing: border-box !important;
-    font-weight: 700 !important;
+.ts-wrapper .ts-control input {
+    color: var(--text, #eef6ff);
+    background: transparent;
+    font-weight: 600;
 }
 
-    /* Style the selected item shown inside the control (single select) */
-    .ts-nightshade .ts-control .item,
-    .ts-nightshade .ts-control .item.ts-item,
-    .ts-nightshade .ts-control .item.ts-single {
-        background: linear-gradient(90deg, rgba(127,24,255,0.12), rgba(176,107,255,0.08)) !important;
-        color: #fff !important;
-        padding: 6px 10px !important;
-        border-radius: 8px !important;
-        font-weight: 800 !important;
-        display: inline-block !important;
-        box-shadow: none !important;
-        margin: 0 !important;
-        line-height: 1 !important;
-        font-size: 1rem !important;
-    }
+.ts-wrapper .ts-control input::placeholder {
+    color: var(--muted, #bfc7d9);
+    opacity: 0.7;
+}
 
-    /* If TomSelect renders the selected value as plain input text (not .item), make it match */
-    .ts-nightshade .ts-control input {
-        color: var(--moon, #eef6ff) !important;
-        background: transparent !important;
-        font-weight: 800 !important;
-        font-size: 1rem !important;
-        padding: 0 !important;
-        margin: 0 !important;
-    }
+/* ==========================================================================
+   Selected item
+   ========================================================================== */
 
-    /* Focus state: replace the browser/boostrap blue ring with Nightshade glow */
-    .ts-nightshade .ts-control:focus-within,
-    .ts-nightshade .ts-control.ts-focus {
-        outline: none !important;
-        box-shadow: 0 6px 30px rgba(127,24,255,0.18), 0 0 0 4px rgba(176,107,255,0.06) !important;
-        border-color: rgba(176,107,255,0.6) !important;
-    }
+.ts-wrapper .ts-control .item {
+    background: linear-gradient(90deg, rgba(127, 24, 255, 0.15), rgba(176, 107, 255, 0.1));
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    line-height: 1.3;
+}
 
-    /* Remove default focus/outline styling from inner input */
-    .ts-nightshade .ts-control input:focus {
-        outline: none !important;
-        box-shadow: none !important;
-    }
+/* ==========================================================================
+   Dropdown
+   ========================================================================== */
 
-    /* Avoid white flashes from bootstrap's .form-control rules */
-    .ts-nightshade .ts-control,
-    .ts-nightshade .ts-control .item,
-    .ts-nightshade .ts-control input,
-    .ts-nightshade-dropdown-body,
-    .ts-nightshade-dropdown-body .option {
-        background-clip: padding-box !important;
-        -webkit-text-fill-color: unset !important;
-    }
+.ts-wrapper .ts-dropdown {
+    background: linear-gradient(180deg, rgba(18, 8, 28, 0.98), rgba(24, 12, 40, 0.98));
+    color: var(--text, #eef6ff);
+    border: 1px solid rgba(127, 24, 255, 0.15);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    margin-top: 4px;
+    z-index: 100;
+}
 
-        /* Ensure the selected item's hover inside the dropdown uses Nightshade (extra specificity) */
-        .ts-nightshade-dropdown-body .option.ts-selected,
-        .ts-nightshade-dropdown-body .option:hover {
-            background: linear-gradient(90deg, rgba(127,24,255,0.12), rgba(176,107,255,0.08)) !important;
-            color: #fff !important;
-        }
+.ts-wrapper .ts-dropdown .ts-dropdown-content {
+    max-height: 300px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px;
+}
 
-/* Ensure sizes behave predictably when dropdown appended to body */
-.ts-nightshade-dropdown-body {
-    box-sizing: border-box !important;
-    word-break: break-word !important;
+/* Options */
+.ts-wrapper .ts-dropdown .option {
+    padding: 10px 12px;
+    color: var(--muted, #bfc7d9);
+    background: transparent;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+
+.ts-wrapper .ts-dropdown .option:hover,
+.ts-wrapper .ts-dropdown .option.active {
+    background: linear-gradient(90deg, rgba(127, 24, 255, 0.12), rgba(176, 107, 255, 0.08));
+    color: #fff;
+}
+
+.ts-wrapper .ts-dropdown .option.selected {
+    background: rgba(127, 24, 255, 0.2);
+    color: #fff;
+}
+
+/* No results */
+.ts-wrapper .ts-dropdown .no-results {
+    padding: 12px;
+    color: var(--muted, #bfc7d9);
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+/* ==========================================================================
+   Scrollbar
+   ========================================================================== */
+
+.ts-wrapper .ts-dropdown .ts-dropdown-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.ts-wrapper .ts-dropdown .ts-dropdown-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+}
+
+.ts-wrapper .ts-dropdown .ts-dropdown-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(127, 24, 255, 0.5), rgba(176, 107, 255, 0.6));
+    border-radius: 4px;
+}
+
+.ts-wrapper .ts-dropdown .ts-dropdown-content::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(127, 24, 255, 0.7), rgba(176, 107, 255, 0.8));
+}
+
+/* ==========================================================================
+   Caret
+   ========================================================================== */
+
+.ts-wrapper .ts-control .caret {
+    border-top-color: var(--muted, #bfc7d9);
+}
+
+.ts-wrapper.focus .ts-control .caret {
+    border-top-color: var(--primary-2, #b06bff);
 }
