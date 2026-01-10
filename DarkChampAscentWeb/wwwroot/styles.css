@@ -34,15 +34,15 @@
   --color-shadow: rgba(0, 0, 0, 0.5);
   --color-shadow-strong: rgba(0, 0, 0, 0.65);
 
-  /* Spacing Scale (8px base) */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
+  /* Spacing Scale - Fluid (compresses on small screens) */
+  --space-1: clamp(2px, 0.5vw, 4px);
+  --space-2: clamp(4px, 1vw, 8px);
+  --space-3: clamp(8px, 1.5vw, 12px);
+  --space-4: clamp(10px, 2vw, 16px);
+  --space-5: clamp(12px, 2.5vw, 20px);
+  --space-6: clamp(14px, 3vw, 24px);
+  --space-8: clamp(18px, 4vw, 32px);
+  --space-10: clamp(24px, 5vw, 40px);
 
   /* Typography - Fluid with clamp() */
   --font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -401,6 +401,15 @@ table {
   background: rgba(255, 255, 255, 0.01);
   border-collapse: separate;
   border-spacing: 0;
+  /* Fluid font-size for tables */
+  font-size: clamp(0.75rem, 2vw, 1rem);
+}
+
+/* Wrapper for horizontal scroll on small screens */
+.table-responsive {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 tr:nth-child(odd) {
@@ -734,23 +743,23 @@ main {
 }
 
 /* ==========================================================================
-   13. DASHBOARD LAYOUT (Battle page)
+   13. DASHBOARD LAYOUT (Battle page) - Mobile first
    ========================================================================== */
 
 .dashboard {
-  container-type: inline-size;
-  container-name: dashboard;
   max-inline-size: var(--max-width);
   margin-inline: auto;
   display: grid;
-  gap: var(--space-4);
-  grid-template-columns: 2fr 1fr 1fr;
-  grid-template-rows: auto 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  /* Mobile: single column */
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "currentbattle mychamps activeparticipant"
-    "history history activeparticipant";
+    "mychamps"
+    "currentbattle"
+    "activeparticipant"
+    "history";
   align-items: start;
-  padding: var(--space-3);
 }
 
 .current-battle {
@@ -767,60 +776,87 @@ main {
 
 .active-participant {
   grid-area: activeparticipant;
-  min-block-size: 420px;
+  min-block-size: 200px;
   border: 1px solid var(--color-primary-alpha-08);
 }
 
-@container dashboard (max-width: 900px) {
+/* Mobile: smaller blocks */
+.dashboard .block {
+  min-block-size: 100px;
+  padding: var(--space-3);
+}
+
+/* Tablet: 2 columns */
+@media (min-width: 600px) {
   .dashboard {
+    gap: var(--space-4);
+    padding: var(--space-3);
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
       "mychamps currentbattle"
       "activeparticipant activeparticipant"
       "history history";
   }
-}
 
-@container dashboard (max-width: 600px) {
-  .dashboard {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "mychamps"
-      "currentbattle"
-      "activeparticipant"
-      "history";
-  }
-
-  .block {
-    min-block-size: 110px;
-    padding: var(--space-3);
-    border-radius: var(--radius);
+  .dashboard .block {
+    min-block-size: 120px;
+    padding: var(--space-4);
   }
 
   .active-participant {
-    min-block-size: 220px;
+    min-block-size: 300px;
+  }
+}
+
+/* Desktop: 3 columns */
+@media (min-width: 960px) {
+  .dashboard {
+    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "currentbattle mychamps activeparticipant"
+      "history history activeparticipant";
+  }
+
+  .dashboard .block {
+    min-block-size: 140px;
+  }
+
+  .active-participant {
+    min-block-size: 420px;
   }
 }
 
 /* ==========================================================================
-   14. ACCOUNT DASHBOARD
+   14. ACCOUNT DASHBOARD - Mobile first
    ========================================================================== */
 
 .acc-dashboard {
-  container-type: inline-size;
-  container-name: acc-dashboard;
-  contain: layout paint;
   max-inline-size: var(--max-width);
   margin-inline: auto;
   display: grid;
-  gap: var(--space-4);
-  grid-template-columns: 2fr 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  /* Mobile: single column */
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "usersection infosection"
-    "walletssection walletssection";
+    "usersection"
+    "infosection"
+    "walletssection";
   align-items: start;
-  padding: var(--space-3);
   inline-size: 100%;
+}
+
+/* Tablet+: 2 columns */
+@media (min-width: 600px) {
+  .acc-dashboard {
+    gap: var(--space-4);
+    padding: var(--space-3);
+    grid-template-columns: 2fr 1fr;
+    grid-template-areas:
+      "usersection infosection"
+      "walletssection walletssection";
+  }
 }
 
 .user-section {
@@ -835,14 +871,48 @@ main {
   grid-area: walletssection;
 }
 
-@container acc-dashboard (max-width: 600px) {
-  .acc-dashboard {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "usersection"
-      "infosection"
-      "walletssection";
-  }
+/* Wallets table - scrollable wrapper + fixed columns */
+.wallets-section > div:has(table),
+.wallets-section table {
+  /* Allow horizontal scroll on small screens */
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.wallets-section table {
+  table-layout: auto;
+  min-inline-size: 100%;
+  white-space: nowrap;
+}
+
+.wallets-section table th,
+.wallets-section table td {
+  padding: var(--space-2) var(--space-3);
+  font-size: clamp(0.7rem, 2vw, 0.9rem);
+}
+
+.wallets-section table th:nth-child(1),
+.wallets-section table td:nth-child(1) {
+  /* Address - truncates */
+  max-inline-size: clamp(80px, 30vw, 250px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wallets-section table th:nth-child(2),
+.wallets-section table td:nth-child(2) {
+  /* IsConfirmed - compact */
+  text-align: center;
+  inline-size: clamp(50px, 10vw, 80px);
+}
+
+.wallets-section table th:nth-child(3),
+.wallets-section table td:nth-child(3) {
+  /* Code - mono, compact */
+  font-family: var(--font-mono);
+  font-size: clamp(0.65rem, 1.8vw, 0.85rem);
+  inline-size: clamp(60px, 15vw, 120px);
 }
 
 /* Wallet form */
