@@ -220,7 +220,7 @@ let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
                         Attr.value $"{champ.ID}"
                     ]
 
-                    Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+                    Elem.div [ Attr.class' "select-wrap" ] [
                         Elem.select [
                           Attr.class' "tom-select"
                           Attr.id "char"

@@ -70,9 +70,8 @@ let private userSection (user:DiscordUser) (balance:decimal) (price: decimal opt
                 Attr.method "post"
             ] [
                 Elem.button [
-                    Attr.class' "btn btn-primary"
+                    Attr.class' "btn btn-primary float-end"
                     Attr.typeSubmit
-                    Attr.style "float: right"
                 ] [
                     Text.raw "Log out"
                 ]

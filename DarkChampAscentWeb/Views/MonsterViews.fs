@@ -38,7 +38,7 @@ let monsters (monsters: MonsterShortInfo list) (isAuth:bool) (dcPrice:decimal)=
                     Attr.methodPost
                     Attr.action Route.createMonster
                 ] [
-                    Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+                    Elem.div [ Attr.class' "select-wrap" ] [
                         Elem.select [
                           Attr.class' "tom-select"
                           Attr.id "mtype"
@@ -46,7 +46,7 @@ let monsters (monsters: MonsterShortInfo list) (isAuth:bool) (dcPrice:decimal)=
                         ] mtOptions
                      ]
 
-                    Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+                    Elem.div [ Attr.class' "select-wrap" ] [
                         Elem.select [
                           Attr.class' "tom-select"
                           Attr.id "msubtype"

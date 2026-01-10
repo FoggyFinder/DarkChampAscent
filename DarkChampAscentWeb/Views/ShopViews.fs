@@ -59,9 +59,9 @@ let shop (isAuth:bool) (shopItems:ShopItemRow list) =
                 ]
         ]
         if isAuth then
-            Elem.div [ Attr.style "float: right" ] [
+            Elem.div [ Attr.class' "float-end" ] [
                 Text.raw "You can check your storage "
-                Elem.a [ Attr.href Route.storage ] [ Text.raw $"here" ] 
+                Elem.a [ Attr.href Route.storage ] [ Text.raw $"here" ]
             ]
     ]
  
@@ -74,7 +74,7 @@ let storage (shopItems:(ShopItem * int) list) (champs: (uint64 * string * string
                     Text.raw name
                 ]
             )
-        Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+        Elem.div [ Attr.class' "select-wrap" ] [
             Elem.select [
                 Attr.class' "tom-select"
                 Attr.id "champ"
@@ -134,9 +134,9 @@ let storage (shopItems:(ShopItem * int) list) (champs: (uint64 * string * string
                 ]
         ]
 
-        Elem.div [ Attr.style "float: right" ] [
+        Elem.div [ Attr.class' "float-end" ] [
             Text.raw "You can buy more items "
-            Elem.a [ Attr.href Route.shop ] [ Text.raw $"here" ] 
+            Elem.a [ Attr.href Route.shop ] [ Text.raw $"here" ]
         ]
     ]
    
