@@ -77,15 +77,14 @@ let getDiscordUser (result:AuthenticateResult) =
                 | "urn:discord:avatar:hash" -> Some claim.Value
                 | _ -> None)
 
-        if idO.IsNone || nameO.IsNone || picO.IsNone then
-            Log.Information("Claims")
-            claims |> Seq.iter(fun claim -> Log.Information($"{claim.Type} = {claim.Value}"))
-
         match idO with
         | Some id ->
             let name' = nameO |> Option.defaultValue "User"
             DiscordUser(name', id, picO) |> Some
-        | None -> None
+        | None ->
+            Log.Error("Missing id. Claims")
+            claims |> Seq.iter(fun claim -> Log.Error($"{claim.Type} = {claim.Value}"))
+            None
         |> Some
     else None
 
