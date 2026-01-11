@@ -30,14 +30,17 @@ type Wallet(wallet:string, isConfirmed:bool, code: string) =
     member _.IsConfirmed = isConfirmed
     member _.Code = code
 
-type DiscordUser(nickname:string, discorId: uint64, pic:string) =
-    let f = if pic.StartsWith "a_" then "gif" else "png"
+type DiscordUser(nickname:string, discorId: uint64, pic:string option) =
+    let picture =
+        pic |> Option.map(fun p ->
+            let f = if p.StartsWith "a_" then "gif" else "png"
+            String.Format(CultureInfo.InvariantCulture,
+                "https://cdn.discordapp.com/avatars/{0}/{1}.{2}",
+                discorId, pic, f))
+
     member _.Nickname = nickname
     member _.DiscordId = discorId
-    member _.Pic = 
-        String.Format(CultureInfo.InvariantCulture,
-            "https://cdn.discordapp.com/avatars/{0}/{1}.{2}",
-            discorId, pic, f)
+    member _.Pic = picture
 
 type UserAccount(user:DiscordUser, wallets:Wallet list, balance: decimal, champs:int, monsters:int) =
     member _.User = user

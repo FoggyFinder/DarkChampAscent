@@ -185,6 +185,7 @@ module Ui =
         ]
 
     let defError = unError "Unexpected error. Please, try again later"
+    let incompleteResponseError = unError "Incomplete response"
 
     let layout (title:string) (isLoggedIn:bool) (content : XmlNode) =
         Elem.html [ Attr.lang "en"; ] [

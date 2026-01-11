@@ -21,11 +21,14 @@ let private userSection (user:DiscordUser) (balance:decimal) (price: decimal opt
             ] [
                 Elem.table [] [
                     Elem.tr [] [
-                        Elem.td [] [ 
-                            Elem.img [
-                                Attr.class' "picSmall"
-                                Attr.src user.Pic
-                            ]
+                        Elem.td [] [
+                            match user.Pic with
+                            | Some pic ->
+                                Elem.img [
+                                    Attr.class' "picSmall"
+                                    Attr.src pic
+                                ]
+                            | None -> ()
                         ]
                         Elem.td [] [ Text.raw $"{user.Nickname}" ]
                     ]
