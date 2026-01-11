@@ -98,10 +98,11 @@ let accountHandler : HttpHandler =
                     match opt with
                     | Some du ->
                         let db = ctx.Plug<SqliteStorage>()
-                        match db.GetUserWallets du.DiscordId, 
-                            db.GetUserChampsCount du.DiscordId, 
-                            db.GetUserMonstersCount du.DiscordId,
-                            db.GetUserBalance du.DiscordId with
+                        let dId = du.DiscordId
+                        // a user may not be registered with discord bot
+                        db.TryRegisterUser dId |> ignore
+                        match db.GetUserWallets dId, db.GetUserChampsCount dId, 
+                            db.GetUserMonstersCount dId, db.GetUserBalance dId with
                         | Ok ar, Some champs, Some monsters, Some balance ->
                             let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
                             let ua = UserAccount(du, wallets, balance, int champs, int monsters)
