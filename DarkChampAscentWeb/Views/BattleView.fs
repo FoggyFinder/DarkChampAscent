@@ -94,7 +94,7 @@ let joinBattle (roundInfo:(RoundStatus * DateTime option) option) (champsRes: Re
                         Attr.methodPost
                         Attr.action Route.joinBattle
                     ] [
-                        Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+                        Elem.div [ Attr.class' "select-wrap" ] [
                             Elem.select [
                               Attr.class' "tom-select"
                               Attr.id "champ"
@@ -102,7 +102,7 @@ let joinBattle (roundInfo:(RoundStatus * DateTime option) option) (champsRes: Re
                             ] (champOptions)
                           ]
 
-                        Elem.div [ Attr.class' "select-wrap"; Attr.style "margin:8px 0;" ] [
+                        Elem.div [ Attr.class' "select-wrap" ] [
                             Elem.select [
                               Attr.class' "tom-select"
                               Attr.id "move"

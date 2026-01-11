@@ -77,15 +77,14 @@ let getDiscordUser (result:AuthenticateResult) =
                 | "urn:discord:avatar:hash" -> Some claim.Value
                 | _ -> None)
 
-        if idO.IsNone || nameO.IsNone || picO.IsNone then
-            Log.Information("Claims")
-            claims |> Seq.iter(fun claim -> Log.Information($"{claim.Type} = {claim.Value}"))
-
         match idO with
         | Some id ->
             let name' = nameO |> Option.defaultValue "User"
             DiscordUser(name', id, picO) |> Some
-        | None -> None
+        | None ->
+            Log.Error("Missing id. Claims")
+            claims |> Seq.iter(fun claim -> Log.Error($"{claim.Type} = {claim.Value}"))
+            None
         |> Some
     else None
 
@@ -108,7 +107,7 @@ let accountHandler : HttpHandler =
                         let dId = du.DiscordId
                         // a user may not be registered with discord bot
                         db.TryRegisterUser dId |> ignore
-                        match db.GetUserWallets dId, db.GetUserChampsCount dId, 
+                        match db.GetUserWallets dId, db.GetUserChampsCount dId,
                             db.GetUserMonstersCount dId, db.GetUserBalance dId with
                         | Ok ar, Some champs, Some monsters, Some balance ->
                             let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
@@ -310,7 +309,6 @@ let shopHandler : HttpHandler =
                     |> List.map(fun item -> Display.ShopItemRow(item, price))
                     |> ShopView.shop isAuth
                 | _ -> Ui.defError
-
             let response =
                 view
                 |> Ui.layout "Shop" isAuth

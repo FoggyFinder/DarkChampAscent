@@ -6,9 +6,10 @@ open DiscordBot
 
 let private qa (q:XmlNode, a:XmlNode) =
     Elem.div [ ] [
-        Elem.div [ Attr.class' "question" ] [ q ]
-
-        Elem.div [ Attr.class' "answer" ] [ a ]
+        Elem.div [ Attr.class' "question"; Attr.tabindex "0"; Attr.role "button" ] [ q ]
+        Elem.div [ Attr.class' "answer" ] [
+            Elem.div [ ] [ a ]
+        ]
     ]
 
 let supportedAsas =
@@ -67,15 +68,11 @@ let faqScript =
 (function () {
   'use strict';
 
-  // Initialize all .faq containers
   var faqContainers = document.querySelectorAll('.faq');
   if (!faqContainers.length) return;
 
   faqContainers.forEach(function (container, containerIndex) {
     var isAccordion = container.dataset.accordion === 'true';
-    var inlineMode = container.classList.contains('inline');
-
-    // collect only element children (your qa helper creates a wrapper div per Q/A)
     var items = Array.prototype.filter.call(container.children, function (c) { return c.nodeType === 1; });
 
     items.forEach(function (item, i) {
@@ -83,189 +80,46 @@ let faqScript =
       var answer = item.querySelector('.answer');
       if (!question || !answer) return;
 
-      // Ensure unique id for answer for aria-controls
+      // Set aria attributes
       if (!answer.id) answer.id = 'faq-' + containerIndex + '-' + i + '-answer';
-
-      // Make question accessible as a button if not already
-      question.setAttribute('role', 'button');
       question.setAttribute('aria-controls', answer.id);
-      question.tabIndex = question.hasAttribute('tabindex') ? question.getAttribute('tabindex') : 0;
+      question.setAttribute('aria-expanded', item.classList.contains('open') ? 'true' : 'false');
 
-      // Track expanded state via aria-expanded and item.open class
-      var expanded = item.classList.contains('open');
-      question.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-      answer.setAttribute('aria-hidden', expanded ? 'false' : 'true');
-
-      // Initialize answer height for smooth animation
-      if (expanded) {
-        // ensure it's visible and allow natural height after transition
-        answer.style.height = answer.scrollHeight + 'px';
-        // after next frame, clear height to let it become auto
-        requestAnimationFrame(function () {
-          answer.addEventListener('transitionend', function clearHeight(e) {
-            if (e.propertyName === 'height') {
-              answer.style.height = 'auto';
-              answer.removeEventListener('transitionend', clearHeight);
-            }
-          });
-        });
-      } else {
-        answer.style.height = '0px';
-      }
-
-      // helper to recalc open height (useful when content changes)
-      function refreshOpenHeight(a) {
-        if (!a) return;
-        if (a.style.height === 'auto') return;
-        // set to the current scrollHeight so CSS animation can run
-        a.style.height = a.scrollHeight + 'px';
-      }
-
-      // Toggle helpers (use height animation)
-      function closeElement(el, q, a) {
-        el.classList.remove('open');
-        if (q) q.setAttribute('aria-expanded', 'false');
-        if (a) {
-          a.setAttribute('aria-hidden', 'true');
-          // from auto or px -> px (current) then to 0 to animate
-          var current = a.scrollHeight;
-          a.style.height = current + 'px';
-          // force reflow
-          a.offsetHeight;
-          requestAnimationFrame(function () {
-            a.style.height = '0px';
-          });
-        }
-      }
-
-      function openElement(el, q, a) {
-        if (inlineMode) return;
-        // If accordion behavior requested, close siblings
-        if (isAccordion) {
-          items.forEach(function (other) {
-            if (other !== el && other.classList.contains('open')) {
-              var oq = other.querySelector('.question');
-              var oa = other.querySelector('.answer');
-              closeElement(other, oq, oa);
-            }
-          });
-        }
-
-        el.classList.add('open');
-        if (q) q.setAttribute('aria-expanded', 'true');
-        if (a) {
-          a.setAttribute('aria-hidden', 'false');
-
-          // Ensure we measure from 0 -> full height to animate cleanly
-          a.style.height = '0px';
-          // force reflow
-          a.offsetHeight;
-          // set to measured height to trigger transition
-          requestAnimationFrame(function () {
-            a.style.height = a.scrollHeight + 'px';
-          });
-
-          // After expansion, switch to auto so content changes don't get clipped
-          a.addEventListener('transitionend', function clearHeight(e) {
-            if (e.propertyName === 'height') {
-              // If still open, allow natural height
-              if (el.classList.contains('open')) {
-                a.style.height = 'auto';
-              }
-              a.removeEventListener('transitionend', clearHeight);
-            }
-          });
-        }
-      }
-
-      function toggleElement() {
-        if (item.classList.contains('open')) {
-          closeElement(item, question, answer);
-        } else {
-          openElement(item, question, answer);
-        }
-      }
-
-      // Click toggles
+      // Toggle on click
       question.addEventListener('click', function (ev) {
         ev.preventDefault();
-        toggleElement();
+        var isOpen = item.classList.contains('open');
+
+        // Accordion: close others
+        if (isAccordion && !isOpen) {
+          items.forEach(function (other) {
+            if (other !== item && other.classList.contains('open')) {
+              other.classList.remove('open');
+              var oq = other.querySelector('.question');
+              if (oq) oq.setAttribute('aria-expanded', 'false');
+            }
+          });
+        }
+
+        item.classList.toggle('open');
+        question.setAttribute('aria-expanded', item.classList.contains('open') ? 'true' : 'false');
       });
 
-      // Keyboard controls: Enter/Space toggle, Up/Down navigate
+      // Keyboard: Enter/Space toggle, Arrow keys navigate
       question.addEventListener('keydown', function (ev) {
-        var key = ev.key || ev.keyCode;
-        if (key === 'Enter' || key === ' ' || key === 13 || key === 32) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
           ev.preventDefault();
-          toggleElement();
-          return;
-        }
-        if (key === 'ArrowDown' || key === 'Down' || key === 40) {
+          question.click();
+        } else if (ev.key === 'ArrowDown') {
           ev.preventDefault();
-          // focus next question
           var next = items[(i + 1) % items.length];
-          if (next) {
-            var nq = next.querySelector('.question');
-            if (nq) nq.focus();
-          }
-          return;
-        }
-        if (key === 'ArrowUp' || key === 'Up' || key === 38) {
+          if (next) next.querySelector('.question').focus();
+        } else if (ev.key === 'ArrowUp') {
           ev.preventDefault();
           var prev = items[(i - 1 + items.length) % items.length];
-          if (prev) {
-            var pq = prev.querySelector('.question');
-            if (pq) pq.focus();
-          }
-          return;
+          if (prev) prev.querySelector('.question').focus();
         }
       });
-
-      // When content inside answer changes dynamically (images, etc.) ensure opened panels adapt
-      var ro = new MutationObserver(function () {
-        if (item.classList.contains('open')) {
-          // If height is 'auto' we don't need to do anything; otherwise refresh the measured height
-          if (answer.style.height !== 'auto') {
-            answer.style.height = answer.scrollHeight + 'px';
-            // clear after transition
-            answer.addEventListener('transitionend', function clearHeight(e) {
-              if (e.propertyName === 'height') {
-                if (item.classList.contains('open')) answer.style.height = 'auto';
-                answer.removeEventListener('transitionend', clearHeight);
-              }
-            });
-          }
-        }
-      });
-      ro.observe(answer, { childList: true, subtree: true, characterData: true });
-
-      // Also watch for images that might load after initial measurement
-      var imgs = answer.querySelectorAll('img');
-      imgs.forEach(function (img) {
-        if (!img.complete) {
-          img.addEventListener('load', function () {
-            // if open, update height; if closed nothing to do
-            if (item.classList.contains('open')) {
-              // if height is auto, leave it; else recalc
-              if (answer.style.height !== 'auto') {
-                answer.style.height = answer.scrollHeight + 'px';
-              }
-            }
-          }, { once: true });
-        }
-      });
-
-      // Optional: expose a refresh method on the item for external code
-      item.refreshFaqHeight = function () {
-        if (item.classList.contains('open')) {
-          if (answer.style.height !== 'auto') {
-            answer.style.height = answer.scrollHeight + 'px';
-            requestAnimationFrame(function () {
-              answer.style.height = 'auto';
-            });
-          }
-        }
-      };
     });
   });
 })();
