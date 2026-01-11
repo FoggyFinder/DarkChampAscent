@@ -76,9 +76,16 @@ let getDiscordUser (result:AuthenticateResult) =
                 match claim.Type with
                 | "urn:discord:avatar:hash" -> Some claim.Value
                 | _ -> None)
-        match nameO, idO, picO with
-        | Some name, Some id, Some pic -> DiscordUser(name, id, pic) |> Some
-        | _ -> None
+
+        if idO.IsNone || nameO.IsNone || picO.IsNone then
+            Log.Information("Claims")
+            claims |> Seq.iter(fun claim -> Log.Information($"{claim.Type} = {claim.Value}"))
+
+        match idO with
+        | Some id ->
+            let name' = nameO |> Option.defaultValue "User"
+            DiscordUser(name', id, picO) |> Some
+        | None -> None
         |> Some
     else None
 
@@ -98,18 +105,18 @@ let accountHandler : HttpHandler =
                     match opt with
                     | Some du ->
                         let db = ctx.Plug<SqliteStorage>()
-                        let wallets =
-                            match db.GetUserWallets du.DiscordId with
-                            | Ok ar -> ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                            | Error _ -> []
-                        let champs = db.GetUserChampsCount du.DiscordId |> Option.defaultValue 0L |> int
-                        let monsters = db.GetUserMonstersCount du.DiscordId |> Option.defaultValue 0L |> int
-                        let balance = db.GetUserBalance du.DiscordId |> Option.defaultValue 0m
-                        let ua = UserAccount(du, wallets, balance, champs, monsters)
-                        let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-                        AccountView.accountView ua dcprice
-                    | None ->
-                        Ui.defError
+                        let dId = du.DiscordId
+                        // a user may not be registered with discord bot
+                        db.TryRegisterUser dId |> ignore
+                        match db.GetUserWallets dId, db.GetUserChampsCount dId,
+                            db.GetUserMonstersCount dId, db.GetUserBalance dId with
+                        | Ok ar, Some champs, Some monsters, Some balance ->
+                            let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
+                            let ua = UserAccount(du, wallets, balance, int champs, int monsters)
+                            let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+                            AccountView.accountView ua dcprice
+                        | _ -> Ui.unError "Can't fetch user data, please try again later"
+                    | None -> Ui.incompleteResponseError
                 | None ->
                     Elem.main [
                         Attr.class' "dashboard"
@@ -166,7 +173,7 @@ let battleHandler : HttpHandler =
                             | None -> None
                         rdb.GetAvailableUserChamps(user.DiscordId)
                         |> BattleView.joinBattle roundInfo
-                    | None -> Ui.defError
+                    | None -> Ui.incompleteResponseError
                 | None ->
                     Elem.div [ ] [
                         Text.raw "Sign-in to join battle"
@@ -356,7 +363,7 @@ let storageHandler : HttpHandler =
                             |> List.map(fun ar -> uint64 ar.ID, ar.Name, ar.Ipfs)
                             |> ShopView.storage items
                         | _ -> Ui.defError
-                    | _ -> Ui.defError
+                    | _ -> Ui.incompleteResponseError
                     |> Ui.layout "Storage" dUser.IsSome
                     |> fun html -> Response.ofHtml html ctx
                 | _ -> Response.redirectPermanently Route.login ctx
@@ -395,7 +402,7 @@ let useItemHandler : HttpHandler =
                             | Ok _ -> ()
                             | Error _ -> ()
                         | _ -> ()
-                    | None ->()
+                    | None -> ()
                     Route.storage
                 | None -> Route.login
 
@@ -419,7 +426,7 @@ let myMonstersHandler : HttpHandler =
                         | Ok monsters, Some dcPrice ->
                             MonsterView.monsters monsters true dcPrice
                         | _ -> Ui.defError
-                    | _ -> Ui.defError
+                    | _ -> Ui.incompleteResponseError
                     |> Ui.layout "Monsters" true
                     |> fun html -> Response.ofHtml html ctx
                 | _ -> Response.redirectPermanently Route.login ctx
@@ -440,7 +447,7 @@ let myChampsHandler : HttpHandler =
                         match db.GetUserChampsInfo user.DiscordId with
                         | Some champs -> ChampView.champs champs
                         | _ -> Ui.defError
-                    | _ -> Ui.defError
+                    | _ -> Ui.incompleteResponseError
                     |> Ui.layout "Champs" true
                     |> fun html -> Response.ofHtml html ctx
                 | _ -> Response.redirectPermanently Route.login ctx

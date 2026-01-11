@@ -521,7 +521,9 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         with exn ->
             Log.Error(exn, $"FindDiscordIdByWallet: {wallet}")
             None
-
+    
+    member _.TryRegisterUser(discordId:uint64) = registerNewUser discordId
+    
     member _.RegisterNewWallet(discordId:uint64, wallet:string) =
         let isRegistered = 
             userExists discordId || registerNewUser discordId

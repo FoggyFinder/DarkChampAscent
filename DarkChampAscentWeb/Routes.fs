@@ -62,7 +62,9 @@ module Links =
     let [<Literal>] Github = "https://github.com/FoggyFinder/DarkChampAscent"
     let [<Literal>] Discord = "https://discord.gg/bYPtQhYKwN"
     let [<Literal>] IPFS = "https://ipfs.dark-coin.io/ipfs/"
-    let [<Literal>] DarkChampCollection = "https://www.minthol.art/3%3A0_9846/assets/all?listingTypes=BUY&listingTypes=BID"
+    let [<Literal>] DarkChampCollection =
+        // "https://www.minthol.art/3%3A0_9846/assets/all?listingTypes=BUY&listingTypes=BID"
+        "https://www.randgallery.com/collections/Dark%20Coin%20Champions?sort=price_asc&buy_now=true"
 
 [<RequireQualifiedAccess>]
 module KnownWallets =
@@ -186,6 +188,7 @@ module Ui =
         ]
 
     let defError = unError "Unexpected error. Please, try again later"
+    let incompleteResponseError = unError "Incomplete response"
 
     let layout (title:string) (isLoggedIn:bool) (content : XmlNode) =
         Elem.html [ Attr.lang "en"; ] [
