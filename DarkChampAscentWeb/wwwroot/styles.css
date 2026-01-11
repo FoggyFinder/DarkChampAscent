@@ -748,7 +748,6 @@ main {
 
 .dashboard {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-2);
@@ -833,7 +832,6 @@ main {
 
 .acc-dashboard {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   display: grid;
   gap: var(--space-3);
   padding: var(--space-2);
@@ -1482,7 +1480,6 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
 /* Home page */
 .home {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   padding: var(--space-4);
 }
 
@@ -1494,7 +1491,6 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
 .champ-card,
 .monstr-card {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   padding: var(--space-4);
 }
 
@@ -1551,14 +1547,12 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
 .shop,
 .storage {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   padding: var(--space-4);
 }
 
 /* Leaderboard table view */
 .leaderboard {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   padding: var(--space-4);
 }
 
@@ -1568,8 +1562,39 @@ main.my-monsters,
 main.champs-under-effects,
 main.monsters-under-effects {
   max-inline-size: var(--max-width);
-  margin-inline-end: auto;
   padding: var(--space-4);
+}
+
+@media (min-width: 721px) {
+  main.my-champs,
+  main.my-monsters,
+  main.champs-under-effects,
+  main.monsters-under-effects,
+  main.home,
+  main.champ-card,
+  main.monstr-card,
+  main.shop,
+  main.storage,
+  main.leaderboard,
+  main.dashboard,
+  main.acc-dashboard {
+    margin-inline-start: var(--nav-width);
+  }
+
+  body.nav-side-collapsed main.my-champs,
+  body.nav-side-collapsed main.my-monsters,
+  body.nav-side-collapsed main.champs-under-effects,
+  body.nav-side-collapsed main.monsters-under-effects,
+  body.nav-side-collapsed main.home,
+  body.nav-side-collapsed main.champ-card,
+  body.nav-side-collapsed main.monstr-card,
+  body.nav-side-collapsed main.shop,
+  body.nav-side-collapsed main.storage,
+  body.nav-side-collapsed main.leaderboard,
+  body.nav-side-collapsed main.dashboard,
+  body.nav-side-collapsed main.acc-dashboard {
+    margin-inline-start: var(--nav-collapsed-width);
+  }
 }
 
 /* ==========================================================================
