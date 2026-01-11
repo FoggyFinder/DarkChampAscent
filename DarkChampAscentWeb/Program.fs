@@ -303,12 +303,12 @@ let shopHandler : HttpHandler =
             let isAuth = getDiscordUser result |> Option.isSome
             let view =
                 let db = ctx.Plug<SqliteStorage>()
-                let items = db.GetShopItems() |> Option.defaultValue []
-                let price = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) |> Option.defaultValue 0m
-                items
-                |> List.map(fun item -> Display.ShopItemRow(item, price))
-                |> ShopView.shop isAuth
-
+                match db.GetShopItems(), db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
+                | Some items, Some price ->
+                    items
+                    |> List.map(fun item -> Display.ShopItemRow(item, price))
+                    |> ShopView.shop isAuth
+                | _ -> Ui.defError
             let response =
                 view
                 |> Ui.layout "Shop" isAuth
