@@ -108,8 +108,8 @@ let accountHandler : HttpHandler =
                             let ua = UserAccount(du, wallets, balance, int champs, int monsters)
                             let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
                             AccountView.accountView ua dcprice
-                        | _ -> Ui.defError
-                    | None -> Ui.defError
+                        | _ -> Ui.unError "Can't fetch user data, please try again later"
+                    | None -> Ui.unError "Incomplete response"
                 | None ->
                     Elem.main [
                         Attr.class' "dashboard"
