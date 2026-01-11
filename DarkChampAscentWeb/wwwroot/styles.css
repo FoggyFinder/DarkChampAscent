@@ -871,48 +871,44 @@ main {
   grid-area: walletssection;
 }
 
-/* Wallets table - scrollable wrapper + fixed columns */
-.wallets-section > div:has(table),
+/* Wallets table */
 .wallets-section table {
-  /* Allow horizontal scroll on small screens */
-  display: block;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.wallets-section table {
-  table-layout: auto;
-  min-inline-size: 100%;
-  white-space: nowrap;
-}
-
-.wallets-section table th,
-.wallets-section table td {
-  padding: var(--space-2) var(--space-3);
-  font-size: clamp(0.7rem, 2vw, 0.9rem);
+  table-layout: fixed;
+  inline-size: 100%;
 }
 
 .wallets-section table th:nth-child(1),
 .wallets-section table td:nth-child(1) {
   /* Address - truncates */
-  max-inline-size: clamp(80px, 30vw, 250px);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wallets-section table th:nth-child(2),
 .wallets-section table td:nth-child(2) {
-  /* IsConfirmed - compact */
+  /* IsConfirmed - fixed */
   text-align: center;
-  inline-size: clamp(50px, 10vw, 80px);
+  inline-size: 80px;
 }
 
 .wallets-section table th:nth-child(3),
 .wallets-section table td:nth-child(3) {
-  /* Code - mono, compact */
+  /* Code - fixed */
   font-family: var(--font-mono);
-  font-size: clamp(0.65rem, 1.8vw, 0.85rem);
-  inline-size: clamp(60px, 15vw, 120px);
+  inline-size: 100px;
+}
+
+/* Mobile: horizontal scroll */
+@media (max-width: 500px) {
+  .wallets-section {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .wallets-section table {
+    min-inline-size: 320px;
+  }
 }
 
 /* Wallet form */
@@ -998,7 +994,6 @@ main {
 main.leaderboards,
 .leaderboards {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
   padding: var(--space-5);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
@@ -1452,6 +1447,34 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .dropdown-content::-webkit-scrol
   z-index: 2;
 }
 
+/* Remove/Clear button */
+.ts-nightshade.ts-nightshade .ts-control .remove,
+.ts-nightshade.ts-nightshade .clear-button,
+.ts-nightshade.ts-nightshade .ts-control button {
+  background: var(--color-primary-alpha-12);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.ts-nightshade.ts-nightshade .ts-control .remove:hover,
+.ts-nightshade.ts-nightshade .clear-button:hover,
+.ts-nightshade.ts-nightshade .ts-control button:hover {
+  background: var(--color-primary-alpha-18);
+  color: #fff;
+}
+
+/* "None" option styling */
+body > .ts-dropdown.ts-nightshade-dropdown-body .option[data-value=""],
+body > .ts-dropdown.ts-nightshade-dropdown-body .option:empty,
+body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 /* ==========================================================================
    20. PAGE-SPECIFIC STYLES
    ========================================================================== */
@@ -1545,14 +1568,7 @@ main.my-monsters,
 main.champs-under-effects,
 main.monsters-under-effects {
   max-inline-size: var(--max-width);
-  margin-inline: auto;
-  padding: var(--space-4);
-}
-
-/* Gen requests */
-main.my-champs[role="main"] {
-  max-inline-size: var(--max-width);
-  margin-inline: auto;
+  margin-inline-end: auto;
   padding: var(--space-4);
 }
 
