@@ -125,6 +125,7 @@ let private walletsSection (wallets:Wallet list) =
 
             Text.raw "with confirmation code as a note"
         ]
+
         if wallets.IsEmpty then
             Text.raw $"You haven't registered any wallet yet."
         else
@@ -152,6 +153,7 @@ let private walletsSection (wallets:Wallet list) =
                     ]
             ]
 
+        Elem.div [ ] [
             Elem.form [
                 Attr.methodPost
                 Attr.action Route.walletRegister
@@ -170,6 +172,7 @@ let private walletsSection (wallets:Wallet list) =
                     Attr.value "Register new wallet"
                 ]
             ]
+        ]
     ]
 
 let private infoSection (champs:int, monsters: int) =
