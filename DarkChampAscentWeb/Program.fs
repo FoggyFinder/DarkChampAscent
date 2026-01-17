@@ -149,6 +149,7 @@ let battleHandler : HttpHandler =
             let rdb = ctx.Plug<SqliteWebUiStorage>()
             let db = ctx.Plug<SqliteStorage>()
             let currentBattle = rdb.GetCurrentBattleInfo()
+            let champsAtRound = rdb.GetLastRoundParticipants()
             let userView =
                 match dUser with
                 | Some userO ->
@@ -170,8 +171,9 @@ let battleHandler : HttpHandler =
                                     |> Some
                                 | None -> None
                             | None -> None
+                        let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
                         rdb.GetAvailableUserChamps(user.DiscordId)
-                        |> BattleView.joinBattle roundInfo
+                        |> BattleView.joinBattle hasPlayers roundInfo
                     | None -> Ui.incompleteResponseError
                 | None ->
                     Elem.div [ ] [
@@ -194,8 +196,7 @@ let battleHandler : HttpHandler =
                     match currentBattle with
                     | Ok cbo -> rdb.GetBattleHistory(cbo.BattleNum, cbo.Monster.Name)
                     | Error _ -> Error("Unknown error")
-                let champsAtRound = rdb.GetLastRoundParticipants()
-
+                
                 BattleView.battleView userView currentBattle history champsAtRound
 
             let response =
@@ -1069,7 +1070,6 @@ let endpoints =
 
 
 let wapp = builder.Build()
-
 wapp.UseForwardedHeaders(ForwardedHeadersOptions(ForwardedHeaders = (ForwardedHeaders.XForwardedFor ||| ForwardedHeaders.XForwardedProto))) |> ignore
 wapp.UseHsts() |> ignore
 
