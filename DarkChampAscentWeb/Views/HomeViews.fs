@@ -1,4 +1,4 @@
-module HomeView
+﻿module HomeView
 
 open Falco.Markup
 open GameLogic.Battle
@@ -53,6 +53,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
             Elem.div [ ] [
                 Elem.p [ ] [ Text.raw """DarkChampAscent - is a discord game that allows players collect DarkCoins by performing one of
                     few available actions each round. This site is WebUi for it. """ ]
+                
                 Elem.p [ ] [ 
                     Text.raw "To play one has to hold at least one of "
                     Elem.a [ 
@@ -60,6 +61,14 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                         Attr.targetBlank
                     ] [ Text.raw "Dark Coin Champions collection" ]
                     Text.raw " NFTs"
+                ]
+
+                Elem.p [ ] [ 
+                    Text.raw "To play log-in with discord account and then follow "
+                    Elem.a [ 
+                        Attr.href Route.account
+                    ] [ Text.raw "Account page" ]
+                    Text.raw " to register and confirm any Algorand wallet"
                 ]
                 Elem.p [ ] [ 
                     Text.raw "For every NFT from confirmed wallet one in-game champion is created. Their starting stats are based on current"
@@ -171,6 +180,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
     ]
 
 open System
+open Types
 
 let private getTraitTable<'a when 'a : (new : unit-> 'a) and 'a :> Enum and 'a :struct> (trt:Trait) (fromTrait:'a -> Stat) =
     let chs = TraitCharacteristic.impact.[trt]
@@ -220,3 +230,118 @@ let traits tables =
         Attr.class' "home"
         Attr.role "traits"
     ] tables
+
+let statsPage (stats:Stats) =
+    Elem.main [
+        Attr.class' "stats"
+        Attr.role "stats"
+    ] [
+        Elem.div [ ] [
+            Text.h2 $"{WebEmoji.Stats} Statistics {WebEmoji.Stats}"
+
+            Elem.table [] [
+                if stats.Players.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Account} Players registered" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Players.Value}"
+                        ]
+                    ]
+
+                if stats.ConfirmedPlayers.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.CheckMark} Confirmed players" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.ConfirmedPlayers.Value}"
+                        ]
+                    ]
+
+                if stats.Champs.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Champs} Champions" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Champs.Value}"
+                        ]
+                    ]
+
+                if stats.Champs.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Monsters} Custom monsters" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.CustomMonsters.Value}"
+                        ]
+                    ]
+
+                if stats.Battles.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Battle} Battles" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Battles.Value}"
+                        ]
+                    ]
+                
+                if stats.Rounds.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Rounds} Rounds" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Rounds.Value}"
+                        ]
+                    ]
+            ]
+            
+            Text.h2 $"{WebEmoji.MoneyBag} Rewards {WebEmoji.MoneyBag}"
+
+            Elem.table [] [
+                if stats.Rewards.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"🤖 Players earned" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Rewards.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+
+                    
+                if stats.Dao.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.DAO} DAO" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Dao.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+
+                if stats.Devs.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Dev} Devs" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Devs.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+
+                if stats.Reserve.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Reserve} Reserve" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Reserve.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+
+                if stats.Burnt.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Fire} Burnt" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Burnt.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+                    
+
+                if stats.Staking.IsSome then
+                    Elem.tr [] [
+                        Elem.td [] [ Text.raw $"{WebEmoji.Staking} Staking" ]
+                        Elem.td [] [ 
+                            Text.raw $"{stats.Staking.Value} {WebEmoji.Coin}"
+                        ]
+                    ]
+            ]
+        ]
+
+    ]

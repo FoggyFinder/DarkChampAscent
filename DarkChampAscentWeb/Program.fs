@@ -966,6 +966,26 @@ let faqHandler : HttpHandler =
             return! response
         }
 
+let statsHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let isAuth = getDiscordUser result |> Option.isSome
+            
+            let view =
+                let db = ctx.Plug<SqliteWebUiStorage>()
+                match db.GetStats() with
+                | Some s -> HomeView.statsPage s
+                | _ -> Ui.defError
+
+            let response =
+                view
+                |> Ui.layout "Stats" isAuth
+                |> fun html -> Response.ofHtml html ctx
+
+            return! response
+        }
+
 let deniedHandler : HttpHandler =
     Response.ofPlainText "Access Denied"
 
@@ -1066,6 +1086,7 @@ let endpoints =
         get Route.myChampsUnderEffects champsUnderEffectsHandler
 
         get Route.faq faqHandler
+        get Route.stats statsHandler
     ]
 
 
