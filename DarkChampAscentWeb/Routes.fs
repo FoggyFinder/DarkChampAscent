@@ -66,6 +66,7 @@ module Links =
     let [<Literal>] DarkChampCollection =
         // "https://www.minthol.art/3%3A0_9846/assets/all?listingTypes=BUY&listingTypes=BID"
         "https://www.randgallery.com/collections/Dark%20Coin%20Champions?sort=price_asc&buy_now=true"
+    let [<Literal>] AIPG = "https://aipowergrid.io/"
 
 [<RequireQualifiedAccess>]
 module KnownWallets =

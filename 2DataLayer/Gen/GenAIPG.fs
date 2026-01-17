@@ -196,34 +196,36 @@ type AipgGen(options:IOptions<GenConfiguration>) =
                 return Error(e.ToString())
         }
 
-    let rec getGenerateTextAsync (id: string) : Async<Result<string, string>> =
-        async {
-            try
-                let url = $"{apiBase}/text/status/{id}"
-                let! response = httpClient.GetAsync(url) |> Async.AwaitTask
-                let! body = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-                if response.IsSuccessStatusCode then
-                    let cresponse = deserialize<TextCompleteResponse>(body)
-                    if cresponse.Faulted then
-                        return Error("Internal server error, could not complete request (faulted=true)")
-                    elif not cresponse.IsPossible then
-                        return Error("Request is not possible with current pool of workers (is_possible=false)")
-                    elif cresponse.Done then
-                        match cresponse.Generations with
-                        | Some arr when arr.Length > 0 ->
-                            return Ok(arr.[0].Text |> Option.defaultValue "")
-                        | _ -> return Error($"Unexpected response - generations array was empty: {body}")
+    let rec getGenerateTextAsync (id: string) (attempt:int) : Async<Result<string, string>> =
+        if attempt >= 10 then async { return Error "Max attempts reached" }
+        else
+            async {
+                try
+                    let url = $"{apiBase}/text/status/{id}"
+                    let! response = httpClient.GetAsync(url) |> Async.AwaitTask
+                    let! body = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+                    if response.IsSuccessStatusCode then
+                        let cresponse = deserialize<TextCompleteResponse>(body)
+                        if cresponse.Faulted then
+                            return Error("Internal server error, could not complete request (faulted=true)")
+                        elif not cresponse.IsPossible then
+                            return Error("Request is not possible with current pool of workers (is_possible=false)")
+                        elif cresponse.Done then
+                            match cresponse.Generations with
+                            | Some arr when arr.Length > 0 ->
+                                return Ok(arr.[0].Text |> Option.defaultValue "")
+                            | _ -> return Error($"Unexpected response - generations array was empty: {body}")
+                        else
+                            let ts = TimeSpan.FromSeconds(int64 cresponse.WaitTime)
+                            // to not spam with request
+                            let ts' = if ts.TotalSeconds < 60.0 then TimeSpan.FromSeconds(60L) else ts
+                            do! Async.Sleep(ts')
+                            return! getGenerateTextAsync id (attempt + 1)
                     else
-                        let ts = TimeSpan.FromSeconds(int64 cresponse.WaitTime)
-                        // to not spam with request
-                        let ts' = if ts.TotalSeconds < 45.0 then TimeSpan.FromSeconds(45L) else ts
-                        do! Async.Sleep(ts')
-                        return! getGenerateTextAsync id
-                else
-                    return Error($"Status check request failed: {body}")
-            with e ->
-                return Error(e.ToString())
-        }
+                        return Error($"Status check request failed: {body}")
+                with e ->
+                    return Error(e.ToString())
+            }
 
     let generateImageAsync (req: GenerateRequest) : Async<Result<string, string>> =
         async {
@@ -303,7 +305,7 @@ type AipgGen(options:IOptions<GenConfiguration>) =
         }
 
     member _.GenerateTextAsync = generateTextAsync
-    member _.GetGeneratedTextAsync = getGenerateTextAsync
+    member _.GetGeneratedTextAsync id = getGenerateTextAsync id 0
     member _.GenerateImageAsync = generateImageAsync
     member _.PollStatusAsync = pollStatusAsync
    
