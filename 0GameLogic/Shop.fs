@@ -109,8 +109,8 @@ module Shop =
 
     let getValue =
         function
-        | ShopItem.ElixirOfLife -> 5L
-        | ShopItem.ElixirOfMagic -> 10L
+        | ShopItem.ElixirOfLife -> 50L
+        | ShopItem.ElixirOfMagic -> 100L
         | ShopItem.ElixirOfLuck -> 3L
         | ShopItem.ElixirOfAccuracy -> 3L
         | ShopItem.ElixirOfDamage -> 2L
