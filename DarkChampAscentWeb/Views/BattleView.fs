@@ -193,13 +193,24 @@ let historyView (history: Result<(uint64 * (string * PerformedMove * string) lis
     ] [
         match history with
         | Ok moves ->
+            let rounds = moves.Length
+            let progress = (float rounds) / (float Constants.RoundsInBattle)
+            let progressStr = Text.raw $"{rounds} / {Constants.RoundsInBattle}"
+            Elem.h2 [ Attr.class' "center" ] [ Text.raw $" {WebEmoji.Progress} Progress" ]
+            Elem.p [ ] [
+                Elem.progress [ Attr.valueString progress ] [ progressStr ]
+                Elem.span [ ] [ progressStr ]
+            ]
+            
             if moves.IsEmpty then
                 Text.p "Waiting for round completion"
             else
-                Text.h2 "Battle history"
+                Elem.h2 [ Attr.class' "center" ] [ Text.raw $"{WebEmoji.History} Battle history" ]
                 Elem.hr []
                 let items =
-                    moves |> List.map(fun (r, moves) ->
+                    moves
+                    |> List.truncate 3
+                    |> List.map(fun (r, moves) ->
                         Elem.div [ ] [
                             Elem.p [ Attr.class' "round-header center" ] [ Text.raw $"Round {r}" ]
                             Elem.hr []
@@ -209,6 +220,8 @@ let historyView (history: Result<(uint64 * (string * PerformedMove * string) lis
                         ]
                 )
                 yield! items
+                if rounds > 3 then
+                    Text.raw $"{rounds - 3} more rounds {WebEmoji.Rounds} omitted for clarity"
         | Error err ->
             Text.p err
     ]

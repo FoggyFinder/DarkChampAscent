@@ -125,6 +125,8 @@ module WebEmoji =
     let [<Literal>] Dev = "💻"
     let [<Literal>] Staking = "♻️"
     let [<Literal>] Reserve = "🔑"
+    let [<Literal>] History = "📜"
+    let [<Literal>] Progress = "⟳"
 
 let webEmojiFromChar (ch:Characteristic) =
     match ch with
