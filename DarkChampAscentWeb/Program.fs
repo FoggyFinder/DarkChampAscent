@@ -149,6 +149,7 @@ let battleHandler : HttpHandler =
             let rdb = ctx.Plug<SqliteWebUiStorage>()
             let db = ctx.Plug<SqliteStorage>()
             let currentBattle = rdb.GetCurrentBattleInfo()
+            let champsAtRound = rdb.GetLastRoundParticipants()
             let userView =
                 match dUser with
                 | Some userO ->
@@ -170,8 +171,9 @@ let battleHandler : HttpHandler =
                                     |> Some
                                 | None -> None
                             | None -> None
+                        let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
                         rdb.GetAvailableUserChamps(user.DiscordId)
-                        |> BattleView.joinBattle roundInfo
+                        |> BattleView.joinBattle hasPlayers roundInfo
                     | None -> Ui.incompleteResponseError
                 | None ->
                     Elem.div [ ] [
@@ -194,8 +196,7 @@ let battleHandler : HttpHandler =
                     match currentBattle with
                     | Ok cbo -> rdb.GetBattleHistory(cbo.BattleNum, cbo.Monster.Name)
                     | Error _ -> Error("Unknown error")
-                let champsAtRound = rdb.GetLastRoundParticipants()
-
+                
                 BattleView.battleView userView currentBattle history champsAtRound
 
             let response =
@@ -965,6 +966,26 @@ let faqHandler : HttpHandler =
             return! response
         }
 
+let statsHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let isAuth = getDiscordUser result |> Option.isSome
+            
+            let view =
+                let db = ctx.Plug<SqliteWebUiStorage>()
+                match db.GetStats() with
+                | Some s -> HomeView.statsPage s
+                | _ -> Ui.defError
+
+            let response =
+                view
+                |> Ui.layout "Stats" isAuth
+                |> fun html -> Response.ofHtml html ctx
+
+            return! response
+        }
+
 let deniedHandler : HttpHandler =
     Response.ofPlainText "Access Denied"
 
@@ -1065,11 +1086,11 @@ let endpoints =
         get Route.myChampsUnderEffects champsUnderEffectsHandler
 
         get Route.faq faqHandler
+        get Route.stats statsHandler
     ]
 
 
 let wapp = builder.Build()
-
 wapp.UseForwardedHeaders(ForwardedHeadersOptions(ForwardedHeaders = (ForwardedHeaders.XForwardedFor ||| ForwardedHeaders.XForwardedProto))) |> ignore
 wapp.UseHsts() |> ignore
 

@@ -32,3 +32,4 @@ _ReSharper*/
 packages/
 /DarkChampAscentWeb/wwwroot/monstrs/**
 /DarkChampAscentWeb/appsettings.json
+/DarkChampAscentWeb/log*.txt

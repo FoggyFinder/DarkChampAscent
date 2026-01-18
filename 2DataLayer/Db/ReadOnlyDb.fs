@@ -289,7 +289,7 @@ type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"Perform action: {raction}")
             Error("Unexpected error")
 
-    member t.GetChampNameIPFSById(id:uint64) =
+    member _.GetChampNameIPFSById(id:uint64) =
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetChampNameIPFSById conn
@@ -299,4 +299,56 @@ type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
             |> Db.querySingle (fun r -> r.GetString(0), r.GetString(1))
         with exn ->
             Log.Error(exn, "GetChampNameIPFSById")
+            None
+
+
+    member _.GetStats() =
+        try
+            use conn = new SqliteConnection(cs)
+
+            let players =
+                Db.newCommand SQL.GetTotalUserCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+            
+            let confirmedPlayers =
+                Db.newCommand SQL.GetConfirmedPlayersCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let champs =
+                Db.newCommand SQL.GetChampsCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let cMonsters =
+                Db.newCommand SQL.GetCustomMonstersCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let battles =
+                Db.newCommand SQL.GetBattlesCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let rounds =
+                Db.newCommand SQL.GetRoundsCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let rewards =
+                Db.newCommand SQL.GetSpecialWithdrawalSum conn
+                |> Db.query(fun r ->
+                    r.GetInt32(0) |> enum<WalletType>,
+                    r.GetDecimal(1))
+                |> Map.ofSeq
+
+            let playersEarned =
+                Db.newCommand SQL.PlayersEarned conn
+                |> Db.querySingle (fun r -> r.GetDecimal(0))
+
+
+            Stats(
+                players, confirmedPlayers, champs, cMonsters,
+                battles, rounds, playersEarned,
+                rewards.TryFind WalletType.Burn, rewards.TryFind WalletType.DAO,
+                rewards.TryFind WalletType.Reserve, rewards.TryFind WalletType.Dev,
+                rewards.TryFind WalletType.Staking
+            ) |> Some
+        with exn ->
+            Log.Error(exn, "GetStats")
             None

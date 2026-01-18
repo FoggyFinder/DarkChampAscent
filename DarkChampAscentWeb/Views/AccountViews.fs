@@ -164,6 +164,7 @@ let private walletsSection (wallets:Wallet list) =
                     Attr.id "wallet"
                     Attr.name "wallet"
                     Attr.class' "wallet-input"
+                    Attr.placeholder "Algorand wallet, e.g. G6YFTYHG5NGTRLUWYVZOY2OODHYJEFA4E57M4HN7NKP4NC3EUQJWMT5ZMA"
                 ]
 
                 Elem.input [

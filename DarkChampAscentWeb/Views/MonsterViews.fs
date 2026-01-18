@@ -60,6 +60,19 @@ let monsters (monsters: MonsterShortInfo list) (isAuth:bool) (dcPrice:decimal)=
                         Attr.value "Create monster"
                     ]
                 ]
+
+                Elem.p [ ] [ 
+                    Text.raw "To generate custom monster we use "
+                    Elem.a [ 
+                        Attr.href Links.AIPG
+                        Attr.targetBlank
+                    ] [ Text.raw "AIPG" ]
+                    Text.raw " API. In case when generation fails (for example, when it's not possible to fulfill request with current available workers) all DarkCoins will be returned back to your balance."
+                ]
+        
+                Elem.p [ ] [ 
+                    Text.raw "This may take up to 10-20 minutes. "
+                ]
             ]
         if monsters.IsEmpty then
             Elem.div [ ] [

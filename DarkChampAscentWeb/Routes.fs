@@ -49,6 +49,7 @@ module Route =
     let [<Literal>] error = "/error"
 
     let [<Literal>] logout = "/logout"
+    let [<Literal>] stats = "/stats"
 
 [<RequireQualifiedAccess>]
 module Uri =
@@ -65,6 +66,7 @@ module Links =
     let [<Literal>] DarkChampCollection =
         // "https://www.minthol.art/3%3A0_9846/assets/all?listingTypes=BUY&listingTypes=BID"
         "https://www.randgallery.com/collections/Dark%20Coin%20Champions?sort=price_asc&buy_now=true"
+    let [<Literal>] AIPG = "https://aipowergrid.io/"
 
 [<RequireQualifiedAccess>]
 module KnownWallets =
@@ -163,7 +165,11 @@ module NavBar =
                     (Route.topUnknownDonaters, "Donaters (wallets)", WebEmoji.TopUnknownDonaters)
                 ]
 
-                menuItem Route.faq "FAQ" WebEmoji.FAQ
+                submenu "About" WebEmoji.About [
+                    (Route.faq, "FAQ", WebEmoji.FAQ)
+                    (Route.stats, "Stats", WebEmoji.Stats)
+                ]
+ 
                 Elem.li [] [ Elem.a [ Attr.href Links.Github; Attr.class' "menu-link"; Attr.targetBlank ] [
                     Elem.span [ Attr.class' "menu-icon" ] [ Text.raw WebEmoji.SourceCode ]
                     Elem.span [ Attr.class' "menu-text" ] [ Text.raw "Source code" ]
@@ -254,7 +260,7 @@ module Ui =
             ]
             Text.raw $" ({KnownWallets.DarkChampAscentNFD}) from any confirmed wallet. "
             Elem.br [ ]
-            Text.raw "After 5-7 minutes your balance should be updated."
+            Text.raw "Within 5-7 minutes your balance should be updated."
 
             Elem.script [
                 XmlAttribute.KeyValueAttr("src", "copy-wallet.js")

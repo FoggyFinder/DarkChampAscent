@@ -1143,3 +1143,15 @@ module internal SQL =
         LEFT JOIN Champ c ON c.ID = a.ChampId
         WHERE r.BattleId = @battleId AND r.Status = 2
     """
+
+    let GetTotalUserCount = "SELECT Count(*) FROM User"
+    let GetConfirmedPlayersCount = "SELECT Count(*) FROM (SELECT DISTINCT UserId FROM Wallet WHERE IsConfirmed = 1)"
+    let GetCustomMonstersCount = "SELECT Count(*) FROM UserMonster"
+    let GetBattlesCount = "SELECT Count(*) FROM Battle"
+    
+    let GetSpecialWithdrawalSum = """
+        SELECT WalletType, Sum(Amount) FROM SpecialWithdrawal
+        GROUP BY WalletType
+    """
+    
+    let PlayersEarned = "SELECT Sum(Rewards) FROM RewardsPayed"

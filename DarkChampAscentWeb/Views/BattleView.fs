@@ -7,59 +7,66 @@ open Types
 open UI
 open Display
 open GameLogic.Battle
-open Serilog
 
-let joinBattle (roundInfo:(RoundStatus * DateTime option) option) (champsRes: Result<(uint64 * string * string) list, string>) = 
+let joinBattle (hasPlayers:bool) (roundInfo:(RoundStatus * DateTime option) option) (champsRes: Result<(uint64 * string * string) list, string>) = 
     let toNextRoundO =
         match roundInfo with
         | Some(status, startVO) ->
             Elem.div [ ] [
-                match status with
-                | RoundStatus.Started ->
-                    match startVO with
-                    | Some start ->
-                        let targetUtc = start + Battle.RoundDuration
-                        let isAwaitingPlayers = DateTime.UtcNow > targetUtc
+                let targetUtcO, titleO, explanation = 
+                    match status with
+                    | RoundStatus.Started ->
+                        match startVO with
+                        | Some start ->
+                            let targetUtc = start + Battle.RoundDuration
+                            let isAwaitingPlayers = DateTime.UtcNow > targetUtc
                         
-                        if isAwaitingPlayers then
-                            Text.raw "Round starts within 1 minute as any player join it"
-                        else
-                            Elem.div [ ] [
-                                let iso = targetUtc.ToString("o") // ISO 8601
-                                let msg = $"Start = {start}; target = {targetUtc}; isAwaiting - {isAwaitingPlayers} | iso - {iso}"
-                                Console.WriteLine(msg)
-                                Log.Information(msg)
-                                Elem.h2 [] [
-                                    Text.raw "Time to next round:"
-                                ]
-
-                                Elem.div [
-                                    Attr.class' "countdown-ms"
-                                    XmlAttribute.KeyValueAttr("data-target", iso)
-                                    XmlAttribute.KeyValueAttr("role", "timer")
-                                    XmlAttribute.KeyValueAttr("aria-live", "polite")
-                                    XmlAttribute.KeyValueAttr("aria-atomic", "true")
-                                ] [
-                                    Elem.span [ Attr.class' "countdown-unit minutes" ] [ Text.raw "00" ]
-                                    Elem.span [ Attr.class' "countdown-sep" ] [ Text.raw ":" ]
-                                    Elem.span [ Attr.class' "countdown-unit seconds" ] [ Text.raw "00" ]
-
-                                    Elem.time [
-                                        XmlAttribute.KeyValueAttr("datetime", iso)
-                                        Attr.class' "visually-hidden"
-                                    ] [ Text.raw iso ]
-                                ]
-
-                                Elem.script [
-                                    XmlAttribute.KeyValueAttr("src", "countdown.js")
-                                    XmlAttribute.KeyValueAttr("defer", "defer")
-                                ] []
-                            ]
+                            if isAwaitingPlayers then
+                                if hasPlayers then
+                                    Some (DateTime.UtcNow.AddMinutes(1)), None, "Round closes any second"
+                                else
+                                    None, None, "Round starts within 1 minute as any player join it"
+                            else
+                                Some targetUtc, Some "Time to round update:", ""
+                        | None -> None, None, ""
+                    | RoundStatus.Processing ->
+                        Some (DateTime.UtcNow.AddMinutes(1)), Some "Round is processing:", ""
+                    | RoundStatus.Finished ->
+                        Some (DateTime.UtcNow.AddMinutes(1)), Some "Time to round update:", ""
+                Elem.div [ ] [
+                    Text.raw explanation
+                    match titleO with
+                    | Some title ->
+                        Elem.h3 [] [
+                            Text.raw title
+                        ]
                     | None -> ()
-                | RoundStatus.Processing ->
-                    Text.raw "Round is processng. Wait for few minutes this round is completed"
-                | RoundStatus.Finished ->
-                    Text.raw "Wait for few minutes until next round is started"
+                    match targetUtcO with
+                    | Some targetUtc ->
+                        let iso = targetUtc.ToString("o") // ISO 8601
+                        Elem.div [
+                            Attr.class' "countdown-ms"
+                            XmlAttribute.KeyValueAttr("data-target", iso)
+                            XmlAttribute.KeyValueAttr("role", "timer")
+                            XmlAttribute.KeyValueAttr("aria-live", "polite")
+                            XmlAttribute.KeyValueAttr("aria-atomic", "true")
+                        ] [
+                            Elem.span [ Attr.class' "countdown-unit minutes" ] [ Text.raw "00" ]
+                            Elem.span [ Attr.class' "countdown-sep" ] [ Text.raw ":" ]
+                            Elem.span [ Attr.class' "countdown-unit seconds" ] [ Text.raw "00" ]
+
+                            Elem.time [
+                                XmlAttribute.KeyValueAttr("datetime", iso)
+                                Attr.class' "visually-hidden"
+                            ] [ Text.raw iso ]
+                        ]
+
+                        Elem.script [
+                            XmlAttribute.KeyValueAttr("src", "countdown.js")
+                            XmlAttribute.KeyValueAttr("defer", "defer")
+                        ] []
+                    | None -> ()
+                ]
             ]
             |> Some
         | None -> None
@@ -186,13 +193,22 @@ let historyView (history: Result<(uint64 * (string * PerformedMove * string) lis
     ] [
         match history with
         | Ok moves ->
+            let rounds = moves.Length
+            let progress = (float rounds) / (float Constants.RoundsInBattle)
+            let progressStr = Text.raw $"{rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}"
+            Elem.h2 [ Attr.class' "center" ] [ Text.raw $" {WebEmoji.Progress} Progress" ]
+            Elem.progress [ Attr.class' "progress-bar"; Attr.valueString progress ] [ progressStr ]
+            Elem.div [ Attr.class' "center" ] [ progressStr ]
+            
             if moves.IsEmpty then
                 Text.p "Waiting for round completion"
             else
-                Text.h2 "Battle history"
+                Elem.h2 [ Attr.class' "center" ] [ Text.raw $"{WebEmoji.History} Battle history" ]
                 Elem.hr []
                 let items =
-                    moves |> List.map(fun (r, moves) ->
+                    moves
+                    |> List.truncate 3
+                    |> List.map(fun (r, moves) ->
                         Elem.div [ ] [
                             Elem.p [ Attr.class' "round-header center" ] [ Text.raw $"Round {r}" ]
                             Elem.hr []
@@ -202,6 +218,8 @@ let historyView (history: Result<(uint64 * (string * PerformedMove * string) lis
                         ]
                 )
                 yield! items
+                if rounds > 3 then
+                    Text.raw $"{rounds - 3} more rounds {WebEmoji.Rounds} omitted for clarity"
         | Error err ->
             Text.p err
     ]

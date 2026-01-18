@@ -62,3 +62,22 @@ type MonsterShortInfo(mid:uint64, name:string, mtype:MonsterType, msubtype:Monst
     member _.MSubType = msubtype
     member _.Pic = pic
     member _.XP = xp
+
+type Stats(players:uint64 option, confirmedPlayers:uint64 option,
+    champs:uint64 option, customMonsters:uint64 option,
+    battles: uint64 option, rounds: uint64 option,
+    rewards: decimal option, burnt: decimal option,
+    dao: decimal option, reserve: decimal option,
+    devs: decimal option, staking: decimal option) =
+    member _.Players = players
+    member _.ConfirmedPlayers = confirmedPlayers
+    member _.Champs = champs
+    member _.CustomMonsters = customMonsters
+    member _.Battles = battles
+    member _.Rounds = rounds
+    member _.Rewards = rewards
+    member _.Burnt = burnt
+    member _.Dao = dao
+    member _.Reserve = reserve
+    member _.Devs = devs
+    member _.Staking = staking

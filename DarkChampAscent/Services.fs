@@ -552,10 +552,10 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
 
     let getImgRequest (mfulltype:string) (tp:TextPayload) =
         GenerateRequest(prompt = $"{mfulltype}. {tp.Description}",
-            models = [| "FLUX.1-dev" |],
+            models = [| "z-image-turbo" |],
             parameters = Params(height = 1024, width = 1024, samplerName = "k_dpmpp_2m"))
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
@@ -713,4 +713,5 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                     with exn ->
                         Log.Error(exn, "GenService")
                         do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
+                do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
         }

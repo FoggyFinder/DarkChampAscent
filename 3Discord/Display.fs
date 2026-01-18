@@ -115,6 +115,18 @@ module WebEmoji =
     let [<Literal>] Toggle = "☰"
     let [<Literal>] Leaderboard = "🏆"
     let [<Literal>] GameAccountOptions = "🎮"
+    let [<Literal>] About = "ℹ️"
+    let [<Literal>] Stats = "📊"
+    let [<Literal>] CheckMark = "✔️"
+    let [<Literal>] Coin = "🌕"
+    let [<Literal>] MoneyBag = "💰"
+    let [<Literal>] Fire = "🔥"
+    let [<Literal>] DAO = "🏛️"
+    let [<Literal>] Dev = "💻"
+    let [<Literal>] Staking = "♻️"
+    let [<Literal>] Reserve = "🔑"
+    let [<Literal>] History = "📜"
+    let [<Literal>] Progress = "⟳"
 
 let webEmojiFromChar (ch:Characteristic) =
     match ch with

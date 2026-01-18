@@ -1635,3 +1635,9 @@ main.monsters-under-effects {
     padding: var(--space-2);
   }
 }
+
+.progress-bar {
+    width: 100%; /* Makes the progress bar span the full width of its container */
+    margin: 5px;
+    padding: 5px;
+}
