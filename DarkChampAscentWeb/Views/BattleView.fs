@@ -195,12 +195,10 @@ let historyView (history: Result<(uint64 * (string * PerformedMove * string) lis
         | Ok moves ->
             let rounds = moves.Length
             let progress = (float rounds) / (float Constants.RoundsInBattle)
-            let progressStr = Text.raw $"{rounds} / {Constants.RoundsInBattle}"
+            let progressStr = Text.raw $"{rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}"
             Elem.h2 [ Attr.class' "center" ] [ Text.raw $" {WebEmoji.Progress} Progress" ]
-            Elem.p [ ] [
-                Elem.progress [ Attr.valueString progress ] [ progressStr ]
-                Elem.span [ ] [ progressStr ]
-            ]
+            Elem.progress [ Attr.class' "progress-bar"; Attr.valueString progress ] [ progressStr ]
+            Elem.div [ Attr.class' "center" ] [ progressStr ]
             
             if moves.IsEmpty then
                 Text.p "Waiting for round completion"
