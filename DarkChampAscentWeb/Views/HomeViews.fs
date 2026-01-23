@@ -51,7 +51,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
         ] [
             Text.h3 "General"
             Elem.div [ ] [
-                Elem.p [ ] [ Text.raw """DarkChampAscent - is a discord game that allows players collect DarkCoins by performing one of
+                Elem.p [ ] [ Text.raw $"""DarkChampAscent - is a discord game that allows players collect DarkCoins ({WebEmoji.DarkCoin}) by performing one of
                     few available actions each round. This site is WebUi for it. """ ]
                 
                 Elem.p [ ] [ 
@@ -75,7 +75,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                     Elem.a [ Attr.href Route.traits ] [ Text.raw "traits" ]
                 ]
                 Elem.p [ ] [ 
-                    Text.raw "All earned DarkCoins are added to in-game Champion balance and automatically distributed at the end of every battle. No actions required from users."
+                    Text.raw $"All earned DarkCoins ({WebEmoji.DarkCoin}) are added to in-game Champion balance and automatically distributed at the end of every battle. No actions required from users."
                 ]
             ]
 
@@ -326,7 +326,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Rewards.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Rewards.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
 
@@ -339,7 +339,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Dao.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Dao.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
 
@@ -351,7 +351,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Devs.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Devs.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
 
@@ -363,7 +363,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Reserve.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Reserve.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
 
@@ -375,7 +375,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Burnt.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Burnt.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
                     
@@ -388,7 +388,7 @@ let statsPage (stats:Stats) =
                                 ]
                             ]
                             Elem.td [] [ 
-                                Text.raw $"{stats.Staking.Value} {WebEmoji.Coin}"
+                                Text.raw $"{stats.Staking.Value} {WebEmoji.DarkCoin}"
                             ]
                         ]
                 ]

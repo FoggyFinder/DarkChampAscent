@@ -118,7 +118,7 @@ module WebEmoji =
     let [<Literal>] About = "ℹ️"
     let [<Literal>] Stats = "📊"
     let [<Literal>] CheckMark = "✔️"
-    let [<Literal>] Coin = "🌕"
+    let [<Literal>] DarkCoin = """<img class="inline-coin" src="DC.png" alt="DarkCoin" />"""
     let [<Literal>] MoneyBag = "💰"
     let [<Literal>] Fire = "🔥"
     let [<Literal>] DAO = "🏛️"

@@ -33,7 +33,7 @@ let shop (isAuth:bool) (shopItems:ShopItemRow list) =
                 Elem.tr [] [
                     Elem.td [] [ Text.raw $"{i + 1}" ]
                     Elem.td [] [ Text.raw $"{item.Kind}" ]
-                    Elem.td [] [ Text.raw $"{Display.toRound6StrD price} {WebEmoji.USDC} (~{Display.toRound6StrD item.Price} DarkCoins)" ]
+                    Elem.td [] [ Text.raw $"{Display.toRound6StrD price} {WebEmoji.USDC} (~{Display.toRound6StrD item.Price} {WebEmoji.DarkCoin} DarkCoins)" ]
                     Elem.td [] [ Text.raw $"{dStr}" ]
                     Elem.td [] [ Text.raw $"{vStr}" ]
                     Elem.td [] [ Text.raw $"{item.Target}" ]

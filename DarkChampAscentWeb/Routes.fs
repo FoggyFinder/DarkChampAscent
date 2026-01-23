@@ -239,7 +239,7 @@ module Ui =
 
     let howToDeposit =
         Elem.div [] [
-            Text.raw "To deposit DarkCoins to your account send tokens to "
+            Text.raw $"To deposit DarkCoins {WebEmoji.DarkCoin} to your account send tokens to "
             
             Elem.span [
                 Attr.create "class" "wallet-address"

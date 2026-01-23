@@ -32,7 +32,7 @@ let monsters (monsters: MonsterShortInfo list) (isAuth:bool) (dcPrice:decimal)=
                         ])
                 |> Array.toList
             Elem.div [ ] [
-                Text.raw $"Premium feature, you can create your own monster with {amount} DarkCoins (~{Shop.GenMonsterPrice} USDC)"
+                Text.raw $"Premium feature, you can create your own monster with {amount} {WebEmoji.DarkCoin} DarkCoins (~{Shop.GenMonsterPrice} USDC)"
                 
                 Elem.form [
                     Attr.methodPost

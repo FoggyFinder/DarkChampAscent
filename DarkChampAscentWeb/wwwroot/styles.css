@@ -1723,3 +1723,12 @@ main.monsters-under-effects {
     margin: 0;
     table-layout: fixed;
 }
+
+.inline-coin {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    vertical-align: middle;
+    object-fit: contain;
+    margin-left: 0.25em;
+}
