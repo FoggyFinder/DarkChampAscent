@@ -1641,3 +1641,85 @@ main.monsters-under-effects {
     margin: 5px;
     padding: 5px;
 }
+
+.stats table {
+    inline-size: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+}
+
+    .stats table col.col-label {
+        width: 66.6666%;
+    }
+
+    .stats table col.col-value {
+        width: 33.3333%;
+    }
+
+    .stats table td:first-child,
+    .stats table th:first-child {
+        width: 66.6666%;
+    }
+
+    .stats table td:last-child,
+    .stats table th:last-child {
+        width: 33.3334%;
+    }
+
+    .stats table td:first-child {
+        display: flex;
+        justify-content: left;
+        align-items: center;
+        padding-block: var(--space-3);
+        padding-inline: var(--space-6);
+        white-space: nowrap;
+    }
+
+.stats .label-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.stats table td:last-child {
+    text-align: right;
+    padding-block: var(--space-3);
+    padding-inline: var(--space-6);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    font-weight: 700;
+}
+
+.stats table td {
+    border-block-end: 1px solid rgba(255,255,255,0.02);
+}
+
+@media (max-width: 420px) {
+    .stats table {
+        table-layout: auto;
+        font-size: var(--font-size-sm);
+    }
+
+        .stats table td:first-child,
+        .stats table td:last-child {
+            display: block;
+            inline-size: 100%;
+            text-align: left;
+            padding-inline: var(--space-3);
+        }
+
+    .stats .label-wrap {
+        white-space: normal;
+    }
+}
+
+.center > table,
+.stats table {
+    inline-size: min(880px, 100%);
+    margin: 0;
+    table-layout: fixed;
+}

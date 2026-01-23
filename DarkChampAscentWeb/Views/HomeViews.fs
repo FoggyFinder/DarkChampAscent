@@ -239,109 +239,159 @@ let statsPage (stats:Stats) =
         Elem.div [ ] [
             Text.h2 $"{WebEmoji.Stats} Statistics {WebEmoji.Stats}"
 
-            Elem.table [] [
-                if stats.Players.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Account} Players registered" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Players.Value}"
+            Elem.div [ Attr.class' "center" ] [
+                Elem.table [ Attr.class' "stats-table" ] [
+                    if stats.Players.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Account} Players registered"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Players.Value}"
+                            ]
                         ]
-                    ]
 
-                if stats.ConfirmedPlayers.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.CheckMark} Confirmed players" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.ConfirmedPlayers.Value}"
+                    if stats.ConfirmedPlayers.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.CheckMark} Confirmed players"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.ConfirmedPlayers.Value}"
+                            ]
                         ]
-                    ]
 
-                if stats.Champs.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Champs} Champions" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Champs.Value}"
+                    if stats.Champs.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Champs} Champions"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Champs.Value}"
+                            ]
                         ]
-                    ]
 
-                if stats.Champs.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Monsters} Custom monsters" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.CustomMonsters.Value}"
+                    if stats.Champs.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Monsters} Custom monsters" ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.CustomMonsters.Value}"
+                            ]
                         ]
-                    ]
 
-                if stats.Battles.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Battle} Battles" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Battles.Value}"
+                    if stats.Battles.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Battle} Battles"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Battles.Value}"
+                            ]
                         ]
-                    ]
                 
-                if stats.Rounds.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Rounds} Rounds" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Rounds.Value}"
+                    if stats.Rounds.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Rounds} Rounds" 
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Rounds.Value}"
+                            ]
                         ]
-                    ]
+                ]
             ]
             
             Text.h2 $"{WebEmoji.MoneyBag} Rewards {WebEmoji.MoneyBag}"
 
-            Elem.table [] [
-                if stats.Rewards.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"🤖 Players earned" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Rewards.Value} {WebEmoji.Coin}"
+            Elem.div [ Attr.class' "center" ] [
+                Elem.table [ Attr.class' "stats-table" ] [
+                    if stats.Rewards.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"🤖 Players earned"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Rewards.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
 
                     
-                if stats.Dao.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.DAO} DAO" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Dao.Value} {WebEmoji.Coin}"
+                    if stats.Dao.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.DAO} DAO"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Dao.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
 
-                if stats.Devs.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Dev} Devs" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Devs.Value} {WebEmoji.Coin}"
+                    if stats.Devs.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Dev} Devs" 
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Devs.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
 
-                if stats.Reserve.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Reserve} Reserve" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Reserve.Value} {WebEmoji.Coin}"
+                    if stats.Reserve.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Reserve} Reserve"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Reserve.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
 
-                if stats.Burnt.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Fire} Burnt" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Burnt.Value} {WebEmoji.Coin}"
+                    if stats.Burnt.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [ 
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Fire} Burnt"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Burnt.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
                     
 
-                if stats.Staking.IsSome then
-                    Elem.tr [] [
-                        Elem.td [] [ Text.raw $"{WebEmoji.Staking} Staking" ]
-                        Elem.td [] [ 
-                            Text.raw $"{stats.Staking.Value} {WebEmoji.Coin}"
+                    if stats.Staking.IsSome then
+                        Elem.tr [] [
+                            Elem.td [] [
+                                Elem.div [ Attr.class' "label-wrap" ] [
+                                    Text.raw $"{WebEmoji.Staking} Staking"
+                                ]
+                            ]
+                            Elem.td [] [ 
+                                Text.raw $"{stats.Staking.Value} {WebEmoji.Coin}"
+                            ]
                         ]
-                    ]
+                ]
             ]
         ]
-
     ]
