@@ -172,7 +172,15 @@ let currentBattleInfo(cbir:Result<CurrentBattleInfo, string>) =
 
                 Elem.div [ Attr.class' "center" ] [
                     Text.raw $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)"
-                ]               
+                ]
+
+                Elem.div [ Attr.class' "center" ] [
+                    Text.raw $"{WebEmoji.Health} {cbi.Monster.Stat.Health} Health"
+                ]
+
+                Elem.div [ Attr.class' "center" ] [
+                    Text.raw $"{WebEmoji.Magic} {cbi.Monster.Stat.Magic} Magic"
+                ] 
             ]
         | Error err ->
             Text.raw err
