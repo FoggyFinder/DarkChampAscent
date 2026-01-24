@@ -73,7 +73,7 @@ let champs (champs: (ChampShortInfo * decimal) list) =
                                 Elem.a [ Attr.href (Uri.champ item.ID) ] [ Text.raw $"{item.Name}" ]
                             ]
                             Elem.td [] [ Text.raw $"{item.XP}" ]
-                            Elem.td [] [ Text.raw $"{balance}" ]
+                            Elem.td [] [ Text.raw $"{balance} {WebEmoji.DarkCoin}" ]
                         ]
                 ]
             ]
@@ -115,7 +115,7 @@ let champsUnderEffects (champs: ChampUnderEffect list) =
             ]
     ]
 
-let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
+let champInfo (champ:ChampInfo) (userBalance:decimal option) (dcPrice:decimal) =
 
     let lvl = Levels.getLvlByXp champ.XP
     let freePoints = lvl - champ.LeveledChars
@@ -125,16 +125,22 @@ let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
     let ls = champ.LevelsStat |> Option.defaultValue Stat.Zero
     let fs = FullStat(champ.Stat, bs, ls)
 
+    let isOwnerAuth = userBalance |> Option.isSome
     Elem.main [
         Attr.class' "champ-card"
         Attr.role "main"
     ] [
+        match userBalance with
+        | Some balance ->
+            Text.raw $"Balance: {balance} {WebEmoji.DarkCoin} DarkCoins"
+        | None -> ()
         if isOwnerAuth then
+            let amount = Math.Round(Shop.RenamePrice / dcPrice, 6)
+            let isDisabled = userBalance |> Option.map(fun ub -> ub < amount) |> Option.defaultValue true
             Elem.div [ ] [
-                // TODO: show darkcoin price
                 // TODO: add confirmation
                 Text.h2 $"{champ.Name}"
-                Text.b $"Premium feature ({Shop.RenamePrice} {WebEmoji.USDC})"
+                Text.b $"Premium feature - {Shop.RenamePrice} {WebEmoji.USDC} (~ {amount} DarkCoins {WebEmoji.DarkCoin})"
                 Elem.form [
                     Attr.methodPost
                     Attr.action Route.renameChamp
@@ -162,6 +168,7 @@ let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
                         Attr.class' "btn btn-primary"
                         Attr.typeSubmit
                         Attr.value "Rename"
+                        if isDisabled then Attr.disabled
                     ]
                 ]
             ]
@@ -173,31 +180,43 @@ let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
             Attr.class' "picNormal"
             Attr.src (Links.IPFS + champ.Ipfs)
         ]
-        
-        Elem.table [] [
-            Elem.tr [] [
-                Elem.th [] [ Text.raw "" ]
-                Elem.th [] [ Text.raw "" ]
-            ]
+        Elem.div [ Attr.class' "center stats" ] [
+            Elem.table [ Attr.class' "stats-table" ] [
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Gem} XP"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{champ.XP}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Gem} XP" ]
-                Elem.td [] [ Text.raw $"{champ.XP}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Level} Level"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{lvl}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Level} Level" ]
-                Elem.td [] [ Text.raw $"{lvl}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Health} Health"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Health}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Health} Health" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Health}" ]
-            ]
-
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Magic} Magic" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Magic}" ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Magic} Magic" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Magic}" ]
+                ]
             ]
         ]
 
@@ -237,48 +256,75 @@ let champInfo (champ:ChampInfo) (isOwnerAuth:bool) =
             ]
 
         Elem.hr []
-        Elem.table [] [
-            Elem.tr [] [
-                Elem.td [] [ Text.raw "Balance" ]
-                Elem.td [] [ Text.raw $"{toRound2StrD champ.Balance}" ]
+        Elem.div [ Attr.class' "center stats" ] [
+            Elem.table [ Attr.class' "stats-table" ] [
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.DarkCoin} Balance" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{toRound2StrD champ.Balance} {WebEmoji.DarkCoin}" ]
+                ]
             ]
         ]
 
         Elem.hr []
-        Elem.table [] [
-            Elem.tr [] [
-                Elem.th [] [ Text.raw "" ]
-                Elem.th [] [ Text.raw "" ]
-            ]
+        Elem.div [ Attr.class' "center stats" ] [
+            Elem.table [ Attr.class' "stats-table" ] [
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Luck} {nameof Characteristic.Luck}"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Luck}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Luck} {nameof Characteristic.Luck}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Luck}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Accuracy} {nameof Characteristic.Accuracy}"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Accuracy}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Accuracy} {nameof Characteristic.Accuracy}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Accuracy}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Attack} {nameof Characteristic.Attack}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Attack}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Attack} {nameof Characteristic.Attack}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Attack}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.MagicAttack} {nameof Characteristic.MagicAttack}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicAttack}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.MagicAttack} {nameof Characteristic.MagicAttack}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicAttack}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Shield} {nameof Characteristic.Defense}"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Defense}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Shield} {nameof Characteristic.Defense}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Defense}" ]
-            ]
-
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.MagicShield} {nameof Characteristic.MagicDefense}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicDefense}" ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.MagicShield} {nameof Characteristic.MagicDefense}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicDefense}" ]
+                ]
             ]
         ]
 

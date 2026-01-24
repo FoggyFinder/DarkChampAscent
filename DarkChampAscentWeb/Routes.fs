@@ -144,19 +144,19 @@ module NavBar =
                 menuItem Route.index "Home" WebEmoji.Home
                 if isLoggedIn then
                     menuItem Route.account "Account" WebEmoji.Account
-                    submenu "Game" WebEmoji.GameAccountOptions [
-                        (Route.storage, "My storage", WebEmoji.MyStorage)
-                        (Route.mychamps, "My champs", WebEmoji.Champs)
-                        (Route.myChampsUnderEffects, $"Effects {WebEmoji.Champs}", WebEmoji.ChampsUnderEffects)
-                        (Route.mymonsters, "My monsters", WebEmoji.Monsters)
-                        (Route.myrequests, "My requests", WebEmoji.MyRequests)
+                    submenu "My" WebEmoji.GameAccountOptions [
+                        (Route.storage, "Storage", WebEmoji.MyStorage)
+                        (Route.mychamps, "Champs", WebEmoji.Champs)
+                        (Route.myChampsUnderEffects, $"Champs under {WebEmoji.ChampsUnderEffects}", WebEmoji.Champs)
+                        (Route.mymonsters, "Monsters", WebEmoji.Monsters)
+                        (Route.myrequests, "Requests", WebEmoji.MyRequests)
                     ]
                 else
                     menuItem Route.account "Log-In" WebEmoji.LogIn
                 menuItem Route.battle "Battle" WebEmoji.Battle
 
                 menuItem Route.shop "Shop" WebEmoji.Shop
-                menuItem Route.monstersUnderEffects $"Monsters {WebEmoji.Monsters}" WebEmoji.MonstersUnderEffects
+                menuItem Route.monstersUnderEffects $"Monsters under {WebEmoji.MonstersUnderEffects}" WebEmoji.Monsters
 
                 submenu "Leaderboard" WebEmoji.Leaderboard [
                     (Route.topChamps, "Champs", WebEmoji.Champs)
@@ -239,7 +239,7 @@ module Ui =
 
     let howToDeposit =
         Elem.div [] [
-            Text.raw "To deposit DarkCoins to your account send tokens to "
+            Text.raw $"To deposit DarkCoins {WebEmoji.DarkCoin} to your account send tokens to "
             
             Elem.span [
                 Attr.create "class" "wallet-address"

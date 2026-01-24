@@ -35,7 +35,7 @@ let private userSection (user:DiscordUser) (balance:decimal) (price: decimal opt
 
                     Elem.tr [] [
                         Elem.td [] [ Text.raw "Balance" ]
-                        Elem.td [] [ Text.raw $"{Display.toRound6StrD balance} DarkCoins (~{usdc'} {WebEmoji.USDC})" ]
+                        Elem.td [] [ Text.raw $"{Display.toRound6StrD balance} {WebEmoji.DarkCoin} DarkCoins (~{usdc'} {WebEmoji.USDC})" ]
                     ]
 
                     Elem.tr [] [
