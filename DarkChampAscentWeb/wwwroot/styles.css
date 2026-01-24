@@ -1345,24 +1345,29 @@ main.leaderboards > section.block {
    No !important - using specificity
    ========================================================================== */
 
-/* Control */
-.ts-nightshade.ts-nightshade .ts-control,
-.ts-nightshade.ts-nightshade .ts-control .ts-input,
-.ts-nightshade.ts-nightshade .ts-control input {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0.01));
-  color: var(--color-text);
-  border: 1px solid var(--color-primary-alpha-12);
+/* Control - force dark theme over library defaults */
+.ts-wrapper .ts-control,
+.ts-wrapper .ts-control .ts-input,
+.ts-wrapper .ts-control > input,
+.ts-nightshade .ts-control,
+.ts-nightshade .ts-control .ts-input,
+.ts-nightshade .ts-control > input {
+  background: linear-gradient(180deg, rgba(18, 8, 28, 0.98), rgba(24, 12, 40, 0.98)) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-primary-alpha-12) !important;
   border-radius: var(--radius);
   min-block-size: 40px;
   padding: var(--space-2) var(--space-3);
-  box-shadow: none;
+  box-shadow: none !important;
   font-weight: 700;
 }
 
-.ts-nightshade.ts-nightshade .ts-control .item,
-.ts-nightshade.ts-nightshade .ts-control .item.ts-item {
-  background: linear-gradient(90deg, var(--color-primary-alpha-12), var(--color-primary-alpha-08));
-  color: #fff;
+.ts-wrapper .ts-control .item,
+.ts-wrapper .ts-control .item.ts-item,
+.ts-nightshade .ts-control .item,
+.ts-nightshade .ts-control .item.ts-item {
+  background: linear-gradient(90deg, var(--color-primary-alpha-12), var(--color-primary-alpha-08)) !important;
+  color: #fff !important;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
   font-weight: 800;
@@ -1373,9 +1378,10 @@ main.leaderboards > section.block {
   font-size: var(--font-size-base);
 }
 
-.ts-nightshade.ts-nightshade .ts-control input {
-  color: var(--color-text);
-  background: transparent;
+.ts-wrapper .ts-control > input,
+.ts-nightshade .ts-control > input {
+  color: #fff !important;
+  background: transparent !important;
   font-weight: 800;
   font-size: var(--font-size-base);
   padding: 0;
@@ -1522,9 +1528,9 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
   flex-wrap: wrap;
 }
 
-.champ-card > div:first-child input[type="text"],
-.monstr-card > div:first-child input[type="text"],
-.my-monsters > div:first-child input[type="text"] {
+.champ-card input[type="text"],
+.monstr-card input[type="text"],
+.my-monsters input[type="text"] {
   flex: 1 1 200px;
   min-inline-size: 150px;
   padding: var(--space-2) var(--space-3);
@@ -1535,9 +1541,9 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.no-results {
   font-size: var(--font-size-base);
 }
 
-.champ-card > div:first-child input[type="text"]:focus,
-.monstr-card > div:first-child input[type="text"]:focus,
-.my-monsters > div:first-child input[type="text"]:focus {
+.champ-card input[type="text"]:focus,
+.monstr-card input[type="text"]:focus,
+.my-monsters input[type="text"]:focus {
   outline: none;
   border-color: var(--color-primary-light);
   box-shadow: 0 0 0 3px var(--color-primary-alpha-12);
