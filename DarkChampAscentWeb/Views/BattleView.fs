@@ -163,7 +163,9 @@ let currentBattleInfo(cbir:Result<CurrentBattleInfo, string>) =
                     Attr.class' "picNormal"
                     Attr.src $"/{src}"
                 ]
-
+                Elem.div [ Attr.class' "center" ] [
+                    Elem.a [ Attr.href (Uri.monstr (uint64 cbi.MonsterId)) ] [ Text.raw $"{cbi.Monster.Name}" ]
+                ]
                 Elem.div [ Attr.class' "center" ] [
                     Text.raw $"{cbi.Monster.MType} ({cbi.Monster.MSubType})"
                 ]

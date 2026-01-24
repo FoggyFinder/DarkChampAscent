@@ -168,7 +168,8 @@ type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
                         }
                         MType = enum<MonsterType> <| r.GetInt32(15)
                         MSubType = enum<MonsterSubType> <| r.GetInt32(16)
-                    }
+                    },
+                    r.GetInt64(2) |> uint64
                 )
             )
             |> function

@@ -7,10 +7,11 @@ open GameLogic.Monsters
 open System.Globalization
 open System
 
-type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo) =
+type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo, mId: uint64) =
     member _.BattleNum = battleNum
     member _.BattleStatus = battleStatus
     member _.Monster = monster
+    member _.MonsterId = mId
 
 [<RequireQualifiedAccess>]
 type PM =
