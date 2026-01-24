@@ -15,6 +15,10 @@ let monsters (monsters: MonsterShortInfo list) (userBalance:decimal option) (dcP
         Attr.class' "my-monsters"
         Attr.role "main"
     ] [
+        match userBalance with
+        | Some balance ->
+            Text.raw $"Balance: {balance} {WebEmoji.DarkCoin} DarkCoins"
+        | None -> ()
         let isAuth = userBalance |> Option.isSome
         if isAuth then
             let amount = Math.Round(Shop.GenMonsterPrice / dcPrice, 6)
@@ -200,6 +204,7 @@ let monstrInfo (mId:uint64) (monstr:MonsterInfo) (isOwnerAuth:bool) =
         ]
 
         Elem.hr []
+
         Elem.table [] [
             Elem.tr [] [
                 Elem.td [] [ Text.raw "Type" ]
@@ -215,68 +220,102 @@ let monstrInfo (mId:uint64) (monstr:MonsterInfo) (isOwnerAuth:bool) =
             ]
         ]
 
-        Elem.table [] [
-            Elem.tr [] [
-                Elem.th [] [ Text.raw "" ]
-                Elem.th [] [ Text.raw "" ]
-            ]
+        Elem.div [ Attr.class' "center stats" ] [
+            Elem.table [ Attr.class' "stats-table" ] [
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Gem} XP" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{monstr.XP}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Gem} XP" ]
-                Elem.td [] [ Text.raw $"{monstr.XP}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Level} Level" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{lvl}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Level} Level" ]
-                Elem.td [] [ Text.raw $"{lvl}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Health} Health"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Health}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Health} Health" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Health}" ]
-            ]
-
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Magic} Magic" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Magic}" ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Magic} Magic" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Magic}" ]
+                ]
             ]
         ]
 
         Elem.hr []
-        Elem.table [] [
-            Elem.tr [] [
-                Elem.th [] [ Text.raw "" ]
-                Elem.th [] [ Text.raw "" ]
-            ]
+        Elem.div [ Attr.class' "center stats" ] [
+            Elem.table [ Attr.class' "stats-table" ] [
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Luck} {nameof Characteristic.Luck}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Luck}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Luck} {nameof Characteristic.Luck}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Luck}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Accuracy} {nameof Characteristic.Accuracy}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Accuracy}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Accuracy} {nameof Characteristic.Accuracy}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Accuracy}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Attack} {nameof Characteristic.Attack}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Attack}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Attack} {nameof Characteristic.Attack}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Attack}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.MagicAttack} {nameof Characteristic.MagicAttack}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicAttack}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.MagicAttack} {nameof Characteristic.MagicAttack}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicAttack}" ]
-            ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.Shield} {nameof Characteristic.Defense}" 
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Defense}" ]
+                ]
 
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.Shield} {nameof Characteristic.Defense}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.Defense}" ]
-            ]
-
-            Elem.tr [] [
-                Elem.td [] [ Text.raw $"{WebEmoji.MagicShield} {nameof Characteristic.MagicDefense}" ]
-                Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicDefense}" ]
+                Elem.tr [] [
+                    Elem.td [] [ 
+                        Elem.div [ Attr.class' "label-wrap" ] [
+                            Text.raw $"{WebEmoji.MagicShield} {nameof Characteristic.MagicDefense}"
+                        ]
+                    ]
+                    Elem.td [] [ Text.raw $"{fs.GetValue Characteristic.MagicDefense}" ]
+                ]
             ]
         ]
 
