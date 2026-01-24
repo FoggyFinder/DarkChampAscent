@@ -301,18 +301,22 @@ let shopHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let user = getDiscordUser result
             let view =
                 let db = ctx.Plug<SqliteStorage>()
                 match db.GetShopItems(), db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                 | Some items, Some price ->
+                    let userBalance =
+                        match user with
+                        | Some user -> user |> Option.bind(fun u -> db.GetUserBalance u.DiscordId)
+                        | None -> None
                     items
                     |> List.map(fun item -> Display.ShopItemRow(item, price))
-                    |> ShopView.shop isAuth
+                    |> ShopView.shop userBalance
                 | _ -> Ui.defError
             let response =
                 view
-                |> Ui.layout "Shop" isAuth
+                |> Ui.layout "Shop" user.IsSome
                 |> fun html -> Response.ofHtml html ctx
 
             return! response
@@ -424,7 +428,8 @@ let myMonstersHandler : HttpHandler =
                         let db = ctx.Plug<SqliteStorage>()
                         match db.GetUserMonsters user.DiscordId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                         | Ok monsters, Some dcPrice ->
-                            MonsterView.monsters monsters true dcPrice
+                            let userBalance = db.GetUserBalance user.DiscordId
+                            MonsterView.monsters monsters userBalance dcPrice
                         | _ -> Ui.defError
                     | _ -> Ui.incompleteResponseError
                     |> Ui.layout "Monsters" true
@@ -465,14 +470,17 @@ let champHandler : HttpHandler =
             let champId = route.GetInt64 "id"
             let view =
                 let db = ctx.Plug<SqliteStorage>()
-                let isUserOwnedChamp =
-                    dUser
-                    |> Option.bind(fun user ->
-                        user 
-                        |> Option.bind(fun u -> db.ChampBelongsToAUser(uint64 champId, u.DiscordId)))
-                    |> Option.defaultValue false
-                match db.GetChampInfoById champId with
-                | Some champ -> ChampView.champInfo champ isUserOwnedChamp
+                let userBalance =
+                    dUser |> Option.bind(fun user ->
+                        user |> Option.bind(fun u ->
+                            db.ChampBelongsToAUser(uint64 champId, u.DiscordId)
+                            |> Option.bind(fun b -> 
+                                if b then db.GetUserBalance u.DiscordId
+                                else None
+                            )))
+                    
+                match db.GetChampInfoById champId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
+                | Some champ, Some price -> ChampView.champInfo champ userBalance price
                 | _ -> Ui.defError
 
             let response =

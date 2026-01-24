@@ -6,11 +6,16 @@ open Display
 open GameLogic.Shop
 open System
 
-let shop (isAuth:bool) (shopItems:ShopItemRow list) =
+let shop (userBalance:decimal option) (shopItems:ShopItemRow list) =
     Elem.main [
         Attr.class' "shop"
         Attr.role "main"
     ] [
+        let isAuth = userBalance |> Option.isSome
+        match userBalance with
+        | Some balance ->
+            Text.raw $"Balance: {balance} {WebEmoji.DarkCoin} DarkCoins"
+        | None -> ()
         Elem.table [] [
             Elem.tr [] [
                 Elem.th [] [ Text.raw "" ]
@@ -38,6 +43,7 @@ let shop (isAuth:bool) (shopItems:ShopItemRow list) =
                     Elem.td [] [ Text.raw $"{vStr}" ]
                     Elem.td [] [ Text.raw $"{item.Target}" ]
                     if isAuth then
+                        let isDisabled = userBalance |> Option.map(fun ub -> ub < item.Price) |> Option.defaultValue true
                         Elem.td [] [
                             Elem.form [
                                 Attr.methodPost
@@ -53,6 +59,7 @@ let shop (isAuth:bool) (shopItems:ShopItemRow list) =
                                     Attr.class' "btn btn-primary"
                                     Attr.typeSubmit
                                     Attr.value "Buy"
+                                    if isDisabled then Attr.disabled
                                 ]
                             ]
                         ]

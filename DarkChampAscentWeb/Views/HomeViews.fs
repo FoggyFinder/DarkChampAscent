@@ -29,7 +29,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                 Elem.tr [] [
                     Elem.td [] [ Text.raw "Total rewards pool" ]
                     Elem.td [] [ 
-                        Text.raw $"{Display.toRound6StrD rewards} {usdcs}" 
+                        Text.raw $"{Display.toRound6StrD rewards} {WebEmoji.DarkCoin} {usdcs}" 
                     ]
                 ]
 

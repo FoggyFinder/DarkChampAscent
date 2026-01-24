@@ -154,32 +154,23 @@ let currentBattleInfo(cbir:Result<CurrentBattleInfo, string>) =
     ] [
         match cbir with
         | Ok cbi ->
-            Elem.h2 [ Attr.id "hb-current" ] [
-                Text.raw $"Current battle: {cbi.BattleNum} ({cbi.BattleStatus})"
-            ]
-            let src = FileUtils.getLocalImg cbi.Monster.Picture
-            Elem.table [] [
-                Elem.tr [] [
-                    Elem.td [] [ 
-                        Elem.img [
-                            Attr.class' "picSmall"
-                            Attr.src $"/{src}"
-                        ]
-                    ]
-                    Elem.td [] [ Text.raw $"{cbi.Monster.Name}" ]
+            Elem.div [ ] [
+                Elem.h2 [ Attr.id "hb-current" ] [
+                    Text.raw $"Current battle: {cbi.BattleNum} ({cbi.BattleStatus})"
+                ]
+                let src = FileUtils.getLocalImg cbi.Monster.Picture
+                Elem.img [
+                    Attr.class' "picNormal"
+                    Attr.src $"/{src}"
                 ]
 
-                Elem.tr [] [
-                    Elem.td [ Attr.colspan "2" ] [ 
-                        Text.raw $"{cbi.Monster.MType} ({cbi.Monster.MSubType})" 
-                    ]
+                Elem.div [ Attr.class' "center" ] [
+                    Text.raw $"{cbi.Monster.MType} ({cbi.Monster.MSubType})"
                 ]
 
-                Elem.tr [] [
-                    Elem.td [ Attr.colspan "2" ] [ 
-                        Text.raw $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)" 
-                    ]
-                ]
+                Elem.div [ Attr.class' "center" ] [
+                    Text.raw $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)"
+                ]               
             ]
         | Error err ->
             Text.raw err
