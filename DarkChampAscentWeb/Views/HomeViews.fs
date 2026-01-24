@@ -52,7 +52,7 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
             Text.h3 "General"
             Elem.div [ ] [
                 Elem.p [ ] [ Text.raw $"""DarkChampAscent - is a discord game that allows players collect DarkCoins ({WebEmoji.DarkCoin}) by performing one of
-                    few available actions each round. This site is WebUi for it. """ ]
+                    few available actions each round. This site is web interface for it. """ ]
                 
                 Elem.p [ ] [ 
                     Text.raw "To play one has to hold at least one of "
@@ -60,18 +60,18 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                         Attr.href Links.DarkChampCollection
                         Attr.targetBlank
                     ] [ Text.raw "Dark Coin Champions collection" ]
-                    Text.raw " NFTs"
+                    Text.raw " NFTs."
                 ]
 
                 Elem.p [ ] [ 
-                    Text.raw "To play log-in with discord account and then follow "
+                    Text.raw "If you have such NFT, log-in with discord account and then follow "
                     Elem.a [ 
                         Attr.href Route.account
                     ] [ Text.raw "Account page" ]
-                    Text.raw " to register and confirm any Algorand wallet"
+                    Text.raw " to register and confirm any Algorand wallet."
                 ]
                 Elem.p [ ] [ 
-                    Text.raw "For every NFT from confirmed wallet one in-game champion is created. Their starting stats are based on current"
+                    Text.raw "For every Dark Coin Champion NFT holding on confirmed wallet one in-game character (champion) is created. Their starting stats are based on current"
                     Elem.a [ Attr.href Route.traits ] [ Text.raw "traits" ]
                 ]
                 Elem.p [ ] [ 
