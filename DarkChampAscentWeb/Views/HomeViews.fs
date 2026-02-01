@@ -111,8 +111,17 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
 
                 Text.p "Each round rewards allocated for players splitted as"
 
-                Elem.img [ getImgSource "rewards.jpg" |>  Attr.src ]
-
+                yield! 
+                    RewardsChartHelpers.renderPieChart
+                        "rewardsChart"
+                        [ "Damage / TotalDamage"; "Shield"; "MagicShield"; "Heal"; "Meditate"; "Attack"; "MagicAttack" ]
+                        [ 20.0; 11.0; 11.0; 11.0; 11.0; 5.5; 5.5 ]
+                        [ "#19c7f1"; "#5d8db3"; "#3ef24a"; "#b16bf0"; "#ff7f3f"; "#e64a2b"; "#d7ef2c" ]
+                        "700px"
+                        420
+                        true  // include data labels
+                        true  // include the CDN scripts (only for the first chart)
+                        (Some(700,420))
                 Text.p "in case when no champs used a move those coins returned as rewards for next battles"
             ]
             Elem.hr [ ]
@@ -156,8 +165,18 @@ let home (rewards: decimal) (dcPriceO:decimal option) =
                 Text.b $"All prices are settled in USDC ({WebEmoji.USDC}). DarkCoin price updates periodically every few hours."
 
                 Text.p "For each round rewards are splitted by following logic:"
-                Elem.img [ getImgSource "tokenomics.jpg" |>  Attr.src ]
-
+                
+                yield! 
+                    RewardsChartHelpers.renderPieChart
+                        "champsChart"
+                        [ "Players"; "DAO"; "Devs"; "Reserve"; "Staking"; "Burn" ]
+                        [ 75.0; 10.0; 8.0; 5.0; 1.0; 1.0 ]
+                        [ "#74c67a"; "#e64a2b"; "#ffd60a"; "#00d6d6"; "#ff73d6"; "#3d7ef0" ]
+                        "700px"
+                        520
+                        true  // include datalabels
+                        false // do not include the CDN scripts again
+                        (Some(700,520))
                 Text.p "Rewards for specific round is calculated based on total amount as:"
 
                 Elem.p [ ] [

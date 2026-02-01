@@ -51,60 +51,60 @@ type RoundRewardSplit private (
 
     static member CalculateRewards (roundRewards:decimal) (monsterDefeater:uint64 option) (actions:(Move * uint64 * Dmg option) list) =
 
-        // 12% - Move.Shield
-        // 12% - Move.MagicShield
-        // 12% - Move.Heal
-        // 12% - Move.Meditate
-        // 6%  - Move.Attack
-        // 6%  - Move.MagicAttack
-        // 24% - is splitted proportionally as (Damage / TotalDamage)
+        // 11% - Move.Shield
+        // 11% - Move.MagicShield
+        // 11% - Move.Heal
+        // 11% - Move.Meditate
+        // 5.5%  - Move.Attack
+        // 5.5%  - Move.MagicAttack
+        // 20% - is splitted proportionally as (Damage / TotalDamage)
 
         let x = roundRewards / 100M
     
-        let fixed12 = 12M * x
-        let fixed6 = 6M * x
+        let fixedMove = 11M * x
+        let fixedAttack = 5.5M * x
 
         let groupsByMoves = actions |> List.countBy(fun (move, _, _) -> move) |> dict
                         
-        // 12% - goes to those who used "shield"
+        // 11% - goes to those who used "shield"
         let shieldFixed =
-            if groupsByMoves.ContainsKey Move.Shield then fixed12 / (decimal groupsByMoves.[Move.Shield])
+            if groupsByMoves.ContainsKey Move.Shield then fixedMove / (decimal groupsByMoves.[Move.Shield])
             else 0M
 
-        // 12% - goes to those who used "magic shield"            
+        // 11% - goes to those who used "magic shield"            
         let mshieldFixed =
-            if groupsByMoves.ContainsKey Move.MagicShield then fixed12 / (decimal groupsByMoves.[Move.MagicShield])
+            if groupsByMoves.ContainsKey Move.MagicShield then fixedMove / (decimal groupsByMoves.[Move.MagicShield])
             else 0M
 
-        // 12% - goes to those who used "heal"
+        // 11% - goes to those who used "heal"
         let healFixed =
-            if groupsByMoves.ContainsKey Move.Heal then fixed12 / (decimal groupsByMoves.[Move.Heal])
+            if groupsByMoves.ContainsKey Move.Heal then fixedMove / (decimal groupsByMoves.[Move.Heal])
             else 0M
 
-        // 12% - goes to those who used "meditate"            
+        // 11% - goes to those who used "meditate"            
         let meditateFixed =
-            if groupsByMoves.ContainsKey Move.Meditate then fixed12 / (decimal groupsByMoves.[Move.Meditate])
+            if groupsByMoves.ContainsKey Move.Meditate then fixedMove / (decimal groupsByMoves.[Move.Meditate])
             else 0M
 
-        // 6% - goes to those who used "attack"     
+        // 5.5% - goes to those who used "attack"     
         let attackFixed =
-            if groupsByMoves.ContainsKey Move.Attack then fixed6 / (decimal groupsByMoves.[Move.Attack])
+            if groupsByMoves.ContainsKey Move.Attack then fixedAttack / (decimal groupsByMoves.[Move.Attack])
             else 0M
 
-        // 6% - goes to those who used "magic attack"            
+        // 5.5% - goes to those who used "magic attack"            
         let mAttackFixed =
-            if groupsByMoves.ContainsKey Move.MagicAttack then fixed6 / (decimal groupsByMoves.[Move.MagicAttack])
+            if groupsByMoves.ContainsKey Move.MagicAttack then fixedAttack / (decimal groupsByMoves.[Move.MagicAttack])
             else 0M
 
         let totalDmg = actions |> List.sumBy(fun (_, _, d) -> d |> Option.map(fun dmg -> dmg.Value) |> Option.defaultValue 0UL)
 
 
-        // 24% is splitted as (Damage / TotalDamage)
+        // 20% is splitted as (Damage / TotalDamage)
         let damageR =
             if totalDmg = 0UL then
                 0M
             else
-                24M * x / (decimal totalDmg)
+                20M * x / (decimal totalDmg)
 
         let champs =
             actions
@@ -137,15 +137,15 @@ type RoundRewardSplit private (
                 }
             )
 
-        // 84% - champ's rewards
-        // 7% - dao
-        // 5% - to devs
-        // 2% - reserve
+        // 75% - champ's rewards
+        // 10% - dao
+        // 8% - to devs
+        // 5% - reserve
         // 1% - staking
         // 1% - burn
-        let dao = Math.Round(7M * x, 6)
-        let devs = Math.Round(5M * x, 6)
-        let reserve = Math.Round(2M * x, 6)
+        let dao = Math.Round(10M * x, 6)
+        let devs = Math.Round(8M * x, 6)
+        let reserve = Math.Round(5M * x, 6)
         let staking = Math.Round(x, 6)
         let burn = Math.Round(x, 6)
         let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)

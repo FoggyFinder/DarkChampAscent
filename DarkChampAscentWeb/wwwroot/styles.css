@@ -91,6 +91,25 @@
    2. CSS RESET (Modern)
    ========================================================================== */
 
+/* Chart-specific sizing to avoid ResizeObserver sizing loops */
+.chart-wrapper {
+    /* explicit layout for chart parent; Chart will fill this */
+    display: block;
+    max-inline-size: 700px; /* or use 100% */
+    inline-size: 100%;
+    margin: 0 auto;
+    position: relative;
+}
+
+    /* Prevent the global canvas rule from forcing block-size:auto, allow Chart to manage sizing.
+   Keep this narrow-scoped to chart canvases only. */
+    .chart-wrapper .chart-canvas {
+        max-inline-size: none; /* override global max-inline-size:100% */
+        block-size: none; /* override global block-size:auto */
+        width: 100% !important; /* let Chart/parent determine effective width */
+        height: 100% !important; /* let Chart/parent determine effective height */
+        display: block;
+    }
 *,
 *::before,
 *::after {

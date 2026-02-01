@@ -116,10 +116,10 @@ For each round rewards are splitted by following logic:
 
 
 ```
-84% - champ's rewards
-7% - dao
-5% - to devs
-2% - reserve
+75% - champ's rewards
+10% - dao
+8% - to devs
+5% - reserve
 1% - staking
 1% - burn
 ```
@@ -127,13 +127,13 @@ For each round rewards are splitted by following logic:
 with rewards for players splitted as
 
 ```
-12% - Move.Shield
-12% - Move.MagicShield
-12% - Move.Heal
-12% - Move.Meditate
-6%  - Move.Attack
-6%  - Move.MagicAttack
-24% - is splitted proportionally as (Damage / TotalDamage)
+11% - Move.Shield
+11% - Move.MagicShield
+11% - Move.Heal
+11% - Move.Meditate
+5.5%  - Move.Attack
+5.5%  - Move.MagicAttack
+20% - is splitted proportionally as (Damage / TotalDamage)
 ```
 
 in case when no champs used a move those coins returned as rewards for next battles.
