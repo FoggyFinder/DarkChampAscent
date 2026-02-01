@@ -24,6 +24,7 @@ open NetCord.Gateway
 open UI
 open GameLogic.Shop
 open Types
+open DarkChampAscent.Account
 
 Log.Logger <-
     (new LoggerConfiguration())
@@ -104,14 +105,14 @@ let accountHandler : HttpHandler =
                     match opt with
                     | Some du ->
                         let db = ctx.Plug<SqliteStorage>()
-                        let dId = du.DiscordId
+                        let dId = UserId.Discord du.DiscordId
                         // a user may not be registered with discord bot
-                        db.TryRegisterUser dId |> ignore
+                        db.TryRegisterDiscordUser du.DiscordId |> ignore
                         match db.GetUserWallets dId, db.GetUserChampsCount dId,
                             db.GetUserMonstersCount dId, db.GetUserBalance dId with
                         | Ok ar, Some champs, Some monsters, Some balance ->
                             let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                            let ua = UserAccount(du, wallets, balance, int champs, int monsters)
+                            let ua = UserAccount(DarkChampAscent.Account.Account.Discord du, wallets, balance, int champs, int monsters)
                             let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
                             AccountView.accountView ua dcprice
                         | _ -> Ui.unError "Can't fetch user data, please try again later"
@@ -172,7 +173,7 @@ let battleHandler : HttpHandler =
                                 | None -> None
                             | None -> None
                         let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
-                        rdb.GetAvailableUserChamps(user.DiscordId)
+                        db.GetAvailableUserChamps(UserId.Discord user.DiscordId)
                         |> BattleView.joinBattle hasPlayers roundInfo
                     | None -> Ui.incompleteResponseError
                 | None ->
@@ -281,7 +282,7 @@ let registerNewWalletHandler : HttpHandler =
                         | true, s ->
                             let wallet = s.ToString().Trim()
                             if Blockchain.isValidAddress wallet then
-                                db.RegisterNewWallet(user.DiscordId, wallet) |> ignore
+                                db.RegisterNewWallet(UserId.Discord user.DiscordId, wallet) |> ignore
                             else
                                 try
                                     Log.Error($"{user.DiscordId} attempts to register invalid {wallet} address")
@@ -308,7 +309,7 @@ let shopHandler : HttpHandler =
                 | Some items, Some price ->
                     let userBalance =
                         match user with
-                        | Some user -> user |> Option.bind(fun u -> db.GetUserBalance u.DiscordId)
+                        | Some user -> user |> Option.bind(fun u -> UserId.Discord u.DiscordId |> db.GetUserBalance)
                         | None -> None
                     items
                     |> List.map(fun item -> Display.ShopItemRow(item, price))
@@ -337,7 +338,7 @@ let buyItemHandler : HttpHandler =
                         | true, s ->
                             match s |> Enum.TryParse<ShopItem> with
                             | true, v ->
-                                match db.BuyItem(user.DiscordId, v, 1) with
+                                match db.BuyItem(UserId.Discord user.DiscordId, v, 1) with
                                 | Ok _ -> Route.storage
                                 | Error _ -> Route.error
                             | false, _ -> Route.error
@@ -361,7 +362,8 @@ let storageHandler : HttpHandler =
                     let db = ctx.Plug<SqliteStorage>()
                     match userO with
                     | Some user ->
-                        match db.GetUserStorage user.DiscordId, db.GetUserChamps user.DiscordId with
+                        let uId = UserId.Discord user.DiscordId
+                        match db.GetUserStorage uId, db.GetUserChamps uId with
                         | Some items, Some champs ->
                             champs
                             |> List.map(fun ar -> uint64 ar.ID, ar.Name, ar.Ipfs)
@@ -402,7 +404,7 @@ let useItemHandler : HttpHandler =
                             | false, _ -> None
                         match shopItem, champId with
                         | Some si, Some cid ->
-                            match db.UseItemFromStorage(user.DiscordId, si, cid) with
+                            match db.UseItemFromStorage(UserId.Discord user.DiscordId, si, cid) with
                             | Ok _ -> ()
                             | Error _ -> ()
                         | _ -> ()
@@ -426,9 +428,10 @@ let myMonstersHandler : HttpHandler =
                     match userO with
                     | Some user ->
                         let db = ctx.Plug<SqliteStorage>()
-                        match db.GetUserMonsters user.DiscordId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
+                        let uId = UserId.Discord user.DiscordId
+                        match db.GetUserMonsters uId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                         | Ok monsters, Some dcPrice ->
-                            let userBalance = db.GetUserBalance user.DiscordId
+                            let userBalance = db.GetUserBalance uId
                             MonsterView.monsters monsters userBalance dcPrice
                         | _ -> Ui.defError
                     | _ -> Ui.incompleteResponseError
@@ -449,7 +452,7 @@ let myChampsHandler : HttpHandler =
                     match userO with
                     | Some user ->
                         let db = ctx.Plug<SqliteStorage>()
-                        match db.GetUserChampsInfo user.DiscordId with
+                        match UserId.Discord user.DiscordId |> db.GetUserChampsInfo with
                         | Some champs -> ChampView.champs champs
                         | _ -> Ui.defError
                     | _ -> Ui.incompleteResponseError
@@ -473,9 +476,10 @@ let champHandler : HttpHandler =
                 let userBalance =
                     dUser |> Option.bind(fun user ->
                         user |> Option.bind(fun u ->
-                            db.ChampBelongsToAUser(uint64 champId, u.DiscordId)
+                            let uId = UserId.Discord u.DiscordId
+                            db.ChampBelongsToAUser(uint64 champId, uId)
                             |> Option.bind(fun b -> 
-                                if b then db.GetUserBalance u.DiscordId
+                                if b then db.GetUserBalance uId
                                 else None
                             )))
                     
@@ -505,7 +509,7 @@ let monstrHandler : HttpHandler =
                     dUser
                     |> Option.bind(fun user ->
                         user 
-                        |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, u.DiscordId)))
+                        |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, UserId.Discord u.DiscordId)))
                     |> Option.defaultValue false
                 match db.GetMonsterById mId with
                 | Some monstr -> MonsterView.monstrInfo (uint64 mId) monstr isUserOwnedMonstr
@@ -541,8 +545,9 @@ let renameMonstrHandler : HttpHandler =
                             |> Option.map(fun s -> s.ToString())
                         match mIdO, mnstrnameO with
                         | Some mId, Some newName ->
-                            if db.MonsterBelongsToAUser(mId, user.DiscordId) |> Option.defaultValue false then
-                                match db.RenameUserMonster(user.DiscordId, newName, int64 mId) with
+                            let uId = UserId.Discord user.DiscordId
+                            if db.MonsterBelongsToAUser(mId, uId) |> Option.defaultValue false then
+                                match db.RenameUserMonster(uId, newName, int64 mId) with
                                 | Ok _ -> Uri.monstr mId
                                 | Error _ -> Route.error
                             else Route.error
@@ -579,7 +584,7 @@ let renameChampHandler : HttpHandler =
                                 | false, _ -> None)
                         match oldNameO, newNameO, chmpIdO with
                         | Some oldName, Some newName, Some cId ->
-                            match db.RenameChamp(user.DiscordId, oldName, newName) with
+                            match db.RenameChamp(UserId.Discord user.DiscordId, oldName, newName) with
                             | Ok _ -> Uri.champ cId
                             | Error _ -> Route.error
                         | _ -> Route.error
@@ -601,7 +606,7 @@ let myRequestsHandler : HttpHandler =
                     let db = ctx.Plug<SqliteStorage>()
                     match userO with
                     | Some user ->
-                        match db.GetPendingUserRequests user.DiscordId with
+                        match UserId.Discord user.DiscordId |> db.GetPendingUserRequests with
                         | Ok requests -> GenView.myRequests requests
                         | _ -> Ui.defError
                     | _ -> Ui.defError
@@ -624,7 +629,7 @@ let champsUnderEffectsHandler : HttpHandler =
                     | Some user ->
                         match db.GetLastRoundId() with
                         | Some roundId ->
-                            match db.GetUserChampsUnderEffect(user.DiscordId, roundId) with
+                            match db.GetUserChampsUnderEffect(UserId.Discord user.DiscordId, roundId) with
                             | Ok champs -> ChampView.champsUnderEffects champs
                             | _ -> Ui.defError
                         | None -> Ui.defError
@@ -676,7 +681,7 @@ let donateHandler : HttpHandler =
                         | true, s ->
                             match s |> Decimal.TryParse with
                             | true, v ->
-                                match db.Donate(user.DiscordId, v) with
+                                match db.Donate(UserId.Discord user.DiscordId, v) with
                                 | Ok _ ->
                                     let client = ctx.Plug<GatewayClient>()
                                     let card = donationCard v user.DiscordId
@@ -724,7 +729,7 @@ let createMonsterHandler : HttpHandler =
                                 | false, _ -> None)
                         match mtypeO, msubtypeO with
                         | Some mtype, Some msubtype ->
-                            match db.CreateGenRequest(user.DiscordId, mtype, msubtype) with
+                            match db.CreateGenRequest(UserId.Discord user.DiscordId, mtype, msubtype) with
                             | Ok _ -> Route.myrequests
                             | Error _ -> Route.error
                         | _, _ -> Route.error
@@ -751,7 +756,7 @@ let lvlUpHandler : HttpHandler =
                         | (true, s1), (true, s2) ->
                             match s1 |> UInt64.TryParse, s2 |> Enum.TryParse<Characteristic> with
                             | (true, cId), (true, ch) ->
-                                match db.ChampBelongsToAUser(cId, user.DiscordId) with
+                                match db.ChampBelongsToAUser(cId, UserId.Discord user.DiscordId) with
                                 | Some b ->
                                     if b then
                                         if db.LevelUp(cId, ch) then
@@ -781,7 +786,7 @@ let rescanHandler : HttpHandler =
                 | Some userO ->
                     match userO with
                     | Some user ->
-                        match db.GetUserWallets(user.DiscordId) with
+                        match db.GetUserWallets(UserId.Discord user.DiscordId) with
                         | Ok xs ->
                             let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
                             CommonHelpers.updateChamps(db, user.DiscordId, xs')

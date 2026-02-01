@@ -18,6 +18,7 @@ open DiscordBot.Components
 open Serilog
 open System.Text
 open DiscordBot
+open DarkChampAscent.Account
 
 [<RequireQualifiedAccess>]
 module ApplicationCommand =
@@ -38,7 +39,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
         let wallet' = wallet.Trim()
         let res =
             if Blockchain.isValidAddress wallet' then
-                db.RegisterNewWallet(x.Context.User.Id, wallet')
+                db.RegisterNewWallet(UserId.Discord x.Context.User.Id, wallet')
             else
                 try
                     Log.Error($"{x.Context.User} attempts to register invalid {wallet'} address")
@@ -54,7 +55,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
 
     [<SubSlashCommand("wallets", "Get user wallets")>]
     member x.GetWallets() =
-        let res = db.GetUserWallets(x.Context.User.Id)
+        let res = db.GetUserWallets(UserId.Discord x.Context.User.Id)
         (fun (moptions:MessageOptions) ->
             match res with
             | Ok xs ->
@@ -97,7 +98,7 @@ type UserModule(db:SqliteStorage) =
 
     [<SlashCommand("balance", "shows in-game balance")>]
     member x.GetBalance(): Task =
-        let res = db.GetUserBalance(x.Context.User.Id)
+        let res = db.GetUserBalance(UserId.Discord x.Context.User.Id)
         let str =
             match res with
             | Some d -> $"Your balance: {Emoj.Coin} {d} DarkCoins"
@@ -146,7 +147,7 @@ type UserModule(db:SqliteStorage) =
         [<SlashCommandParameter(Name = "item", Description = "shop item")>] shopItem:ShopItem,
         [<SlashCommandParameter(Name = "amount", Description = "amount to use")>] amount:int
     ): Task =
-        let res = db.BuyItem(x.Context.User.Id, shopItem, amount)
+        let res = db.BuyItem(UserId.Discord x.Context.User.Id, shopItem, amount)
         let str =
             match res with
             | Ok () -> $"Well done! Check your storage"
@@ -155,7 +156,7 @@ type UserModule(db:SqliteStorage) =
 
     [<SlashCommand("storage", "Shows user storage")>]
     member x.ShowStorage() =
-        let res = db.GetUserStorage(x.Context.User.Id)
+        let res = db.GetUserStorage(UserId.Discord x.Context.User.Id)
         (fun (moptions:MessageOptions) ->
             match res with
             | Some xs ->
@@ -184,7 +185,7 @@ type UserModule(db:SqliteStorage) =
 
     [<SlashCommand("champs", "Shows user champs")>]
     member x.ShowChamps() =
-        let res = db.GetUserChampsWithStats(x.Context.User.Id)
+        let res = db.GetUserChampsWithStats(UserId.Discord x.Context.User.Id)
         (fun (moptions:MessageOptions) ->
             match res with
             | Some xs ->
@@ -212,7 +213,7 @@ type UserModule(db:SqliteStorage) =
     member x.ShowChampsUnderEffects() =
         let res =
             match db.GetLastRoundId() with
-            | Some roundId -> db.GetUserChampsUnderEffect(x.Context.User.Id, roundId)
+            | Some roundId -> db.GetUserChampsUnderEffect(UserId.Discord x.Context.User.Id, roundId)
             | None -> Error("Unable to find round")
         (fun (moptions:MessageOptions) ->
             match res with
@@ -254,7 +255,7 @@ type UserModule(db:SqliteStorage) =
         task {
             let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral);
             let! _ = x.Context.Interaction.SendResponseAsync(callback)
-            match db.GetUserWallets(x.Context.User.Id) with
+            match db.GetUserWallets(UserId.Discord x.Context.User.Id) with
             | Ok xs ->
                 let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
                 let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
@@ -279,7 +280,7 @@ type UserModule(db:SqliteStorage) =
     member x.Earnings(
         [<SlashCommandParameter(Name = "start", Description = "from round (included)")>] startRound:uint64,
         [<SlashCommandParameter(Name = "end", Description = "to round (included)")>] endRound:uint64): Task =
-        let res = db.GetUserEarnings(x.Context.User.Id, startRound, endRound)
+        let res = db.GetUserEarnings(UserId.Discord x.Context.User.Id, startRound, endRound)
         let str =
             match res with
             | Some d -> $"Your earnings for [{startRound}..{endRound}] rounds: {Emoj.Coin} {d} DarkCoins"
@@ -337,7 +338,7 @@ type ChampsModule(db:SqliteStorage) =
 
     [<SubSlashCommand("card", "shows detailed info")>]
     member x.ShowCard(): Task =
-        let champNames = db.GetUserChamps(x.Context.User.Id)
+        let champNames = db.GetUserChamps(UserId.Discord x.Context.User.Id)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match champNames with
             | Some champs ->
@@ -360,7 +361,7 @@ type ChampsModule(db:SqliteStorage) =
 
     [<SubSlashCommand("rename", "rename champ")>]
     member x.Rename([<SlashCommandParameter(Name = "name", Description = "New unique name", MinLength = 1)>] name:string): Task =
-        let champNames = db.GetUserChamps(x.Context.User.Id)
+        let champNames = db.GetUserChamps(UserId.Discord x.Context.User.Id)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match champNames with
             | Some champs ->
@@ -511,8 +512,8 @@ type MonsterModule(db:SqliteStorage) =
         [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
     ): Task =
         let priceO = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-        let monstersCreatedR = db.MonstersByTypeSubtype(x.Context.User.Id, mtype, msubtype)
-        let pendingRequestsR = db.UnfinishedRequestsByUser(x.Context.User.Id)
+        let monstersCreatedR = db.MonstersByTypeSubtype(UserId.Discord x.Context.User.Id, mtype, msubtype)
+        let pendingRequestsR = db.UnfinishedRequestsByUser(UserId.Discord x.Context.User.Id)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match monstersCreatedR, pendingRequestsR, priceO with
             | Ok m, Ok r, Some dcPrice when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
@@ -555,7 +556,7 @@ type CustomModule(db:SqliteStorage) =
 
     [<SubSlashCommand("requests", "shows list of requests to create monsters")>]
     member x.Requests(): Task =
-        let res = db.GetPendingUserRequests(x.Context.User.Id)
+        let res = db.GetPendingUserRequests(UserId.Discord x.Context.User.Id)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match res with
             | Ok requests ->
@@ -577,7 +578,7 @@ type CustomModule(db:SqliteStorage) =
     
     [<SubSlashCommand("monsters", "shows list of created monsters and allow to select one")>]
     member x.Monsters(): Task =
-        let monstersR = db.GetUserMonsters(x.Context.User.Id)
+        let monstersR = db.GetUserMonsters(UserId.Discord x.Context.User.Id)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match monstersR with
             | Ok monsters ->
@@ -605,7 +606,7 @@ type CustomModule(db:SqliteStorage) =
         [<SlashCommandParameter(Name = "mtype", Description = "action")>] mtype:MonsterType,
         [<SlashCommandParameter(Name = "msubtype", Description = "action")>] msubtype:MonsterSubType
     ): Task =
-        let monstersR = db.FilterUserMonsters(x.Context.User.Id, mtype, msubtype)
+        let monstersR = db.FilterUserMonsters(UserId.Discord x.Context.User.Id, mtype, msubtype)
         ApplicationCommand.deferredMessage x.Context (fun options ->
             match monstersR with
             | Ok monsters ->
@@ -639,7 +640,7 @@ type BattleModule(db:SqliteStorage) =
                 match db.GetRoundStatus roundId with
                 | Some status ->
                     if status = RoundStatus.Started then
-                        db.GetActiveUserChamps(x.Context.User.Id, roundId)
+                        db.GetActiveUserChamps(UserId.Discord x.Context.User.Id, roundId)
                     else
                         Error("Please wait until new round is started")
                 | None -> Error("Something went wrong - unable to get round status")
@@ -653,7 +654,7 @@ type BattleModule(db:SqliteStorage) =
                 else
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     let selectMenu = 
-                        StringMenuProperties($"actionselect:{move}", xs |> List.map(fun c -> StringMenuSelectOptionProperties(c.Name, c.Id.ToString())),
+                        StringMenuProperties($"actionselect:{move}", xs |> List.map(fun (id, name, _) -> StringMenuSelectOptionProperties(name, id.ToString())),
                             Placeholder = "Choose an option")
                         
                     options.Components <- [

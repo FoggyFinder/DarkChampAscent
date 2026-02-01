@@ -6,6 +6,7 @@ open GameLogic.Monsters
 
 open System.Globalization
 open System
+open DarkChampAscent.Account
 
 type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo, mId: uint64) =
     member _.BattleNum = battleNum
@@ -31,19 +32,7 @@ type Wallet(wallet:string, isConfirmed:bool, code: string) =
     member _.IsConfirmed = isConfirmed
     member _.Code = code
 
-type DiscordUser(nickname:string, discordId: uint64, pic:string option) =
-    let picture =
-        pic |> Option.map(fun p ->
-            let f = if p.StartsWith "a_" then "gif" else "png"
-            String.Format(CultureInfo.InvariantCulture,
-                "https://cdn.discordapp.com/avatars/{0}/{1}.{2}",
-                discordId, p, f))
-
-    member _.Nickname = nickname
-    member _.DiscordId = discordId
-    member _.Pic = picture
-
-type UserAccount(user:DiscordUser, wallets:Wallet list, balance: decimal, champs:int, monsters:int) =
+type UserAccount(user:Account, wallets:Wallet list, balance: decimal, champs:int, monsters:int) =
     member _.User = user
     member _.Wallets = wallets
     member _.Champs = champs

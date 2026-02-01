@@ -511,7 +511,7 @@ module internal SQL =
         INSERT INTO KeyValueBool(Key, Value) VALUES(@key, @value)
         ON CONFLICT(Key) DO UPDATE SET Value = @value;"
         
-    let AddNewUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
+    let AddNewDiscordUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
     let RegisterNewWallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 0, @code, 1);"
     
     let CodeIsMatchedForUnconfirmedWallet = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE NOT IsConfirmed AND Address = @wallet AND ConfirmationCode = @code LIMIT 1);"

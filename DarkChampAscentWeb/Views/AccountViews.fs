@@ -5,8 +5,9 @@ open Types
 open UI
 open Display
 open System
+open DarkChampAscent.Account
 
-let private userSection (user:DiscordUser) (balance:decimal) (price: decimal option) =
+let private userSection (user:Account) (balance:decimal) (price: decimal option) =
     let usdc' = price |> Option.map(fun p -> Math.Round(p * balance, 6).ToString()) |> Option.defaultValue ""
     Elem.section [ 
         Attr.class' "block user-section"
@@ -22,7 +23,7 @@ let private userSection (user:DiscordUser) (balance:decimal) (price: decimal opt
                 Elem.table [] [
                     Elem.tr [] [
                         Elem.td [] [
-                            match user.Pic with
+                            match user.Picture with
                             | Some pic ->
                                 Elem.img [
                                     Attr.class' "picSmall"
