@@ -18,6 +18,7 @@
 
 	<ItemGroup>
 		<Compile Include="Routes.fs" />
+		<Compile Include="views\RegistrationView.fs" />
 		<Compile Include="Views\HomeViews.fs" />
 		<Compile Include="Views\GenViews.fs" />
 		<Compile Include="Views\FAQViews.fs" />

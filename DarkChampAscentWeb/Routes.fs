@@ -4,6 +4,12 @@
 module Route =
     let [<Literal>] index = "/"
     let [<Literal>] login = "/login"
+    let [<Literal>] loginDiscord = "/loginDiscord"
+    let [<Literal>] loginCustom = "/loginCustom"
+    let [<Literal>] loginCustomForm = "/loginform"
+
+    let [<Literal>] reg = "/reg"
+
     let [<Literal>] traits = "/traits"
 
     let [<Literal>] denied = "/denied"
@@ -152,7 +158,8 @@ module NavBar =
                         (Route.myrequests, "Requests", WebEmoji.MyRequests)
                     ]
                 else
-                    menuItem Route.account "Log-In" WebEmoji.LogIn
+                    menuItem Route.reg "Register" WebEmoji.Account
+                    menuItem Route.login "Log-In" WebEmoji.LogIn
                 menuItem Route.battle "Battle" WebEmoji.Battle
 
                 menuItem Route.shop "Shop" WebEmoji.Shop

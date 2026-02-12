@@ -1738,3 +1738,273 @@ main.monsters-under-effects {
     object-fit: contain;
     margin-left: 0.25em;
 }
+
+/* ==========================================================================
+   Registration Form Styles (DarkChampAscent Theme)
+   ========================================================================== */
+
+.registration {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 100vh;
+    padding: var(--space-6);
+}
+
+    .registration .center {
+        inline-size: 100%;
+        max-inline-size: 420px;
+    }
+
+.registration-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    padding: var(--space-8);
+    background: linear-gradient(180deg, var(--color-surface-elevated), rgba(255, 255, 255, 0.01));
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+    .registration-form h2 {
+        margin-block-end: var(--space-4);
+        color: var(--color-text);
+        text-align: center;
+        font-size: var(--font-size-xl);
+    }
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.form-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: 0.02em;
+}
+
+.form-input {
+    padding-block: var(--space-3);
+    padding-inline: var(--space-4);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+    font-family: var(--font-family);
+    transition: all var(--transition-base);
+}
+
+    .form-input::placeholder {
+        color: var(--color-text-muted);
+        opacity: 0.6;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: var(--color-primary-light);
+        box-shadow: 0 0 0 3px var(--color-primary-alpha-12);
+        background: var(--color-surface-elevated);
+    }
+
+    .form-input[aria-invalid="true"] {
+        border-color: #ff6b6b;
+        box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.12);
+    }
+
+        .form-input[aria-invalid="true"]:focus {
+            border-color: #ff6b6b;
+            box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.18);
+        }
+
+.validation-message {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    min-block-size: 16px;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+    .validation-message.show {
+        color: #ff6b6b;
+        opacity: 1;
+    }
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-block-start: var(--space-4);
+    margin-block-start: var(--space-2);
+    border-block-start: 1px solid var(--color-border);
+}
+
+.registration-form button:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(1);
+}
+
+/* Responsive design */
+@media (max-width: 720px) {
+    .registration-form {
+        padding: var(--space-6);
+        gap: var(--space-5);
+    }
+
+        .registration-form h2 {
+            font-size: var(--font-size-lg);
+        }
+}
+
+@media (max-width: 520px) {
+    .registration {
+        padding: var(--space-3);
+    }
+
+    .registration-form {
+        padding: var(--space-5);
+        gap: var(--space-4);
+    }
+
+        .registration-form h2 {
+            font-size: var(--font-size-lg);
+            margin-block-end: var(--space-3);
+        }
+
+    .form-input {
+        padding-block: var(--space-2);
+        padding-inline: var(--space-3);
+    }
+}
+
+/* ==========================================================================
+   Login Page Styles (DarkChampAscent Theme)
+   ========================================================================== */
+
+.login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 100vh;
+    padding: var(--space-6);
+}
+
+    .login .center {
+        inline-size: 100%;
+        max-inline-size: 600px;
+    }
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-10);
+    background: linear-gradient(180deg, var(--color-surface-elevated), rgba(255, 255, 255, 0.01));
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+    .login-form h2 {
+        margin-block: 0;
+        color: var(--color-text);
+        font-size: var(--font-size-2xl);
+    }
+
+.login-subtitle {
+    margin-block: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-base);
+}
+
+.login-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    padding-block-start: var(--space-4);
+}
+
+.login-button-form {
+    inline-size: 100%;
+}
+
+.login-btn-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-5);
+}
+
+.login-btn {
+    inline-size: 100%;
+    padding-block: var(--space-4);
+    padding-inline: var(--space-6);
+    font-size: var(--font-size-lg);
+}
+
+.login-btn-icon {
+    flex-shrink: 0;
+    inline-size: 40px;
+    block-size: 40px;
+    color: var(--color-text);
+}
+
+.login-btn-icon-img {
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+}
+
+/* Responsive design */
+@media (max-width: 720px) {
+    .login-form {
+        padding: var(--space-6);
+        gap: var(--space-5);
+    }
+
+        .login-form h2 {
+            font-size: var(--font-size-lg);
+        }
+
+    .login-subtitle {
+        font-size: var(--font-size-xs);
+    }
+
+    .login-buttons {
+        gap: var(--space-4);
+    }
+}
+
+@media (max-width: 520px) {
+    .login {
+        padding: var(--space-3);
+    }
+
+    .login-form {
+        padding: var(--space-5);
+        gap: var(--space-4);
+    }
+
+        .login-form h2 {
+            font-size: var(--font-size-lg);
+        }
+
+    .login-subtitle {
+        font-size: var(--font-size-xs);
+    }
+
+    .login-buttons {
+        gap: var(--space-3);
+    }
+
+    .login-btn {
+        padding-block: var(--space-2);
+        padding-inline: var(--space-4);
+        font-size: var(--font-size-sm);
+    }
+}

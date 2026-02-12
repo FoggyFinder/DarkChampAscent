@@ -25,6 +25,8 @@ open UI
 open GameLogic.Shop
 open Types
 open DarkChampAscent.Account
+open System.Security.Claims
+open Microsoft.AspNetCore.Identity
 
 Log.Logger <-
     (new LoggerConfiguration())
@@ -37,56 +39,168 @@ Log.Logger <-
 module Cookie =
     let name = "DiscordAuth"
 
+module AuthenticationHandler =
+    open System.Threading.Tasks
+
+    let createClaims (user: CustomUser) : Claim list =
+        [
+            Claim(ClaimTypes.NameIdentifier, user.CustomId.ToString())
+            Claim(ClaimTypes.Name, user.Nickname)
+            Claim(ClaimTypes.AuthenticationMethod, "Custom")
+        ]
+
+    let createPrincipal (user: CustomUser) (authScheme: string) : ClaimsPrincipal =
+        let claims = createClaims user
+        let identity = ClaimsIdentity(claims, authScheme)
+        ClaimsPrincipal(identity)
+
+    /// Creates AuthenticationTicket from CustomUser
+    let createTicket (user: CustomUser) (authScheme: string) : AuthenticationTicket =
+        let principal = createPrincipal user authScheme
+        let properties = AuthenticationProperties()
+        properties.IsPersistent <- true
+        properties.ExpiresUtc <- DateTimeOffset.UtcNow.AddDays(7.0)
+        AuthenticationTicket(principal, properties, authScheme)
+
+    /// Extracts CustomUser from ClaimsPrincipal
+    let tryGetCustomUser (principal: ClaimsPrincipal) : CustomUser option =
+        try
+            let nickname = principal.FindFirstValue ClaimTypes.Name
+            let customIdStr = principal.FindFirstValue ClaimTypes.NameIdentifier
+
+            match nickname, customIdStr with
+            | null, _ | _, null -> None
+            | nickname, customIdStr ->
+                match UInt64.TryParse(customIdStr) with
+                | true, customId -> Some(CustomUser(nickname, customId))
+                | false, _ -> None
+        with
+        | _ -> None
+
+    /// Signs in a user with the specified authentication scheme
+    let signIn (ctx: HttpContext) (user: CustomUser) (authScheme: string) : Task =
+        task {
+            let ticket = createTicket user authScheme
+            do! ctx.SignInAsync(authScheme, ticket.Principal, ticket.Properties)
+        }
+
+    /// Signs out the user
+    let signOut (ctx: HttpContext) (authScheme: string) : Task =
+        ctx.SignOutAsync(authScheme)
+
+    /// Validates that user is authenticated
+    let isAuthenticated (principal: ClaimsPrincipal) : bool =
+        principal.Identity.IsAuthenticated
+
+    /// Gets the current user from HttpContext
+    let getCurrentUser (ctx: HttpContext) : CustomUser option =
+        tryGetCustomUser ctx.User
+open AuthenticationHandler
+
 let builder = WebApplication.CreateBuilder()
 
-let loginHandler : HttpHandler =
+let loginDiscordHandler : HttpHandler =
     fun ctx ->
-        let props = AuthenticationProperties()
-        props.RedirectUri <- Route.account
-        props.IsPersistent <- true
+        let props = AuthenticationProperties(RedirectUri = Route.account, IsPersistent = true)
         ctx.ChallengeAsync(DiscordAuthenticationDefaults.AuthenticationScheme, props)
-    //fun ctx -> task {
-    //    let handleAuth (ctx:HttpContext) : HttpHandler =
-    //        Response.ofPlainText "hello authenticated user"
 
-    //    return Request.ifAuthenticated "Discord" (handleAuth ctx)
-    //}
+//public bool VerifyPassword(string providedPassword, string storedHash)
+//{
+//    var passwordHasher = new PasswordHasher<object>();
+//    var result = passwordHasher.VerifyHashedPassword(null, storedHash, providedPassword);
+    
+//    return result == PasswordVerificationResult.Success;
+//}
 
-let getDiscordUser (result:AuthenticateResult) =
+let loginCustomHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let db = ctx.Plug<SqliteStorage>()
+            match ctx.Request.Form.TryGetValue("nickname"),
+                ctx.Request.Form.TryGetValue("password") with
+            | (true, nickname), (true, providedPassword) ->
+                // db.TryGetUserInfoByNickname
+                let storedHash = ""
+                let cId = 0
+                if db.UserNameExists nickname then
+                    let user = IdentityUser(UserName = nickname)
+                    let passwordHasher = PasswordHasher<IdentityUser>()
+                    let result = passwordHasher.VerifyHashedPassword(user, storedHash, providedPassword)
+                    if result = PasswordVerificationResult.Success then
+                        let authUser = CustomUser(nickname, uint64 cId)
+                        let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+                        do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
+                        
+                        let route = Route.account
+
+                        let response = Response.redirectPermanently route ctx
+
+                        return! response
+                    else
+                        let route = Route.reg
+
+                        let response = Response.redirectPermanently route ctx
+
+                        return! response
+                else
+                    let route = Route.reg
+                    let response = Response.redirectPermanently route ctx
+
+                    return! response
+            | _ ->
+                let route = Route.reg
+                let response = Response.redirectPermanently route ctx
+                return! response
+        }
+
+let getAccount (result:AuthenticateResult) =
     if result.Succeeded then
         let claims = result.Principal.Claims |> Seq.toList
-        let nameO =
-            claims
-            |> List.tryPick(fun claim ->
-                match claim.Type with
-                | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name" -> Some claim.Value
-                | _ -> None)
-        let idO =
-            claims
-            |> List.tryPick(fun claim ->
-                match claim.Type with
-                | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier" ->
-                    match UInt64.TryParse claim.Value with
-                    | true, v -> Some v
-                    | false, _ -> None
-                | _ -> None
-            )
-        let picO =
-            claims
-            |> List.tryPick(fun claim ->
-                match claim.Type with
-                | "urn:discord:avatar:hash" -> Some claim.Value
-                | _ -> None)
+        let isCustom = result.Principal.HasClaim(ClaimTypes.AuthenticationMethod, "Custom")
+        if isCustom then
+            let nickname = result.Principal.FindFirstValue ClaimTypes.Name
+            let customIdStr = result.Principal.FindFirstValue ClaimTypes.NameIdentifier
 
-        match idO with
-        | Some id ->
-            let name' = nameO |> Option.defaultValue "User"
-            DiscordUser(name', id, picO) |> Some
-        | None ->
-            Log.Error("Missing id. Claims")
-            claims |> Seq.iter(fun claim -> Log.Error($"{claim.Type} = {claim.Value}"))
-            None
-        |> Some
+            match nickname, customIdStr with
+            | null, _ | _, null -> None
+            | nickname, customIdStr ->
+                match UInt64.TryParse(customIdStr) with
+                | true, customId -> Some(CustomUser(nickname, customId) |> Account.Custom)
+                | false, _ -> None
+            |> Some
+        else
+            let nameO =
+                claims
+                |> List.tryPick(fun claim ->
+                    match claim.Type with
+                    | ClaimTypes.Name -> Some claim.Value
+                    | _ -> None)
+            let idO =
+                claims
+                |> List.tryPick(fun claim ->
+                    match claim.Type with
+                    | ClaimTypes.NameIdentifier ->
+                        match UInt64.TryParse claim.Value with
+                        | true, v -> Some v
+                        | false, _ -> None
+                    | _ -> None
+                )
+            let picO =
+                claims
+                |> List.tryPick(fun claim ->
+                    match claim.Type with
+                    | "urn:discord:avatar:hash" -> Some claim.Value
+                    | _ -> None)
+
+            match idO with
+            | Some id ->
+                let name' = nameO |> Option.defaultValue "User"
+                DiscordUser(name', id, picO) |> Account.Discord |> Some
+            | None ->
+                Log.Error("Missing id. Claims")
+                claims |> Seq.iter(fun claim -> Log.Error($"{claim.Type} = {claim.Value}"))
+                None
+            |> Some
     else None
 
 let tryGetFromForm (collection:IFormCollection) (key:string) =
@@ -98,26 +212,30 @@ let accountHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result
+            let dUser = getAccount result
             let html =
                 match dUser with
                 | Some opt ->
                     match opt with
-                    | Some du ->
+                    | Some a ->
                         let db = ctx.Plug<SqliteStorage>()
-                        let dId = UserId.Discord du.DiscordId
+                        let dId = a.ID
                         // a user may not be registered with discord bot
-                        db.TryRegisterDiscordUser du.DiscordId |> ignore
+                        match a with
+                        | Account.Discord d ->
+                            db.TryRegisterDiscordUser d.DiscordId |> ignore
+                        | _ -> ()
                         match db.GetUserWallets dId, db.GetUserChampsCount dId,
                             db.GetUserMonstersCount dId, db.GetUserBalance dId with
                         | Ok ar, Some champs, Some monsters, Some balance ->
                             let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                            let ua = UserAccount(DarkChampAscent.Account.Account.Discord du, wallets, balance, int champs, int monsters)
+                            let ua = UserAccount(a, wallets, balance, int champs, int monsters)
                             let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
                             AccountView.accountView ua dcprice
                         | _ -> Ui.unError "Can't fetch user data, please try again later"
                     | None -> Ui.incompleteResponseError
                 | None ->
+                    // TODO: redirect to login
                     Elem.main [
                         Attr.class' "dashboard"
                         Attr.role "main"
@@ -142,11 +260,96 @@ let accountHandler : HttpHandler =
             return! response
         }
 
+let selectLoginHandler : HttpHandler =
+    fun ctx ->
+        task {
+            // ToDo: redirect to account if auth is passed
+            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let dUser = getAccount result
+
+            let html =
+                RegistrationView.selectLoginOption
+                |> Ui.layout "Login" dUser.IsSome
+
+            let response = Response.ofHtml html ctx
+
+            return! response
+        }
+
+let regHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let dUser = getAccount result
+
+            let html =
+                RegistrationView.registration
+                |> Ui.layout "Registration" dUser.IsSome
+
+            let response = Response.ofHtml html ctx
+
+            return! response
+        }
+
+let customLoginFormHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let dUser = getAccount result
+
+            let html =
+                RegistrationView.login
+                |> Ui.layout "Login" dUser.IsSome
+
+            let response = Response.ofHtml html ctx
+
+            return! response
+        }
+
+let regPostHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let db = ctx.Plug<SqliteStorage>()
+            match ctx.Request.Form.TryGetValue("nickname"),
+                ctx.Request.Form.TryGetValue("password") with
+            | (true, nickname), (true, password) ->
+                if db.UserNameExists nickname then
+                    let route = Route.account
+
+                    let response = Response.redirectPermanently route ctx
+
+                    return! response
+                else
+                    let user = IdentityUser(UserName = nickname)
+                    let passwordHasher = PasswordHasher<IdentityUser>()
+                    let hashedPassword = passwordHasher.HashPassword(user, password)
+                    match db.TryRegisterCustomUser(nickname, hashedPassword) with
+                    | Ok cId ->
+                        let authUser = CustomUser(nickname, uint64 cId)
+                        let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+                        do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
+                        let route = Route.account
+
+                        let response = Response.redirectPermanently route ctx
+
+                        return! response
+                    | Error _ ->
+                        let route = Route.reg
+
+                        let response = Response.redirectPermanently route ctx
+
+                        return! response
+            | _ ->
+                let route = Route.reg
+                let response = Response.redirectPermanently route ctx
+                return! response
+        }
+
 let battleHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result
+            let dUser = getAccount result
             let rdb = ctx.Plug<SqliteWebUiStorage>()
             let db = ctx.Plug<SqliteStorage>()
             let currentBattle = rdb.GetCurrentBattleInfo()
@@ -173,7 +376,7 @@ let battleHandler : HttpHandler =
                                 | None -> None
                             | None -> None
                         let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
-                        db.GetAvailableUserChamps(UserId.Discord user.DiscordId)
+                        db.GetAvailableUserChamps(user.ID)
                         |> BattleView.joinBattle hasPlayers roundInfo
                     | None -> Ui.incompleteResponseError
                 | None ->
@@ -270,7 +473,7 @@ let registerNewWalletHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result
+            let dUser = getAccount result
             
             let db = ctx.Plug<SqliteStorage>()
             let route =
@@ -282,10 +485,10 @@ let registerNewWalletHandler : HttpHandler =
                         | true, s ->
                             let wallet = s.ToString().Trim()
                             if Blockchain.isValidAddress wallet then
-                                db.RegisterNewWallet(UserId.Discord user.DiscordId, wallet) |> ignore
+                                db.RegisterNewWallet(user.ID, wallet) |> ignore
                             else
                                 try
-                                    Log.Error($"{user.DiscordId} attempts to register invalid {wallet} address")
+                                    Log.Error($"{user.ID} attempts to register invalid {wallet} address")
                                 with exn ->
                                     Log.Error(exn, $"attempt to register {wallet} address")
                                 ()
@@ -302,14 +505,14 @@ let shopHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let user = getDiscordUser result
+            let user = getAccount result
             let view =
                 let db = ctx.Plug<SqliteStorage>()
                 match db.GetShopItems(), db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                 | Some items, Some price ->
                     let userBalance =
                         match user with
-                        | Some user -> user |> Option.bind(fun u -> UserId.Discord u.DiscordId |> db.GetUserBalance)
+                        | Some user -> user |> Option.bind(fun u -> db.GetUserBalance u.ID)
                         | None -> None
                     items
                     |> List.map(fun item -> Display.ShopItemRow(item, price))
@@ -330,7 +533,7 @@ let buyItemHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -338,7 +541,7 @@ let buyItemHandler : HttpHandler =
                         | true, s ->
                             match s |> Enum.TryParse<ShopItem> with
                             | true, v ->
-                                match db.BuyItem(UserId.Discord user.DiscordId, v, 1) with
+                                match db.BuyItem(user.ID, v, 1) with
                                 | Ok _ -> Route.storage
                                 | Error _ -> Route.error
                             | false, _ -> Route.error
@@ -355,14 +558,14 @@ let storageHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result
+            let dUser = getAccount result
             let response =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     let db = ctx.Plug<SqliteStorage>()
                     match userO with
                     | Some user ->
-                        let uId = UserId.Discord user.DiscordId
+                        let uId = user.ID
                         match db.GetUserStorage uId, db.GetUserChamps uId with
                         | Some items, Some champs ->
                             champs
@@ -384,7 +587,7 @@ let useItemHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -404,7 +607,7 @@ let useItemHandler : HttpHandler =
                             | false, _ -> None
                         match shopItem, champId with
                         | Some si, Some cid ->
-                            match db.UseItemFromStorage(UserId.Discord user.DiscordId, si, cid) with
+                            match db.UseItemFromStorage(user.ID, si, cid) with
                             | Ok _ -> ()
                             | Error _ -> ()
                         | _ -> ()
@@ -423,12 +626,12 @@ let myMonstersHandler : HttpHandler =
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
                         let db = ctx.Plug<SqliteStorage>()
-                        let uId = UserId.Discord user.DiscordId
+                        let uId = user.ID
                         match db.GetUserMonsters uId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                         | Ok monsters, Some dcPrice ->
                             let userBalance = db.GetUserBalance uId
@@ -447,12 +650,12 @@ let myChampsHandler : HttpHandler =
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
                         let db = ctx.Plug<SqliteStorage>()
-                        match UserId.Discord user.DiscordId |> db.GetUserChampsInfo with
+                        match db.GetUserChampsInfo user.ID with
                         | Some champs -> ChampView.champs champs
                         | _ -> Ui.defError
                     | _ -> Ui.incompleteResponseError
@@ -467,7 +670,7 @@ let champHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result 
+            let dUser = getAccount result 
             let isAuth = dUser |> Option.isSome
             let route = Request.getRoute ctx
             let champId = route.GetInt64 "id"
@@ -476,7 +679,7 @@ let champHandler : HttpHandler =
                 let userBalance =
                     dUser |> Option.bind(fun user ->
                         user |> Option.bind(fun u ->
-                            let uId = UserId.Discord u.DiscordId
+                            let uId = u.ID
                             db.ChampBelongsToAUser(uint64 champId, uId)
                             |> Option.bind(fun b -> 
                                 if b then db.GetUserBalance uId
@@ -499,7 +702,7 @@ let monstrHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result 
+            let dUser = getAccount result 
             let isAuth = dUser |> Option.isSome
             let route = Request.getRoute ctx
             let mId = route.GetInt64 "id"
@@ -509,7 +712,7 @@ let monstrHandler : HttpHandler =
                     dUser
                     |> Option.bind(fun user ->
                         user 
-                        |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, UserId.Discord u.DiscordId)))
+                        |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, u.ID)))
                     |> Option.defaultValue false
                 match db.GetMonsterById mId with
                 | Some monstr -> MonsterView.monstrInfo (uint64 mId) monstr isUserOwnedMonstr
@@ -530,7 +733,7 @@ let renameMonstrHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -545,7 +748,7 @@ let renameMonstrHandler : HttpHandler =
                             |> Option.map(fun s -> s.ToString())
                         match mIdO, mnstrnameO with
                         | Some mId, Some newName ->
-                            let uId = UserId.Discord user.DiscordId
+                            let uId = user.ID
                             if db.MonsterBelongsToAUser(mId, uId) |> Option.defaultValue false then
                                 match db.RenameUserMonster(uId, newName, int64 mId) with
                                 | Ok _ -> Uri.monstr mId
@@ -566,7 +769,7 @@ let renameChampHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -584,7 +787,7 @@ let renameChampHandler : HttpHandler =
                                 | false, _ -> None)
                         match oldNameO, newNameO, chmpIdO with
                         | Some oldName, Some newName, Some cId ->
-                            match db.RenameChamp(UserId.Discord user.DiscordId, oldName, newName) with
+                            match db.RenameChamp(user.ID, oldName, newName) with
                             | Ok _ -> Uri.champ cId
                             | Error _ -> Route.error
                         | _ -> Route.error
@@ -599,14 +802,14 @@ let myRequestsHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getDiscordUser result
+            let dUser = getAccount result
             let response =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     let db = ctx.Plug<SqliteStorage>()
                     match userO with
                     | Some user ->
-                        match UserId.Discord user.DiscordId |> db.GetPendingUserRequests with
+                        match db.GetPendingUserRequests user.ID with
                         | Ok requests -> GenView.myRequests requests
                         | _ -> Ui.defError
                     | _ -> Ui.defError
@@ -622,14 +825,14 @@ let champsUnderEffectsHandler : HttpHandler =
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     let db = ctx.Plug<SqliteStorage>()
                     match userO with
                     | Some user ->
                         match db.GetLastRoundId() with
                         | Some roundId ->
-                            match db.GetUserChampsUnderEffect(UserId.Discord user.DiscordId, roundId) with
+                            match db.GetUserChampsUnderEffect(user.ID, roundId) with
                             | Ok champs -> ChampView.champsUnderEffects champs
                             | _ -> Ui.defError
                         | None -> Ui.defError
@@ -645,7 +848,7 @@ let monstersUnderEffectsHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let isAuth = getAccount result |> Option.isSome
             let db = ctx.Plug<SqliteStorage>()
             let view =
                 match db.GetLastRoundId() with
@@ -673,7 +876,7 @@ let donateHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -681,10 +884,10 @@ let donateHandler : HttpHandler =
                         | true, s ->
                             match s |> Decimal.TryParse with
                             | true, v ->
-                                match db.Donate(UserId.Discord user.DiscordId, v) with
+                                match db.Donate(user.ID, v) with
                                 | Ok _ ->
                                     let client = ctx.Plug<GatewayClient>()
-                                    let card = donationCard v user.DiscordId
+                                    let card = user.Nickname |> donationCard v
                                     let newInGameDonationMessage =
                                         MessageProperties()
                                             .WithComponents([ card ])
@@ -711,7 +914,7 @@ let createMonsterHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -729,7 +932,7 @@ let createMonsterHandler : HttpHandler =
                                 | false, _ -> None)
                         match mtypeO, msubtypeO with
                         | Some mtype, Some msubtype ->
-                            match db.CreateGenRequest(UserId.Discord user.DiscordId, mtype, msubtype) with
+                            match db.CreateGenRequest(user.ID, mtype, msubtype) with
                             | Ok _ -> Route.myrequests
                             | Error _ -> Route.error
                         | _, _ -> Route.error
@@ -748,7 +951,7 @@ let lvlUpHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
@@ -756,7 +959,7 @@ let lvlUpHandler : HttpHandler =
                         | (true, s1), (true, s2) ->
                             match s1 |> UInt64.TryParse, s2 |> Enum.TryParse<Characteristic> with
                             | (true, cId), (true, ch) ->
-                                match db.ChampBelongsToAUser(cId, UserId.Discord user.DiscordId) with
+                                match db.ChampBelongsToAUser(cId, user.ID) with
                                 | Some b ->
                                     if b then
                                         if db.LevelUp(cId, ch) then
@@ -782,14 +985,14 @@ let rescanHandler : HttpHandler =
             let db = ctx.Plug<SqliteStorage>()
             
             let route =
-                match getDiscordUser result with
+                match getAccount result with
                 | Some userO ->
                     match userO with
                     | Some user ->
-                        match db.GetUserWallets(UserId.Discord user.DiscordId) with
+                        match db.GetUserWallets(user.ID) with
                         | Ok xs ->
                             let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
-                            CommonHelpers.updateChamps(db, user.DiscordId, xs')
+                            CommonHelpers.updateChamps(db, user.ID, xs')
                             Route.mychamps
                         | Error _ -> Route.error
                     | None -> Route.error
@@ -810,7 +1013,7 @@ module LeaderboardHandlers =
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-                let isAuth = getDiscordUser result |> Option.isSome
+                let isAuth = getAccount result |> Option.isSome
 
                 let view =
                     let db = ctx.Plug<SqliteStorage>()
@@ -833,7 +1036,7 @@ module LeaderboardHandlers =
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-                let isAuth = getDiscordUser result |> Option.isSome
+                let isAuth = getAccount result |> Option.isSome
                 let view =
                     let db = ctx.Plug<SqliteStorage>()
                     match db.GetMonsterLeaderboard() with
@@ -856,7 +1059,7 @@ module LeaderboardHandlers =
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-                let isAuth = getDiscordUser result |> Option.isSome
+                let isAuth = getAccount result |> Option.isSome
                 let! view =
                     let db = ctx.Plug<SqliteStorage>()
                     let client = ctx.Plug<RestClient>()
@@ -864,7 +1067,9 @@ module LeaderboardHandlers =
                     | Ok xs ->
                         task {
                             let users =
-                                [ for dId in xs |> List.map(fun ar -> uint64 ar.DiscordId) |> List.filter(names.ContainsKey >> not) do 
+                                let ids =
+                                    xs |> List.choose(fun ar -> uint64 ar.DiscordId) |> List.filter(names.ContainsKey >> not) 
+                                [ for dId in ids do 
                                     task { 
                                         return! client.GetUserAsync(dId)
                                     }
@@ -897,7 +1102,7 @@ module LeaderboardHandlers =
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-                let isAuth = getDiscordUser result |> Option.isSome
+                let isAuth = getAccount result |> Option.isSome
                 let view =
                     let db = ctx.Plug<SqliteStorage>()
                     match db.GetTopDonaters() with
@@ -919,7 +1124,7 @@ module LeaderboardHandlers =
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-                let isAuth = getDiscordUser result |> Option.isSome
+                let isAuth = getAccount result |> Option.isSome
 
                 let response =
                     LeaderboardView.general
@@ -933,7 +1138,7 @@ let homeHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let isAuth = getAccount result |> Option.isSome
             let view =
                 let db = ctx.Plug<SqliteStorage>()
                 let res = db.GetNumKey DbKeysNum.Rewards
@@ -954,7 +1159,7 @@ let traitsHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let isAuth = getAccount result |> Option.isSome
             let view = HomeView.allTraits |> HomeView.traits
 
             let response =
@@ -969,7 +1174,7 @@ let faqHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let isAuth = getAccount result |> Option.isSome
             
             let response =
                 FAQView.faqView
@@ -983,7 +1188,7 @@ let statsHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let isAuth = getDiscordUser result |> Option.isSome
+            let isAuth = getAccount result |> Option.isSome
             
             let view =
                 let db = ctx.Plug<SqliteWebUiStorage>()
@@ -1032,7 +1237,8 @@ builder
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme <- CookieAuthenticationDefaults.AuthenticationScheme
-            options.DefaultChallengeScheme <- DiscordAuthenticationDefaults.AuthenticationScheme)
+            options.DefaultChallengeScheme <- DiscordAuthenticationDefaults.AuthenticationScheme
+        )
         .AddCookie(fun opt ->
             opt.Cookie.Name <- Cookie.name
             opt.LoginPath <- PathString("/login")
@@ -1054,7 +1260,13 @@ let endpoints =
         get Route.index homeHandler
         get Route.traits traitsHandler
 
-        get Route.login loginHandler
+        get Route.login selectLoginHandler
+        get Route.loginDiscord loginDiscordHandler
+        get Route.loginCustom loginCustomHandler
+        get Route.loginCustomForm customLoginFormHandler
+
+        get Route.reg regHandler
+        post Route.reg regPostHandler
 
         get Route.account accountHandler
         post Route.walletRegister registerNewWalletHandler

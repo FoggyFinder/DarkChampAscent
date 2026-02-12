@@ -71,3 +71,13 @@ type Stats(players:uint64 option, confirmedPlayers:uint64 option,
     member _.Reserve = reserve
     member _.Devs = devs
     member _.Staking = staking
+
+[<RequireQualifiedAccess>]
+type Donater =
+    | Discord of uint64
+    | Custom of uint64 * string
+    | Unknown of string
+    
+type Donation(donater:Donater, amount:decimal) =
+    member _.Donater = donater
+    member _.Amount = amount

@@ -312,47 +312,40 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "setStakingKey")
             false
 
-    let addStakingColumn(conn:SqliteConnection) = 
+    let migrateUsers(conn:SqliteConnection) =
         let sql = """
-            CREATE TABLE IF NOT EXISTS RewardsHistoryNew (
-                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                RoundId INT NOT NULL,
-                Unclaimed NUMERIC NOT NULL,
-                Burn NUMERIC NOT NULL,
-                DAO NUMETIC NOT NULL,
-                Reserve NUMERIC NOT NULL,
-                Devs NUMERIC NOT NULL,
-                Champs NUMERIC NOT NULL,
-                Staking NUMERIC NOT NULL,
-                FOREIGN KEY (RoundId)
-                    REFERENCES Round (ID),
-                CHECK (
-                    Unclaimed > -0.0001 AND
-                    Burn >= 0 AND
-                    DAO >= 0 AND
-                    Reserve >= 0 AND
-                    Devs >= 0 AND
-                    Champs >= 0 AND
-                    Staking >= 0 
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE IF NOT EXISTS UserNew (
+	            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                DiscordId INTEGER UNIQUE,
+                CustomUserId INTEGER UNIQUE,
+                Balance NUMERIC NOT NULL,
+                FOREIGN KEY (CustomUserId)
+                REFERENCES CustomUser (ID),
+                CHECK (Balance >= 0 AND 
+                    (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL)
                 )
             );
 
-        INSERT INTO RewardsHistoryNew(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
-        SELECT RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, 0.000000
-        FROM RewardsHistory;
+        INSERT INTO UserNew(DiscordId, CustomUserId, Balance)
+        SELECT DiscordId, NULL, Balance
+        FROM User;
 
-        DROP TABLE RewardsHistory;
+        DROP TABLE User;
 
-        ALTER TABLE RewardsHistoryNew RENAME TO RewardsHistory;
+        ALTER TABLE UserNew RENAME TO User;
+
+        PRAGMA foreign_keys = ON;
         """
 
-        let stakingColumnCount = """
+        let customUserIdColumnCount = """
             SELECT COUNT(*) FROM
-            pragma_table_info('RewardsHistory')
-            WHERE name='Staking'
+            pragma_table_info('User')
+            WHERE name='CustomUserId'
         """
         try
-            Db.newCommand stakingColumnCount conn
+            Db.newCommand customUserIdColumnCount conn
             |> Db.scalar(fun v -> tryUnbox<int64> v)
             |> Option.iter(fun i ->
                 if i = 0L then
@@ -360,7 +353,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     |> Db.exec)
             true
         with exn ->
-            Log.Error(exn, $"addStakingColumn")
+            Log.Error(exn, $"migrateUsers")
             false
     
     let createNewMonster(cs:string, monster:MonsterRecord) =
@@ -408,7 +401,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
     do setInitBalance(_conn) |> ignore
     do setLockedKey(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
-    do addStakingColumn(_conn)|> ignore
+    do migrateUsers(_conn)|> ignore
     do _conn.Dispose()
 
     do Log.Information("Db init is finished")
@@ -425,16 +418,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"walletExists: {wallet}")
             false
 
-    let getUserIdByDiscordId(discordId: uint64) =
-        try 
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetUserIdByDiscordId conn
-            |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-            |> Db.scalar (fun v -> tryUnbox<int64> v)
-        with exn ->
-            Log.Error(exn, $"getUserIdByDiscordId: {discordId}")
-            None
-
     let getUserIdByUserId(uId: UserId) =
         try
             // ToDo: cache uId
@@ -444,29 +427,39 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Db.newCommand SQL.GetUserIdByDiscordId conn
                 |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v)
-            | UserId.InGame inGameId ->
-                failwith "not implemented"
+            | UserId.Custom customId ->
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserIdByCustomId conn
+                |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
         with exn ->
-            Log.Error(exn, $"getUserIdByDiscordId: {uId}")
+            Log.Error(exn, $"getUserIdByUserId: {uId}")
             None
 
     let discordUserExists(discordId: uint64) =
         try 
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UserExists conn
+            Db.newCommand SQL.UserExistsByDiscordId conn
             |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
             |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
         with exn ->
             Log.Error(exn, $"userExists: {discordId}")
             false
     
-    let customUserExists(ingameId: uint64) =
-        failwith "Not implemented"
+    let customUserExists(customId: uint64) =
+        try 
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UserExistsByCustomId conn
+            |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+        with exn ->
+            Log.Error(exn, $"customUserExists: {customId}")
+            false
 
     let userExists(uId:UserId) =
         match uId with
         | UserId.Discord discordId -> discordUserExists discordId
-        | UserId.InGame inGameId -> customUserExists inGameId
+        | UserId.Custom inGameId -> customUserExists inGameId
 
     let getShopItemIdByItem(shopItem: ShopItem) =
         try 
@@ -491,26 +484,48 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             with exn ->
                 Log.Error(exn, $"registerNewDiscordUser: {discordId}")
                 false
+    
+    let userNameExists(nickname:string)=
+        use conn = new SqliteConnection(cs)
+        Db.newCommand SQL.UserNameAlreadyExists conn
+        |> Db.setParams [ "name", SqlType.String nickname ]
+        |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
 
-    let registerNewInGameUser(ingameId:uint64) =
-        //if discordUserExists discordId then
-        //    false
-        //else
-        //    try
-        //        use conn = new SqliteConnection(cs)
-        //        Db.newCommand SQL.AddNewDiscordUser conn
-        //        |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-        //        |> Db.exec
-        //        true
-        //    with exn ->
-        //        Log.Error(exn, $"registerNewDiscordUser: {discordId}")
-        //        false
-        failwith "..."
+    let registerNewCustomUser(nickname:string, password:string) =
+        if nickname.Length < 3 then Error("Nickname must be > 3 symbols.")
+        elif String.IsNullOrWhiteSpace password then Error("Password must be non-empty")
+        else
+            try
+                use conn = new SqliteConnection(cs)
+                let nameExists =
+                    Db.newCommand SQL.UserNameAlreadyExists conn
+                    |> Db.setParams [ "name", SqlType.String nickname ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+                if nameExists then Error("Nickname already taken, try something else")
+                else
+                    Db.batch(fun tn ->
+                        let customIdO =
+                            Db.newCommand SQL.AddNewCustomUser conn
+                            |> Db.setParams [ 
+                                "nickname", SqlType.String nickname
+                                "password", SqlType.String password
+                            ]
+                            |> Db.scalar (fun v -> tryUnbox<int64> v)
+                        match customIdO with
+                        | Some customId ->
+                            Db.newCommand SQL.AddCustomUser conn
+                            |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+                            |> Db.exec
+                            Ok(customId)
+                        | None ->
+                            tn.Rollback()
+                            Error("Unexpected error")
 
-    let registerNewUser(uId:UserId) =
-        match uId with
-        | UserId.Discord discordId -> registerNewDiscordUser discordId
-        | UserId.InGame inGameId -> registerNewInGameUser inGameId
+                    ) conn
+                
+            with exn ->
+                Log.Error(exn, $"registerNewCustomUser: {nickname}")
+                Error("Unexpected error")
 
     let confirmationCodeIsMatchedForWallet(wallet:string, code:string) =
         try 
@@ -554,7 +569,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"FindUserIdByWallet: {wallet}")
             None
     
-    member _.FindUserIdByDiscordId = getUserIdByDiscordId
+    member _.FindUserIdByUserId = getUserIdByUserId
 
     member _.FindDiscordIdByWallet(wallet: string) =
         try 
@@ -567,9 +582,17 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             None
     
     member _.TryRegisterDiscordUser(discordId:uint64) = registerNewDiscordUser discordId
+    member _.UserNameExists(nickname:string) = userNameExists nickname
+    member _.TryRegisterCustomUser(nickname:string, password:string) =
+        registerNewCustomUser(nickname, password)
+    member _.GetUserPwd(customId:uint64) =
+        failwith "..."
     
     member _.RegisterNewWallet(uId:UserId, wallet:string) =
-        let isRegistered = userExists uId || registerNewUser uId
+        let isRegistered =
+            match uId with
+            | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
+            | UserId.Custom _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
@@ -597,7 +620,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         else Error("User doesn't exist")
     
     member _.DeactivateWallet(uId:UserId, wallet:string) =
-        let isRegistered = userExists uId || registerNewUser uId
+        let isRegistered =
+            match uId with
+            | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
+            | UserId.Custom _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
@@ -2928,10 +2954,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetTopInGameDonaters conn
             |> Db.query(fun r ->
-                {|
-                    DiscordId = r.GetInt64(0)
-                    Amount = r.GetDecimal(1)
-                |}
+                // SELECT DiscordId, CustomUserId, cu.Nickname, SUM(Amount) as Total
+                let donater =
+                    if r.IsDBNull(0) then Donater.Custom(r.GetInt64(1) |> uint64, r.GetString(2))
+                    else Donater.Discord(r.GetInt64(0) |> uint64)
+                let amount = r.GetDecimal(3)
+                Donation(donater, amount)
             )
             |> Ok
         with exn ->
@@ -2942,15 +2970,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetTopDonaters conn
-            |> Db.query(fun r ->
-                {|
-                    Wallet = r.GetString(0)
-                    Amount = r.GetDecimal(1)
-                |}
-            )
+            |> Db.query(fun r -> Donation(Donater.Unknown (r.GetString(0)), r.GetDecimal(1)))
             |> Ok
         with exn ->
-            Log.Error(exn, "GetTopInGameDonaters")
+            Log.Error(exn, "GetTopDonaters")
             Error("Unexpected error")
 
     member _.Backup(datasource:string) =

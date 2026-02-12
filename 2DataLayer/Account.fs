@@ -1,19 +1,3 @@
-// CREATE TABLE IF NOT EXISTS InGameUser (
-// ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-// Nickname TEXT NOT NULL UNIQUE,
-// Password TEXT NOT NULL,
-//);
-
-//CREATE TABLE IF NOT EXISTS User (
-// ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-// DiscordId INTEGER UNIQUE,
-// InGameUserId INTEGER UNIQUE,
-// Balance NUMERIC NOT NULL,
-// FOREIGN KEY (InGameUserId)
-// REFERENCES InGameUser (ID),
-//    CHECK (Balance >= 0)
-//);
-
 module DarkChampAscent.Account
 
 open System
@@ -22,7 +6,7 @@ open System.Globalization
 [<RequireQualifiedAccess>]
 type UserId =
     | Discord of uint64
-    | InGame of uint64
+    | Custom of uint64
 
 type DiscordUser(nickname:string, discordId: uint64, pic:string option) =
     let picture =
@@ -36,23 +20,23 @@ type DiscordUser(nickname:string, discordId: uint64, pic:string option) =
     member _.DiscordId = discordId
     member _.Pic = picture
 
-type InGameUser(nickname:string, inGameId: uint64) =
+type CustomUser(nickname:string, customId: uint64) =
     member _.Nickname = nickname
-    member _.InGameId = inGameId
+    member _.CustomId = customId
 
 [<RequireQualifiedAccess>]
 type Account =
     | Discord of DiscordUser
-    | InGame of InGameUser
+    | Custom of CustomUser
     member x.Nickname =
         match x with
         | Discord d -> d.Nickname
-        | InGame u -> u.Nickname
+        | Custom u -> u.Nickname
     member x.ID =
         match x with
         | Discord d -> UserId.Discord d.DiscordId
-        | InGame u -> UserId.InGame u.InGameId
+        | Custom u -> UserId.Custom u.CustomId
     member x.Picture =
         match x with
         | Discord d -> d.Pic
-        | InGame u -> None
+        | Custom u -> None

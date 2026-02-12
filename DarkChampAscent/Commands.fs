@@ -265,7 +265,7 @@ type UserModule(db:SqliteStorage) =
                         options.Content <- "Updating...")
                 if xs'.IsEmpty |> not then
                     // ToDo: improve, return results to a user
-                    CommonHelpers.updateChamps(db, x.Context.User.Id, xs')
+                    CommonHelpers.updateChamps(db, UserId.Discord x.Context.User.Id, xs')
                     let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
                         options.Content <- "Done")
                     ()
@@ -699,6 +699,7 @@ type BattleModule(db:SqliteStorage) =
                         EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
                     ])
             options.Embeds <- [ ep ])
+open Types
 
 [<SlashCommand("top", "Leaderboard command")>]
 type TopModule(db:SqliteStorage) =
@@ -715,8 +716,13 @@ type TopModule(db:SqliteStorage) =
                         TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                         yield!
-                            xs |> List.mapi(fun i ar ->
-                                TextDisplayProperties($"{i+1,-3}. <@{ar.DiscordId}> : {ar.Amount}") :> IComponentContainerComponentProperties
+                            xs |> List.mapi(fun i d ->
+                                let str =
+                                    match d.Donater with
+                                    | Donater.Custom(_, name) -> name
+                                    | Donater.Unknown wallet -> wallet
+                                    | Donater.Discord dId -> $"<@{dId}>"
+                                TextDisplayProperties($"{i+1,-3}. {str} : {d.Amount}") :> IComponentContainerComponentProperties
                             )
                     ])
                             
@@ -738,8 +744,13 @@ type TopModule(db:SqliteStorage) =
                         TextDisplayProperties($"{Emoj.Rocket} **Top-10 Donaters!** {Emoj.Rocket}")
                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                         yield!
-                            xs |> List.mapi(fun i ar ->
-                                TextDisplayProperties($"{i+1,-3}. {ar.Wallet} : {ar.Amount}") :> IComponentContainerComponentProperties
+                            xs |> List.mapi(fun i d ->
+                                let str =
+                                    match d.Donater with
+                                    | Donater.Custom(_, name) -> name
+                                    | Donater.Unknown wallet -> wallet
+                                    | Donater.Discord dId -> $"<@{dId}>"
+                                TextDisplayProperties($"{i+1,-3}. {str} : {d.Amount}") :> IComponentContainerComponentProperties
                             )
                     ])
                             

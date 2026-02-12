@@ -5,13 +5,13 @@ open NetCord
 open Display
 open GameLogic.Champs
 
-let donationCard (d:decimal) (uId:uint64) =
+let donationCard (d:decimal) (donater:string) =
     ComponentContainerProperties([
         TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
         TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-        TextDisplayProperties($"Thank you, <@{uId}>")
+        TextDisplayProperties($"Thank you, {donater}")
     ])
 
 [<RequireQualifiedAccess>]

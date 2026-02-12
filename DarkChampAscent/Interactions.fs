@@ -26,7 +26,7 @@ let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
                     let r = db.Donate(UserId.Discord context.User.Id, d)
                     match r with
                     | Ok () ->
-                        let card = donationCard d context.User.Id
+                        let card = context.User.Id |> Utils.mention |> donationCard d 
                         let newInGameDonationMessage =
                             MessageProperties()
                                 .WithComponents([ card ])
