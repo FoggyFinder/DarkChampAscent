@@ -125,16 +125,24 @@ let loginCustomHandler : HttpHandler =
                                     do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
                                     return Route.account
                                 else
+                                    ctx.Session.SetString("loginError", "Invalid password")
+                                    do! ctx.Session.CommitAsync()
+
                                     return Route.loginCustomForm
                             | None -> return Route.loginCustomForm
-
                         else
+                            ctx.Session.SetString("loginError", "User not found")
+                            do! ctx.Session.CommitAsync()
+
                             return Route.loginCustomForm
                     | _ ->
+                        ctx.Session.SetString("loginError", "Please fill in all fields")
+                        do! ctx.Session.CommitAsync()
+
                         return Route.loginCustomForm
                 }
             
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
             return! response
         }
 
@@ -282,8 +290,18 @@ let customLoginFormHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let dUser = getAccount result
 
+            let error = ctx.Session.GetString("loginError")
+            
+            // Clear the error after reading it
+            if error <> null then
+                ctx.Session.Remove("loginError")
+
+            let errorO =
+                if String.IsNullOrWhiteSpace error then None
+                else Some error
+
             let html =
-                RegistrationView.login
+                RegistrationView.login errorO
                 |> Ui.layout "Login" dUser.IsSome
 
             let response = Response.ofHtml html ctx
@@ -322,7 +340,7 @@ let regPostHandler : HttpHandler =
                         let route = Route.reg
 
                         let response = Response.redirectPermanently route ctx
-
+                        
                         return! response
             | _ ->
                 let route = Route.reg
@@ -1223,6 +1241,11 @@ open Conf
 
 builder.Logging.AddSerilog(dispose=true) |> ignore
 builder.Services.AddDiscordGateway() |> ignore
+builder.Services.AddDistributedMemoryCache() |> ignore
+builder.Services.AddSession(fun options ->
+    options.IdleTimeout <- TimeSpan.FromMinutes(10.0) // Set session timeout
+    options.Cookie.HttpOnly <- true
+    options.Cookie.IsEssential <- true) |> ignore
 
 builder
     .Services
@@ -1312,7 +1335,7 @@ let endpoints =
 let wapp = builder.Build()
 wapp.UseForwardedHeaders(ForwardedHeadersOptions(ForwardedHeaders = (ForwardedHeaders.XForwardedFor ||| ForwardedHeaders.XForwardedProto))) |> ignore
 wapp.UseHsts() |> ignore
-
+wapp.UseSession() |> ignore
 wapp.UseStaticFiles() |> ignore
 
 wapp.UseRouting() |> ignore

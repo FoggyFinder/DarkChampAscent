@@ -2008,3 +2008,14 @@ main.monsters-under-effects {
         font-size: var(--font-size-sm);
     }
 }
+
+.error-alert {
+    padding: var(--space-4);
+    margin-block-end: var(--space-5);
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid #ff6b6b;
+    border-radius: var(--radius-sm);
+    color: #ff6b6b;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}

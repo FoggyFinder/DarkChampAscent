@@ -210,7 +210,7 @@ let registration =
         ]
     ]
 
-let login =
+let login (errorO:string option) =
     Elem.main [
         Attr.class' "registration"
         Attr.role "main"
@@ -226,6 +226,13 @@ let login =
                 Elem.h2 [] [
                     Text.raw "Login"
                 ]
+
+                match errorO with
+                | Some error ->
+                    Elem.div [ Attr.class' "error-alert" ] [
+                        Text.raw error
+                    ]
+                | None -> ()
 
                 Elem.div [ Attr.class' "form-group" ] [
                     Elem.label [
