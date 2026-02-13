@@ -99,6 +99,12 @@ open AuthenticationHandler
 
 let builder = WebApplication.CreateBuilder()
 
+let setSessionAndCommit key value (ctx: HttpContext) =
+    task {
+        ctx.Session.SetString(key, value)
+        do! ctx.Session.CommitAsync()
+    }
+
 let loginDiscordHandler : HttpHandler =
     fun ctx ->
         let props = AuthenticationProperties(RedirectUri = Route.account, IsPersistent = true)
@@ -108,40 +114,35 @@ let loginCustomHandler : HttpHandler =
     fun ctx ->
         task {
             let db = ctx.Plug<SqliteStorage>()
+            let res =
+                match ctx.Request.Form.TryGetValue("nickname"),
+                    ctx.Request.Form.TryGetValue("password") with
+                | (true, nickname), (true, providedPassword) ->
+                    if db.UserNameExists nickname then
+                        match db.GetCustomUserInfoByNickname nickname with
+                        | Some (cId, storedHash) ->
+                            let user = IdentityUser(UserName = nickname)
+                            let passwordHasher = PasswordHasher<IdentityUser>()
+                            let result = passwordHasher.VerifyHashedPassword(user, storedHash, providedPassword)
+                            if result = PasswordVerificationResult.Success || result = PasswordVerificationResult.SuccessRehashNeeded then
+                                let authUser = CustomUser(nickname, uint64 cId)
+                                let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+                                Ok ticket
+                            else
+                                Error "Invalid password"
+                        | None -> Error "User not found"
+                    else Error "User not found"
+                | _ -> Error "Please fill in all fields"
             let! route =
                 task {
-                    match ctx.Request.Form.TryGetValue("nickname"),
-                        ctx.Request.Form.TryGetValue("password") with
-                    | (true, nickname), (true, providedPassword) ->
-                        if db.UserNameExists nickname then
-                            match db.GetCustomUserInfoByNickname nickname with
-                            | Some (cId, storedHash) ->
-                                let user = IdentityUser(UserName = nickname)
-                                let passwordHasher = PasswordHasher<IdentityUser>()
-                                let result = passwordHasher.VerifyHashedPassword(user, storedHash, providedPassword)
-                                if result = PasswordVerificationResult.Success || result = PasswordVerificationResult.SuccessRehashNeeded then
-                                    let authUser = CustomUser(nickname, uint64 cId)
-                                    let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
-                                    do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
-                                    return Route.account
-                                else
-                                    ctx.Session.SetString("loginError", "Invalid password")
-                                    do! ctx.Session.CommitAsync()
-
-                                    return Route.loginCustomForm
-                            | None -> return Route.loginCustomForm
-                        else
-                            ctx.Session.SetString("loginError", "User not found")
-                            do! ctx.Session.CommitAsync()
-
-                            return Route.loginCustomForm
-                    | _ ->
-                        ctx.Session.SetString("loginError", "Please fill in all fields")
-                        do! ctx.Session.CommitAsync()
-
+                    match res with
+                    | Ok ticket ->
+                        do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
+                        return Route.account
+                    | Error err ->
+                        do! setSessionAndCommit "loginError" err ctx
                         return Route.loginCustomForm
                 }
-            
             let response = Response.redirectTemporarily route ctx
             return! response
         }
@@ -275,8 +276,12 @@ let regHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let dUser = getAccount result
 
+            let error = ctx.Session.GetString("loginError")
+            if error <> null then ctx.Session.Remove("loginError")
+            let errorO = if String.IsNullOrWhiteSpace error then None else Some error
+
             let html =
-                RegistrationView.registration
+                RegistrationView.registration errorO
                 |> Ui.layout "Registration" dUser.IsSome
 
             let response = Response.ofHtml html ctx
@@ -291,14 +296,8 @@ let customLoginFormHandler : HttpHandler =
             let dUser = getAccount result
 
             let error = ctx.Session.GetString("loginError")
-            
-            // Clear the error after reading it
-            if error <> null then
-                ctx.Session.Remove("loginError")
-
-            let errorO =
-                if String.IsNullOrWhiteSpace error then None
-                else Some error
+            if error <> null then ctx.Session.Remove("loginError")
+            let errorO = if String.IsNullOrWhiteSpace error then None else Some error
 
             let html =
                 RegistrationView.login errorO
@@ -313,39 +312,35 @@ let regPostHandler : HttpHandler =
     fun ctx ->
         task {
             let db = ctx.Plug<SqliteStorage>()
-            match ctx.Request.Form.TryGetValue("nickname"),
-                ctx.Request.Form.TryGetValue("password") with
-            | (true, nickname), (true, password) ->
-                if db.UserNameExists nickname then
-                    let route = Route.account
-
-                    let response = Response.redirectPermanently route ctx
-
-                    return! response
-                else
-                    let user = IdentityUser(UserName = nickname)
-                    let passwordHasher = PasswordHasher<IdentityUser>()
-                    let hashedPassword = passwordHasher.HashPassword(user, password)
-                    match db.TryRegisterCustomUser(nickname, hashedPassword) with
-                    | Ok cId ->
-                        let authUser = CustomUser(nickname, uint64 cId)
-                        let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+            let frm = ctx.Request.Form
+            let res =
+                match frm.TryGetValue("nickname"), frm.TryGetValue("password") with
+                | (true, nickname), (true, password) ->
+                    if db.UserNameExists nickname then
+                        Error("This name is already taken")
+                    else
+                        let user = IdentityUser(UserName = nickname)
+                        let passwordHasher = PasswordHasher<IdentityUser>()
+                        let hashedPassword = passwordHasher.HashPassword(user, password)
+                        match db.TryRegisterCustomUser(nickname, hashedPassword) with
+                        | Ok cId ->
+                            let authUser = CustomUser(nickname, uint64 cId)
+                            let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+                            Ok ticket
+                        | Error err -> Error err
+                | _ -> Error "Please fill in all fields"
+            let! route =
+                task {
+                    match res with
+                    | Ok ticket ->
                         do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
-                        let route = Route.account
-
-                        let response = Response.redirectPermanently route ctx
-
-                        return! response
-                    | Error _ ->
-                        let route = Route.reg
-
-                        let response = Response.redirectPermanently route ctx
-                        
-                        return! response
-            | _ ->
-                let route = Route.reg
-                let response = Response.redirectPermanently route ctx
-                return! response
+                        return Route.account
+                    | Error err ->
+                        do! setSessionAndCommit "loginError" err ctx
+                        return Route.reg
+                }
+            let response = Response.redirectTemporarily route ctx
+            return! response
         }
 
 let battleHandler : HttpHandler =

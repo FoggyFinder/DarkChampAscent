@@ -3,7 +3,7 @@ module RegistrationView
 open Falco.Markup
 open UI
 
-let registration =
+let registration (errorO:string option) =
     Elem.main [
         Attr.class' "registration"
         Attr.role "main"
@@ -19,6 +19,13 @@ let registration =
                 Elem.h2 [] [
                     Text.raw "Create Account"
                 ]
+
+                match errorO with
+                | Some error ->
+                    Elem.div [ Attr.class' "error-alert" ] [
+                        Text.raw error
+                    ]
+                | None -> ()
 
                 Elem.div [ Attr.class' "form-group" ] [
                     Elem.label [
