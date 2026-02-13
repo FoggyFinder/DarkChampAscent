@@ -104,53 +104,38 @@ let loginDiscordHandler : HttpHandler =
         let props = AuthenticationProperties(RedirectUri = Route.account, IsPersistent = true)
         ctx.ChallengeAsync(DiscordAuthenticationDefaults.AuthenticationScheme, props)
 
-//public bool VerifyPassword(string providedPassword, string storedHash)
-//{
-//    var passwordHasher = new PasswordHasher<object>();
-//    var result = passwordHasher.VerifyHashedPassword(null, storedHash, providedPassword);
-    
-//    return result == PasswordVerificationResult.Success;
-//}
-
 let loginCustomHandler : HttpHandler =
     fun ctx ->
         task {
             let db = ctx.Plug<SqliteStorage>()
-            match ctx.Request.Form.TryGetValue("nickname"),
-                ctx.Request.Form.TryGetValue("password") with
-            | (true, nickname), (true, providedPassword) ->
-                // db.TryGetUserInfoByNickname
-                let storedHash = ""
-                let cId = 0
-                if db.UserNameExists nickname then
-                    let user = IdentityUser(UserName = nickname)
-                    let passwordHasher = PasswordHasher<IdentityUser>()
-                    let result = passwordHasher.VerifyHashedPassword(user, storedHash, providedPassword)
-                    if result = PasswordVerificationResult.Success then
-                        let authUser = CustomUser(nickname, uint64 cId)
-                        let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
-                        do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
-                        
-                        let route = Route.account
+            let! route =
+                task {
+                    match ctx.Request.Form.TryGetValue("nickname"),
+                        ctx.Request.Form.TryGetValue("password") with
+                    | (true, nickname), (true, providedPassword) ->
+                        if db.UserNameExists nickname then
+                            match db.GetCustomUserInfoByNickname nickname with
+                            | Some (cId, storedHash) ->
+                                let user = IdentityUser(UserName = nickname)
+                                let passwordHasher = PasswordHasher<IdentityUser>()
+                                let result = passwordHasher.VerifyHashedPassword(user, storedHash, providedPassword)
+                                if result = PasswordVerificationResult.Success || result = PasswordVerificationResult.SuccessRehashNeeded then
+                                    let authUser = CustomUser(nickname, uint64 cId)
+                                    let ticket = createTicket authUser CookieAuthenticationDefaults.AuthenticationScheme
+                                    do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
+                                    return Route.account
+                                else
+                                    return Route.loginCustomForm
+                            | None -> return Route.loginCustomForm
 
-                        let response = Response.redirectPermanently route ctx
-
-                        return! response
-                    else
-                        let route = Route.reg
-
-                        let response = Response.redirectPermanently route ctx
-
-                        return! response
-                else
-                    let route = Route.reg
-                    let response = Response.redirectPermanently route ctx
-
-                    return! response
-            | _ ->
-                let route = Route.reg
-                let response = Response.redirectPermanently route ctx
-                return! response
+                        else
+                            return Route.loginCustomForm
+                    | _ ->
+                        return Route.loginCustomForm
+                }
+            
+            let response = Response.redirectPermanently route ctx
+            return! response
         }
 
 let getAccount (result:AuthenticateResult) =
@@ -1068,22 +1053,29 @@ module LeaderboardHandlers =
                         task {
                             let users =
                                 let ids =
-                                    xs |> List.choose(fun ar -> uint64 ar.DiscordId) |> List.filter(names.ContainsKey >> not) 
-                                [ for dId in ids do 
-                                    task { 
-                                        return! client.GetUserAsync(dId)
-                                    }
-                                ]
+                                    xs |> List.choose(fun d -> 
+                                        match d.Donater with
+                                        | Donater.Discord dId ->
+                                            let dId' = uint64 dId
+                                            if names.ContainsKey dId' then None
+                                            else Some dId'
+                                        | _ -> None)
+                                [ for dId in ids do task { return! client.GetUserAsync(dId) } ]
                             let! us = Task.WhenAll(users)
                             us |> Array.iter(fun u -> names.Add(u.Id, u.GlobalName))
                             let view =
                                 xs
-                                |> List.map(fun ar ->
+                                |> List.map(fun d ->
                                     let name =
-                                        match names.TryGetValue (uint64 ar.DiscordId) with
-                                        | true, n -> n
-                                        | false, _ -> string ar.DiscordId
-                                    name, ar.Amount)
+                                        match d.Donater with
+                                        | Donater.Discord dId ->
+                                            let dId' = uint64 dId
+                                            match names.TryGetValue dId' with
+                                            | true, n -> n
+                                            | false, _ -> string dId'
+                                        | Donater.Unknown wallet -> wallet
+                                        | Donater.Custom (_, name) -> name
+                                    name, d.Amount)
                                 |> LeaderboardView.donaters "Name"
                             
                             return view
@@ -1108,7 +1100,9 @@ module LeaderboardHandlers =
                     match db.GetTopDonaters() with
                     | Ok xs ->
                         xs
-                        |> List.map(fun ar -> ar.Wallet, ar.Amount)
+                        |> List.map(fun d ->
+                            let name = match d.Donater with | Donater.Unknown wallet -> wallet | _ -> "?"
+                            name, d.Amount)
                         |> LeaderboardView.donaters "Wallet"
                     | _ -> Ui.defError
 
@@ -1262,7 +1256,7 @@ let endpoints =
 
         get Route.login selectLoginHandler
         get Route.loginDiscord loginDiscordHandler
-        get Route.loginCustom loginCustomHandler
+        post Route.loginCustom loginCustomHandler
         get Route.loginCustomForm customLoginFormHandler
 
         get Route.reg regHandler

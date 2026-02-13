@@ -583,10 +583,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
     
     member _.TryRegisterDiscordUser(discordId:uint64) = registerNewDiscordUser discordId
     member _.UserNameExists(nickname:string) = userNameExists nickname
+    member _.GetCustomUserInfoByNickname(nickname:string) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetCustomUserInfoByNickname conn
+            |> Db.setParams [ "name", SqlType.String nickname ]
+            |> Db.querySingle(fun r ->
+                r.GetInt64(0) |> uint64,
+                r.GetString(1))
+        with exn ->
+            Log.Error(exn, $"GetCustomUserInfoByNickname: {nickname}")
+            None
     member _.TryRegisterCustomUser(nickname:string, password:string) =
         registerNewCustomUser(nickname, password)
-    member _.GetUserPwd(customId:uint64) =
-        failwith "..."
     
     member _.RegisterNewWallet(uId:UserId, wallet:string) =
         let isRegistered =

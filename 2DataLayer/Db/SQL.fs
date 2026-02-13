@@ -526,6 +526,7 @@ module internal SQL =
         
     let AddNewDiscordUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
     let UserNameAlreadyExists = "SELECT EXISTS(SELECT 1 FROM CustomUser WHERE Nickname = @name LIMIT 1);"
+    let GetCustomUserInfoByNickname = "SELECT ID, Password FROM CustomUser WHERE Nickname = @name;"
     let AddNewCustomUser = """
         INSERT INTO CustomUser(Nickname, Password) VALUES(@nickname, @password);
         SELECT last_insert_rowid();
