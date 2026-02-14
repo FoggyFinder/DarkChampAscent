@@ -1734,17 +1734,17 @@ main.monsters-under-effects {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-block: var(--space-10);
+    padding-block: var(--space-6);
     padding-inline: var(--space-4);
 }
 
 .auth-container {
     inline-size: 100%;
-    max-inline-size: 440px;
+    max-inline-size: 580px;
     background: linear-gradient(180deg, var(--color-surface-elevated), rgba(255, 255, 255, 0.01));
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
-    padding: var(--space-8);
+    padding: var(--space-6);
     box-shadow: var(--shadow-lg);
     position: relative;
     overflow: hidden;
@@ -1755,9 +1755,9 @@ main.monsters-under-effects {
         position: absolute;
         inset-inline: 0;
         inset-block-start: 0;
-        block-size: 4px;
+        block-size: 3px;
         background: linear-gradient(90deg, var(--color-primary), var(--color-primary-light));
-        opacity: 0.6;
+        opacity: 0.8;
         pointer-events: none;
     }
 
@@ -1773,10 +1773,11 @@ main.monsters-under-effects {
 
 .auth-subtitle {
     margin-block-start: 0;
-    margin-block-end: var(--space-8);
+    margin-block-end: var(--space-5);
     text-align: center;
     color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-relaxed);
 }
 
 /* Error Alert */
@@ -1785,7 +1786,7 @@ main.monsters-under-effects {
     border: 1px solid rgba(220, 38, 38, 0.3);
     border-radius: var(--radius);
     padding: var(--space-4);
-    margin-block-end: var(--space-6);
+    margin-block-end: var(--space-5);
     color: #fca5a5;
     font-size: var(--font-size-sm);
     line-height: var(--line-height-relaxed);
@@ -1793,7 +1794,7 @@ main.monsters-under-effects {
 
 /* Discord Button */
 .discord-form {
-    margin-block-end: var(--space-6);
+    margin-block-end: var(--space-5);
 }
 
 .btn-discord {
@@ -1806,36 +1807,38 @@ main.monsters-under-effects {
     padding-inline: var(--space-6);
     background: linear-gradient(135deg, #5865f2, #6875f5);
     color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: var(--radius);
     font-size: var(--font-size-base);
     font-weight: 600;
+    letter-spacing: 0.01em;
     cursor: pointer;
     transition: all var(--transition-base);
-    box-shadow: 0 4px 15px rgba(88, 101, 242, 0.3);
+    box-shadow: 0 4px 16px rgba(88, 101, 242, 0.35);
 }
 
     .btn-discord:hover {
-        filter: brightness(1.1);
-        box-shadow: 0 6px 20px rgba(88, 101, 242, 0.5);
+        filter: brightness(1.15);
+        box-shadow: 0 6px 24px rgba(88, 101, 242, 0.5);
         transform: translateY(-2px);
+        border-color: rgba(255, 255, 255, 0.25);
     }
 
     .btn-discord:active {
         transform: translateY(0);
-        box-shadow: 0 2px 8px rgba(88, 101, 242, 0.3);
+        box-shadow: 0 3px 12px rgba(88, 101, 242, 0.4);
     }
 
 .discord-icon {
-    inline-size: 24px;
-    block-size: 24px;
+    inline-size: 22px;
+    block-size: 22px;
 }
 
 /* Separator */
 .separator {
     position: relative;
     text-align: center;
-    margin-block: var(--space-6);
+    margin-block: var(--space-5);
 }
 
     .separator::before {
@@ -1850,27 +1853,29 @@ main.monsters-under-effects {
 
     .separator span {
         position: relative;
-        padding-inline: var(--space-4);
+        padding-inline: var(--space-5);
         background: var(--color-surface);
         color: var(--color-text-muted);
         font-size: var(--font-size-sm);
         font-weight: 500;
+        text-transform: lowercase;
     }
 
 /* Custom Auth Section */
 .custom-auth {
-    margin-block-start: var(--space-6);
+    margin-block-start: var(--space-5);
 }
 
-/* Toggle Buttons */
+/* Toggle Buttons - More tab-like */
 .auth-toggle {
     display: flex;
-    gap: var(--space-2);
-    margin-block-end: var(--space-6);
-    background: var(--color-surface);
-    padding: var(--space-1);
-    border-radius: var(--radius);
-    border: 1px solid var(--color-border);
+    gap: var(--space-3);
+    margin-block-end: var(--space-5);
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    border-block-end: 1px solid var(--color-border);
 }
 
 .toggle-btn {
@@ -1879,19 +1884,33 @@ main.monsters-under-effects {
     padding-inline: var(--space-4);
     background-color: transparent;
     border: none;
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-sm);
+    border-block-end: 2px solid transparent;
+    border-radius: 0;
+    font-size: var(--font-size-base);
     font-weight: 600;
     color: var(--color-text-muted);
     cursor: pointer;
     transition: all var(--transition-base);
+    position: relative;
+    margin-block-end: -1px;
 }
 
     .toggle-btn.active {
-        background: var(--color-surface-elevated);
+        background: transparent;
         color: var(--color-text);
-        box-shadow: 0 2px 8px var(--color-shadow);
+        border-block-end-color: var(--color-primary);
     }
+
+        .toggle-btn.active::after {
+            content: '';
+            position: absolute;
+            inset-block-end: -2px;
+            inset-inline-start: 0;
+            inset-inline-end: 0;
+            block-size: 2px;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-primary-light));
+            box-shadow: 0 0 8px var(--color-primary-alpha-18);
+        }
 
     .toggle-btn:hover:not(.active) {
         color: var(--color-text);
@@ -1901,15 +1920,16 @@ main.monsters-under-effects {
 /* Auth Forms */
 .auth-form {
     transition: opacity var(--transition-base);
+    padding-block-start: var(--space-3);
 }
 
     .auth-form.hidden {
         display: none;
     }
 
-    /* Auth Form Groups - Override default form-group for auth page */
+    /* Auth Form Groups */
     .auth-form .form-group {
-        margin-block-end: var(--space-5);
+        margin-block-end: var(--space-4);
     }
 
     .auth-form .form-label {
@@ -1918,6 +1938,7 @@ main.monsters-under-effects {
         font-size: var(--font-size-sm);
         font-weight: 600;
         color: var(--color-text);
+        letter-spacing: 0.01em;
     }
 
     .auth-form .form-input {
@@ -1929,18 +1950,23 @@ main.monsters-under-effects {
         border-radius: var(--radius);
         font-size: var(--font-size-base);
         color: var(--color-text);
-        transition: border-color var(--transition-base), box-shadow var(--transition-base);
+        transition: all var(--transition-base);
     }
 
         .auth-form .form-input::placeholder {
             color: var(--color-text-muted);
-            opacity: 0.6;
+            opacity: 0.5;
+        }
+
+        .auth-form .form-input:hover {
+            border-color: rgba(255, 255, 255, 0.15);
         }
 
         .auth-form .form-input:focus {
             outline: none;
             border-color: var(--color-primary);
-            box-shadow: 0 0 0 3px var(--color-primary-alpha-12);
+            box-shadow: 0 0 0 3px var(--color-primary-alpha-12), 0 0 12px var(--color-primary-alpha-08);
+            background: rgba(255, 255, 255, 0.01);
         }
 
         .auth-form .form-input[aria-invalid="true"] {
@@ -1962,24 +1988,58 @@ main.monsters-under-effects {
 
     .validation-message.show {
         display: block;
+        animation: slideIn var(--transition-base);
     }
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
 /* Form Actions */
 .auth-form .form-actions {
-    margin-block-start: var(--space-6);
+    margin-block-start: var(--space-5);
+    display: flex;
+    justify-content: flex-end;
 }
+
+    .auth-form .form-actions .btn-primary {
+        inline-size: auto;
+        min-inline-size: 160px;
+        padding-block: var(--space-4);
+        padding-inline: var(--space-8);
+        font-size: var(--font-size-base);
+        letter-spacing: 0.02em;
+    }
+
+/* Registration form should have full-width button */
+#registerForm .form-actions {
+    justify-content: stretch;
+}
+
+    #registerForm .form-actions .btn-primary {
+        inline-size: 100%;
+    }
 
 /* Auth Page Primary Button - Scoped to not affect other pages */
 .auth-form .btn-primary:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     pointer-events: none;
-    filter: grayscale(0.5);
+    filter: grayscale(0.6);
 }
 
 /* Responsive Design */
-@media (max-width: 480px) {
+@media (max-width: 640px) {
     .auth-container {
-        padding: var(--space-6);
+        padding: var(--space-5);
+        max-inline-size: 100%;
     }
 
     .auth-header {
@@ -1987,6 +2047,30 @@ main.monsters-under-effects {
     }
 
     .auth-subtitle {
-        margin-block-end: var(--space-6);
+        margin-block-end: var(--space-4);
+        font-size: var(--font-size-sm);
+    }
+
+    .separator {
+        margin-block: var(--space-4);
+    }
+
+    .toggle-btn {
+        font-size: var(--font-size-sm);
+        padding-block: var(--space-3);
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-container {
+        padding: var(--space-4);
+    }
+
+    .btn-discord {
+        padding-block: var(--space-3);
+    }
+
+    .auth-form .form-actions .btn-primary {
+        inline-size: 100%;
     }
 }
