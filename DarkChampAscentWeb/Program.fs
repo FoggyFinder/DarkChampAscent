@@ -141,7 +141,7 @@ let loginCustomHandler : HttpHandler =
                         return Route.account
                     | Error err ->
                         do! setSessionAndCommit "loginError" err ctx
-                        return Route.loginCustomForm
+                        return Route.login
                 }
             let response = Response.redirectTemporarily route ctx
             return! response
@@ -254,23 +254,7 @@ let accountHandler : HttpHandler =
             return! response
         }
 
-let selectLoginHandler : HttpHandler =
-    fun ctx ->
-        task {
-            // ToDo: redirect to account if auth is passed
-            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getAccount result
-
-            let html =
-                RegistrationView.selectLoginOption
-                |> Ui.layout "Login" dUser.IsSome
-
-            let response = Response.ofHtml html ctx
-
-            return! response
-        }
-
-let regHandler : HttpHandler =
+let loginFormHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -281,26 +265,7 @@ let regHandler : HttpHandler =
             let errorO = if String.IsNullOrWhiteSpace error then None else Some error
 
             let html =
-                RegistrationView.registration errorO
-                |> Ui.layout "Registration" dUser.IsSome
-
-            let response = Response.ofHtml html ctx
-
-            return! response
-        }
-
-let customLoginFormHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getAccount result
-
-            let error = ctx.Session.GetString("loginError")
-            if error <> null then ctx.Session.Remove("loginError")
-            let errorO = if String.IsNullOrWhiteSpace error then None else Some error
-
-            let html =
-                RegistrationView.login errorO
+                RegistrationView.unifiedAuth errorO
                 |> Ui.layout "Login" dUser.IsSome
 
             let response = Response.ofHtml html ctx
@@ -1272,12 +1237,9 @@ let endpoints =
         get Route.index homeHandler
         get Route.traits traitsHandler
 
-        get Route.login selectLoginHandler
+        get Route.login loginFormHandler
         get Route.loginDiscord loginDiscordHandler
         post Route.loginCustom loginCustomHandler
-        get Route.loginCustomForm customLoginFormHandler
-
-        get Route.reg regHandler
         post Route.reg regPostHandler
 
         get Route.account accountHandler
