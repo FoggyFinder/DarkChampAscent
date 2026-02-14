@@ -37,7 +37,13 @@ Log.Logger <-
 
 [<RequireQualifiedAccess>]
 module Cookie =
-    let name = "DiscordAuth"
+    [<Literal>]
+    let Name = "DiscordAuth"
+
+[<RequireQualifiedAccess>]
+module SessionKeys =
+    [<Literal>]
+    let LoginErrorKey = "loginError"
 
 module AuthenticationHandler =
     let createClaims (user: CustomUser) : Claim list =
@@ -105,14 +111,14 @@ let loginCustomHandler : HttpHandler =
                         do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
                         return Route.account
                     | Error err ->
-                        do! setSessionAndCommit "loginError" err ctx
+                        do! setSessionAndCommit SessionKeys.LoginErrorKey err ctx
                         return Route.login
                 }
             let response = Response.redirectTemporarily route ctx
             return! response
         }
 
-let getAccount (result:AuthenticateResult) =
+let getAccount (result:AuthenticateResult) : Account option =
     if result.Succeeded then
         let claims = result.Principal.Claims |> Seq.toList
         let isCustom = result.Principal.HasClaim(ClaimTypes.AuthenticationMethod, "Custom")
@@ -124,9 +130,11 @@ let getAccount (result:AuthenticateResult) =
             | null, _ | _, null -> None
             | nickname, customIdStr ->
                 match UInt64.TryParse(customIdStr) with
-                | true, customId -> Some(CustomUser(nickname, customId) |> Account.Custom)
-                | false, _ -> None
-            |> Some
+                | true, customId ->
+                    CustomUser(nickname, customId) |> Account.Custom |> Some
+                | false, _ ->
+                    Log.Error($"Invalid customId {customIdStr}")
+                    None
         else
             let nameO =
                 claims
@@ -159,7 +167,6 @@ let getAccount (result:AuthenticateResult) =
                 Log.Error("Missing id. Claims")
                 claims |> Seq.iter(fun claim -> Log.Error($"{claim.Type} = {claim.Value}"))
                 None
-            |> Some
     else None
 
 let tryGetFromForm (collection:IFormCollection) (key:string) =
@@ -171,31 +178,27 @@ let accountHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getAccount result
+            let ar = getAccount result
             let response = 
-                match dUser with
-                | Some opt ->
-                    let html =
-                        match opt with
-                        | Some a ->
-                            let db = ctx.Plug<SqliteStorage>()
-                            let dId = a.ID
-                            // a user may not be registered with discord bot
-                            match a with
-                            | Account.Discord d ->
-                                db.TryRegisterDiscordUser d.DiscordId |> ignore
-                            | _ -> ()
-                            match db.GetUserWallets dId, db.GetUserChampsCount dId,
-                                db.GetUserMonstersCount dId, db.GetUserBalance dId with
-                            | Ok ar, Some champs, Some monsters, Some balance ->
-                                let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                                let ua = UserAccount(a, wallets, balance, int champs, int monsters)
-                                let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-                                AccountView.accountView ua dcprice
-                            | _ -> Ui.unError "Can't fetch user data, please try again later"
-                        | None -> Ui.incompleteResponseError
-                        |> Ui.layout "Account" dUser.IsSome
-                    Response.ofHtml html ctx
+                match ar with
+                | Some a ->
+                    let db = ctx.Plug<SqliteStorage>()
+                    let dId = a.ID
+                    // a user may not be registered with discord bot
+                    match a with
+                    | Account.Discord d ->
+                        db.TryRegisterDiscordUser d.DiscordId |> ignore
+                    | _ -> ()
+                    match db.GetUserWallets dId, db.GetUserChampsCount dId,
+                        db.GetUserMonstersCount dId, db.GetUserBalance dId with
+                    | Ok ar, Some champs, Some monsters, Some balance ->
+                        let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
+                        let ua = UserAccount(a, wallets, balance, int champs, int monsters)
+                        let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+                        AccountView.accountView ua dcprice
+                    | _ -> Ui.unError "Can't fetch user data, please try again later"
+                    |> Ui.layout "Account" true
+                    |> fun html -> Response.ofHtml html ctx
                 | None ->
                     Response.redirectTemporarily Route.login ctx
             return! response
@@ -207,8 +210,8 @@ let loginFormHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let dUser = getAccount result
 
-            let error = ctx.Session.GetString("loginError")
-            if error <> null then ctx.Session.Remove("loginError")
+            let error = ctx.Session.GetString SessionKeys.LoginErrorKey
+            if error <> null then ctx.Session.Remove SessionKeys.LoginErrorKey
             let errorO = if String.IsNullOrWhiteSpace error then None else Some error
 
             let html =
@@ -248,7 +251,7 @@ let regPostHandler : HttpHandler =
                         do! ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, ticket.Principal, ticket.Properties)
                         return Route.account
                     | Error err ->
-                        do! setSessionAndCommit "loginError" err ctx
+                        do! setSessionAndCommit SessionKeys.LoginErrorKey err ctx
                         return Route.reg
                 }
             let response = Response.redirectTemporarily route ctx
@@ -259,36 +262,33 @@ let battleHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getAccount result
+            let ao = getAccount result
             let rdb = ctx.Plug<SqliteWebUiStorage>()
             let db = ctx.Plug<SqliteStorage>()
             let currentBattle = rdb.GetCurrentBattleInfo()
             let champsAtRound = rdb.GetLastRoundParticipants()
             let userView =
-                match dUser with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let roundInfo = 
-                            match db.GetLastRoundId() with
-                            | Some roundId ->
-                                match db.GetRoundStatus roundId with
-                                | Some status ->
-                                    (status,
-                                        match status with
-                                        | RoundStatus.Started ->
-                                            match db.GetRoundTimestamp(roundId) with
-                                            | Some roundStared -> Some roundStared
-                                            | None -> None
-                                        | RoundStatus.Processing -> None
-                                        | RoundStatus.Finished -> None)
-                                    |> Some
-                                | None -> None
+                match ao with
+                | Some user ->
+                    let roundInfo = 
+                        match db.GetLastRoundId() with
+                        | Some roundId ->
+                            match db.GetRoundStatus roundId with
+                            | Some status ->
+                                (status,
+                                    match status with
+                                    | RoundStatus.Started ->
+                                        match db.GetRoundTimestamp(roundId) with
+                                        | Some roundStared -> Some roundStared
+                                        | None -> None
+                                    | RoundStatus.Processing -> None
+                                    | RoundStatus.Finished -> None)
+                                |> Some
                             | None -> None
-                        let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
-                        db.GetAvailableUserChamps(user.ID)
-                        |> BattleView.joinBattle hasPlayers roundInfo
-                    | None -> Ui.incompleteResponseError
+                        | None -> None
+                    let hasPlayers = champsAtRound |> Result.map(fun xs -> xs.IsEmpty |> not) |> Result.defaultValue false
+                    db.GetAvailableUserChamps(user.ID)
+                    |> BattleView.joinBattle hasPlayers roundInfo
                 | None ->
                     Elem.div [ ] [
                         Text.raw "Sign-in to join battle"
@@ -315,65 +315,62 @@ let battleHandler : HttpHandler =
 
             let response =
                 view
-                |> Ui.layout "Battle" dUser.IsSome
+                |> Ui.layout "Battle" ao.IsSome
                 |> fun html -> Response.ofHtml html ctx
 
             return! response
         }
-
+open System.Threading.Tasks
 let joinBattleHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let rdb = ctx.Plug<SqliteWebUiStorage>()
             
-            do!
-                if result.Succeeded then
-                    let champIdO =
-                        match ctx.Request.Form.TryGetValue("champ") with
-                        | true, s ->
-                            match s |> UInt64.TryParse with
-                            | true, v -> Some v
-                            | false, _ -> None
+            if result.Succeeded then
+                let champIdO =
+                    match ctx.Request.Form.TryGetValue("champ") with
+                    | true, s ->
+                        match s |> UInt64.TryParse with
+                        | true, v -> Some v
                         | false, _ -> None
-                    let moveO =
-                        match ctx.Request.Form.TryGetValue("move") with
-                        | true, s ->
-                            match s |> Enum.TryParse<Move> with
-                            | true, v -> Some v
-                            | false, _ -> None
+                    | false, _ -> None
+                let moveO =
+                    match ctx.Request.Form.TryGetValue("move") with
+                    | true, s ->
+                        match s |> Enum.TryParse<Move> with
+                        | true, v -> Some v
                         | false, _ -> None
-                    task {
-                        match champIdO, moveO with
-                        | Some champId, Some move ->
-                            let rar = { ChampId = champId; Move = move }
-                            let! _ =
-                                match rdb.PerformAction rar with
-                                | Ok _ -> 
-                                    task {
-                                        let client = ctx.Plug<GatewayClient>()
-                                        let name, ipfs = rdb.GetChampNameIPFSById rar.ChampId |> Option.defaultValue("", "")
-                                        let joinedRoundComponent =
-                                            ComponentContainerProperties([
-                                                ComponentSectionProperties
-                                                    (ComponentSectionThumbnailProperties(
-                                                        ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
-                                                    [
-                                                        TextDisplayProperties($"**{name}**")
-                                                        TextDisplayProperties("joined round!")
-                                                    ])
+                    | false, _ -> None
+                
+                match champIdO, moveO with
+                | Some champId, Some move ->
+                    let rar = { ChampId = champId; Move = move }
+                    match rdb.PerformAction rar with
+                    | Ok _ ->
+                        let t() = 
+                            task {
+                                let client = ctx.Plug<GatewayClient>()
+                                let name, ipfs = rdb.GetChampNameIPFSById rar.ChampId |> Option.defaultValue("", "")
+                                let joinedRoundComponent =
+                                    ComponentContainerProperties([
+                                        ComponentSectionProperties
+                                            (ComponentSectionThumbnailProperties(
+                                                ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                                            [
+                                                TextDisplayProperties($"**{name}**")
+                                                TextDisplayProperties("joined round!")
                                             ])
-                                        let mp = MessageProperties().WithComponents([ joinedRoundComponent ]).WithFlags(MessageFlags.IsComponentsV2)
+                                    ])
+                                let mp = MessageProperties().WithComponents([ joinedRoundComponent ]).WithFlags(MessageFlags.IsComponentsV2)
                                     
-                                        Utils.sendMsgToLogChannel client mp |> ignore
-                                        return ()
-                                    }
-                                | _ -> task { return () }
-                            ()
-                        | _, _ ->  ()
-                    }
-                else
-                    task { return () }
+                                Utils.sendMsgToLogChannel client mp |> ignore
+                                return ()
+                            }
+                        t() |> ignore
+                    | _ -> ()
+                | _, _ ->  ()
+                
             let response = Response.redirectPermanently Route.battle ctx
 
             return! response
@@ -383,30 +380,27 @@ let registerNewWalletHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let dUser = getAccount result
+            let ao = getAccount result
             
             let db = ctx.Plug<SqliteStorage>()
             let route =
-                match dUser with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        match ctx.Request.Form.TryGetValue("wallet") with
-                        | true, s ->
-                            let wallet = s.ToString().Trim()
-                            if Blockchain.isValidAddress wallet then
-                                db.RegisterNewWallet(user.ID, wallet) |> ignore
-                            else
-                                try
-                                    Log.Error($"{user.ID} attempts to register invalid {wallet} address")
-                                with exn ->
-                                    Log.Error(exn, $"attempt to register {wallet} address")
-                                ()
-                        | false, _ -> ()
-                    | None -> ()
+                match ao with
+                | Some user ->
+                    match ctx.Request.Form.TryGetValue("wallet") with
+                    | true, s ->
+                        let wallet = s.ToString().Trim()
+                        if Blockchain.isValidAddress wallet then
+                            db.RegisterNewWallet(user.ID, wallet) |> ignore
+                        else
+                            try
+                                Log.Error($"{user.ID} attempts to register invalid {wallet} address")
+                            with exn ->
+                                Log.Error(exn, $"attempt to register {wallet} address")
+                            ()
+                    | false, _ -> ()
                     Route.account
                 | None -> Route.login
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
 
             return! response
         }
@@ -415,22 +409,19 @@ let shopHandler : HttpHandler =
     fun ctx ->
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
-            let user = getAccount result
+            let ao = getAccount result
             let view =
                 let db = ctx.Plug<SqliteStorage>()
                 match db.GetShopItems(), db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                 | Some items, Some price ->
-                    let userBalance =
-                        match user with
-                        | Some user -> user |> Option.bind(fun u -> db.GetUserBalance u.ID)
-                        | None -> None
+                    let userBalance = ao |> Option.bind(fun u -> db.GetUserBalance u.ID)
                     items
                     |> List.map(fun item -> Display.ShopItemRow(item, price))
                     |> ShopView.shop userBalance
                 | _ -> Ui.defError
             let response =
                 view
-                |> Ui.layout "Shop" user.IsSome
+                |> Ui.layout "Shop" ao.IsSome
                 |> fun html -> Response.ofHtml html ctx
 
             return! response
@@ -444,22 +435,19 @@ let buyItemHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        match ctx.Request.Form.TryGetValue("shopitem") with
-                        | true, s ->
-                            match s |> Enum.TryParse<ShopItem> with
-                            | true, v ->
-                                match db.BuyItem(user.ID, v, 1) with
-                                | Ok _ -> Route.storage
-                                | Error _ -> Route.error
-                            | false, _ -> Route.error
+                | Some user ->
+                    match ctx.Request.Form.TryGetValue("shopitem") with
+                    | true, s ->
+                        match s |> Enum.TryParse<ShopItem> with
+                        | true, v ->
+                            match db.BuyItem(user.ID, v, 1) with
+                            | Ok _ -> Route.storage
+                            | Error _ -> Route.error
                         | false, _ -> Route.error
-                    | None -> Route.error
+                    | false, _ -> Route.error
                 | None -> Route.login
 
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
 
             return! response
         }
@@ -471,18 +459,15 @@ let storageHandler : HttpHandler =
             let dUser = getAccount result
             let response =
                 match getAccount result with
-                | Some userO ->
+                | Some user ->
                     let db = ctx.Plug<SqliteStorage>()
-                    match userO with
-                    | Some user ->
-                        let uId = user.ID
-                        match db.GetUserStorage uId, db.GetUserChamps uId with
-                        | Some items, Some champs ->
-                            champs
-                            |> List.map(fun ar -> uint64 ar.ID, ar.Name, ar.Ipfs)
-                            |> ShopView.storage items
-                        | _ -> Ui.defError
-                    | _ -> Ui.incompleteResponseError
+                    let uId = user.ID
+                    match db.GetUserStorage uId, db.GetUserChamps uId with
+                    | Some items, Some champs ->
+                        champs
+                        |> List.map(fun ar -> uint64 ar.ID, ar.Name, ar.Ipfs)
+                        |> ShopView.storage items
+                    | _ -> Ui.defError
                     |> Ui.layout "Storage" dUser.IsSome
                     |> fun html -> Response.ofHtml html ctx
                 | _ -> Response.redirectPermanently Route.login ctx
@@ -498,34 +483,31 @@ let useItemHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let shopItem =
-                            match ctx.Request.Form.TryGetValue("useitem") with
-                            | true, s ->
-                                match s |> Enum.TryParse<ShopItem> with
-                                | true, v -> Some v
-                                | false, _ -> None
+                | Some user ->
+                    let shopItem =
+                        match ctx.Request.Form.TryGetValue("useitem") with
+                        | true, s ->
+                            match s |> Enum.TryParse<ShopItem> with
+                            | true, v -> Some v
                             | false, _ -> None
-                        let champId =
-                            match ctx.Request.Form.TryGetValue("champ") with
-                            | true, s ->
-                                match s |> UInt64.TryParse with
-                                | true, v -> Some v
-                                | false, _ -> None
+                        | false, _ -> None
+                    let champId =
+                        match ctx.Request.Form.TryGetValue("champ") with
+                        | true, s ->
+                            match s |> UInt64.TryParse with
+                            | true, v -> Some v
                             | false, _ -> None
-                        match shopItem, champId with
-                        | Some si, Some cid ->
-                            match db.UseItemFromStorage(user.ID, si, cid) with
-                            | Ok _ -> ()
-                            | Error _ -> ()
-                        | _ -> ()
-                    | None -> ()
+                        | false, _ -> None
+                    match shopItem, champId with
+                    | Some si, Some cid ->
+                        match db.UseItemFromStorage(user.ID, si, cid) with
+                        | Ok _ -> ()
+                        | Error _ -> ()
+                    | _ -> ()
                     Route.storage
                 | None -> Route.login
 
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
 
             return! response
         }
@@ -536,20 +518,17 @@ let myMonstersHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let db = ctx.Plug<SqliteStorage>()
-                        let uId = user.ID
-                        match db.GetUserMonsters uId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
-                        | Ok monsters, Some dcPrice ->
-                            let userBalance = db.GetUserBalance uId
-                            MonsterView.monsters monsters userBalance dcPrice
-                        | _ -> Ui.defError
-                    | _ -> Ui.incompleteResponseError
+                | Some user ->
+                    let db = ctx.Plug<SqliteStorage>()
+                    let uId = user.ID
+                    match db.GetUserMonsters uId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
+                    | Ok monsters, Some dcPrice ->
+                        let userBalance = db.GetUserBalance uId
+                        MonsterView.monsters monsters userBalance dcPrice
+                    | _ -> Ui.defError
                     |> Ui.layout "Monsters" true
                     |> fun html -> Response.ofHtml html ctx
-                | _ -> Response.redirectPermanently Route.login ctx
+                | _ -> Response.redirectTemporarily Route.login ctx
 
             return! response
         }
@@ -560,17 +539,14 @@ let myChampsHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let db = ctx.Plug<SqliteStorage>()
-                        match db.GetUserChampsInfo user.ID with
-                        | Some champs -> ChampView.champs champs
-                        | _ -> Ui.defError
-                    | _ -> Ui.incompleteResponseError
+                | Some user ->
+                    let db = ctx.Plug<SqliteStorage>()
+                    match db.GetUserChampsInfo user.ID with
+                    | Some champs -> ChampView.champs champs
+                    | _ -> Ui.defError
                     |> Ui.layout "Champs" true
                     |> fun html -> Response.ofHtml html ctx
-                | _ -> Response.redirectPermanently Route.login ctx
+                | _ -> Response.redirectTemporarily Route.login ctx
 
             return! response
         }
@@ -586,14 +562,13 @@ let champHandler : HttpHandler =
             let view =
                 let db = ctx.Plug<SqliteStorage>()
                 let userBalance =
-                    dUser |> Option.bind(fun user ->
-                        user |> Option.bind(fun u ->
-                            let uId = u.ID
-                            db.ChampBelongsToAUser(uint64 champId, uId)
-                            |> Option.bind(fun b -> 
-                                if b then db.GetUserBalance uId
-                                else None
-                            )))
+                    dUser |> Option.bind(fun u ->
+                        let uId = u.ID
+                        db.ChampBelongsToAUser(uint64 champId, uId)
+                        |> Option.bind(fun b -> 
+                            if b then db.GetUserBalance uId
+                            else None
+                        ))
                     
                 match db.GetChampInfoById champId, db.GetNumKey(Db.DbKeysNum.DarkCoinPrice) with
                 | Some champ, Some price -> ChampView.champInfo champ userBalance price
@@ -619,9 +594,7 @@ let monstrHandler : HttpHandler =
                 let db = ctx.Plug<SqliteStorage>()
                 let isUserOwnedMonstr =
                     dUser
-                    |> Option.bind(fun user ->
-                        user 
-                        |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, u.ID)))
+                    |> Option.bind(fun u -> db.MonsterBelongsToAUser(uint64 mId, u.ID))
                     |> Option.defaultValue false
                 match db.GetMonsterById mId with
                 | Some monstr -> MonsterView.monstrInfo (uint64 mId) monstr isUserOwnedMonstr
@@ -643,28 +616,25 @@ let renameMonstrHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let mIdO =
-                            tryGetFromForm ctx.Request.Form "mnstrid"
-                            |> Option.bind(fun s ->
-                                match s |> UInt64.TryParse with
-                                | true, v -> Some v
-                                | false, _ -> None)
-                        let mnstrnameO =
-                            tryGetFromForm ctx.Request.Form "mnstrname"
-                            |> Option.map(fun s -> s.ToString())
-                        match mIdO, mnstrnameO with
-                        | Some mId, Some newName ->
-                            let uId = user.ID
-                            if db.MonsterBelongsToAUser(mId, uId) |> Option.defaultValue false then
-                                match db.RenameUserMonster(uId, newName, int64 mId) with
-                                | Ok _ -> Uri.monstr mId
-                                | Error _ -> Route.error
-                            else Route.error
-                        | _, _ -> Route.error
-                    | None -> Route.error
+                | Some user ->
+                    let mIdO =
+                        tryGetFromForm ctx.Request.Form "mnstrid"
+                        |> Option.bind(fun s ->
+                            match s |> UInt64.TryParse with
+                            | true, v -> Some v
+                            | false, _ -> None)
+                    let mnstrnameO =
+                        tryGetFromForm ctx.Request.Form "mnstrname"
+                        |> Option.map(fun s -> s.ToString())
+                    match mIdO, mnstrnameO with
+                    | Some mId, Some newName ->
+                        let uId = user.ID
+                        if db.MonsterBelongsToAUser(mId, uId) |> Option.defaultValue false then
+                            match db.RenameUserMonster(uId, newName, int64 mId) with
+                            | Ok _ -> Uri.monstr mId
+                            | Error _ -> Route.error
+                        else Route.error
+                    | _, _ -> Route.error
                 | None -> Route.login
 
             let response = Response.redirectPermanently route ctx
@@ -679,31 +649,28 @@ let renameChampHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let oldNameO =
-                            tryGetFromForm ctx.Request.Form "oldname"
-                            |> Option.map(fun s -> s.ToString())
-                        let newNameO =
-                            tryGetFromForm ctx.Request.Form "newname"
-                            |> Option.map(fun s -> s.ToString())
-                        let chmpIdO =
-                            tryGetFromForm ctx.Request.Form "chmpId"
-                            |> Option.bind(fun s ->
-                                match s |> UInt64.TryParse with
-                                | true, v -> Some v
-                                | false, _ -> None)
-                        match oldNameO, newNameO, chmpIdO with
-                        | Some oldName, Some newName, Some cId ->
-                            match db.RenameChamp(user.ID, oldName, newName) with
-                            | Ok _ -> Uri.champ cId
-                            | Error _ -> Route.error
-                        | _ -> Route.error
-                    | None -> Route.error
+                | Some user ->
+                    let oldNameO =
+                        tryGetFromForm ctx.Request.Form "oldname"
+                        |> Option.map(fun s -> s.ToString())
+                    let newNameO =
+                        tryGetFromForm ctx.Request.Form "newname"
+                        |> Option.map(fun s -> s.ToString())
+                    let chmpIdO =
+                        tryGetFromForm ctx.Request.Form "chmpId"
+                        |> Option.bind(fun s ->
+                            match s |> UInt64.TryParse with
+                            | true, v -> Some v
+                            | false, _ -> None)
+                    match oldNameO, newNameO, chmpIdO with
+                    | Some oldName, Some newName, Some cId ->
+                        match db.RenameChamp(user.ID, oldName, newName) with
+                        | Ok _ -> Uri.champ cId
+                        | Error _ -> Route.error
+                    | _ -> Route.error
                 | None -> Route.login
 
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
             return! response
         }
 
@@ -714,17 +681,14 @@ let myRequestsHandler : HttpHandler =
             let dUser = getAccount result
             let response =
                 match getAccount result with
-                | Some userO ->
+                | Some user ->
                     let db = ctx.Plug<SqliteStorage>()
-                    match userO with
-                    | Some user ->
-                        match db.GetPendingUserRequests user.ID with
-                        | Ok requests -> GenView.myRequests requests
-                        | _ -> Ui.defError
+                    match db.GetPendingUserRequests user.ID with
+                    | Ok requests -> GenView.myRequests requests
                     | _ -> Ui.defError
                     |> Ui.layout "Champs" dUser.IsSome
                     |> fun html -> Response.ofHtml html ctx
-                | _ -> Response.redirectPermanently Route.login ctx
+                | _ -> Response.redirectTemporarily Route.login ctx
 
             return! response
         }
@@ -735,17 +699,14 @@ let champsUnderEffectsHandler : HttpHandler =
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let response =
                 match getAccount result with
-                | Some userO ->
+                | Some user ->
                     let db = ctx.Plug<SqliteStorage>()
-                    match userO with
-                    | Some user ->
-                        match db.GetLastRoundId() with
-                        | Some roundId ->
-                            match db.GetUserChampsUnderEffect(user.ID, roundId) with
-                            | Ok champs -> ChampView.champsUnderEffects champs
-                            | _ -> Ui.defError
-                        | None -> Ui.defError
-                    | _ -> Ui.defError
+                    match db.GetLastRoundId() with
+                    | Some roundId ->
+                        match db.GetUserChampsUnderEffect(user.ID, roundId) with
+                        | Ok champs -> ChampView.champsUnderEffects champs
+                        | _ -> Ui.defError
+                    | None -> Ui.defError
                     |> Ui.layout "Champs under effects" true
                     |> fun html -> Response.ofHtml html ctx
                 | _ -> Response.redirectPermanently Route.login ctx
@@ -786,32 +747,29 @@ let donateHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        match ctx.Request.Form.TryGetValue("amount") with
-                        | true, s ->
-                            match s |> Decimal.TryParse with
-                            | true, v ->
-                                match db.Donate(user.ID, v) with
-                                | Ok _ ->
-                                    let client = ctx.Plug<GatewayClient>()
-                                    let card = user.Nickname |> donationCard v
-                                    let newInGameDonationMessage =
-                                        MessageProperties()
-                                            .WithComponents([ card ])
-                                            .WithFlags(MessageFlags.IsComponentsV2)
-                                            .WithAllowedMentions(AllowedMentionsProperties.None)
+                | Some user ->
+                    match ctx.Request.Form.TryGetValue("amount") with
+                    | true, s ->
+                        match s |> Decimal.TryParse with
+                        | true, v ->
+                            match db.Donate(user.ID, v) with
+                            | Ok _ ->
+                                let client = ctx.Plug<GatewayClient>()
+                                let card = user.Nickname |> donationCard v
+                                let newInGameDonationMessage =
+                                    MessageProperties()
+                                        .WithComponents([ card ])
+                                        .WithFlags(MessageFlags.IsComponentsV2)
+                                        .WithAllowedMentions(AllowedMentionsProperties.None)
 
-                                    Utils.sendMsgToLogChannel client newInGameDonationMessage |> ignore
-                                    Route.topDonaters
-                                | Error _ -> Route.account
-                            | false, _ -> Route.account
+                                Utils.sendMsgToLogChannel client newInGameDonationMessage |> ignore
+                                Route.topDonaters
+                            | Error _ -> Route.account
                         | false, _ -> Route.account
-                    | None -> Route.account
+                    | false, _ -> Route.account
                 | None -> Route.login
 
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
 
             return! response
         }
@@ -824,28 +782,25 @@ let createMonsterHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        let mtypeO = 
-                            tryGetFromForm ctx.Request.Form "mtype"
-                            |> Option.bind(fun s ->
-                                match s |> Enum.TryParse<MonsterType> with
-                                | true, v -> Some v
-                                | false, _ -> None)
-                        let msubtypeO =
-                            tryGetFromForm ctx.Request.Form "msubtype"
-                            |> Option.bind(fun s ->
-                                match s |> Enum.TryParse<MonsterSubType> with
-                                | true, v -> Some v
-                                | false, _ -> None)
-                        match mtypeO, msubtypeO with
-                        | Some mtype, Some msubtype ->
-                            match db.CreateGenRequest(user.ID, mtype, msubtype) with
-                            | Ok _ -> Route.myrequests
-                            | Error _ -> Route.error
-                        | _, _ -> Route.error
-                    | None -> Route.error
+                | Some user ->
+                    let mtypeO = 
+                        tryGetFromForm ctx.Request.Form "mtype"
+                        |> Option.bind(fun s ->
+                            match s |> Enum.TryParse<MonsterType> with
+                            | true, v -> Some v
+                            | false, _ -> None)
+                    let msubtypeO =
+                        tryGetFromForm ctx.Request.Form "msubtype"
+                        |> Option.bind(fun s ->
+                            match s |> Enum.TryParse<MonsterSubType> with
+                            | true, v -> Some v
+                            | false, _ -> None)
+                    match mtypeO, msubtypeO with
+                    | Some mtype, Some msubtype ->
+                        match db.CreateGenRequest(user.ID, mtype, msubtype) with
+                        | Ok _ -> Route.myrequests
+                        | Error _ -> Route.error
+                    | _, _ -> Route.error
                 | None -> Route.login
 
             let response = Response.redirectPermanently route ctx
@@ -860,25 +815,22 @@ let lvlUpHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        match ctx.Request.Form.TryGetValue("champ"), ctx.Request.Form.TryGetValue("char") with
-                        | (true, s1), (true, s2) ->
-                            match s1 |> UInt64.TryParse, s2 |> Enum.TryParse<Characteristic> with
-                            | (true, cId), (true, ch) ->
-                                match db.ChampBelongsToAUser(cId, user.ID) with
-                                | Some b ->
-                                    if b then
-                                        if db.LevelUp(cId, ch) then
-                                            Uri.champ cId
-                                        else
-                                            Route.account
-                                    else Route.error
-                                | _ -> Route.error
+                | Some user ->
+                    match ctx.Request.Form.TryGetValue("champ"), ctx.Request.Form.TryGetValue("char") with
+                    | (true, s1), (true, s2) ->
+                        match s1 |> UInt64.TryParse, s2 |> Enum.TryParse<Characteristic> with
+                        | (true, cId), (true, ch) ->
+                            match db.ChampBelongsToAUser(cId, user.ID) with
+                            | Some b ->
+                                if b then
+                                    if db.LevelUp(cId, ch) then
+                                        Uri.champ cId
+                                    else
+                                        Route.account
+                                else Route.error
                             | _ -> Route.error
                         | _ -> Route.error
-                    | None -> Route.error
+                    | _ -> Route.error
                 | None -> Route.login
 
             let response = Response.redirectPermanently route ctx
@@ -894,19 +846,16 @@ let rescanHandler : HttpHandler =
             
             let route =
                 match getAccount result with
-                | Some userO ->
-                    match userO with
-                    | Some user ->
-                        match db.GetUserWallets(user.ID) with
-                        | Ok xs ->
-                            let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
-                            CommonHelpers.updateChamps(db, user.ID, xs')
-                            Route.mychamps
-                        | Error _ -> Route.error
-                    | None -> Route.error
+                | Some user ->
+                    match db.GetUserWallets(user.ID) with
+                    | Ok xs ->
+                        let xs' = xs |> List.choose(fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
+                        CommonHelpers.updateChamps(db, user.ID, xs')
+                        Route.mychamps
+                    | Error _ -> Route.error
                 | None -> Route.login
 
-            let response = Response.redirectPermanently route ctx
+            let response = Response.redirectTemporarily route ctx
 
             return! response
         }
@@ -958,11 +907,11 @@ module LeaderboardHandlers =
                 return! response
             }
 
-    open System.Collections.Generic
+    open System.Collections.Concurrent
     open System.Threading.Tasks
 
     let donatersHandler : HttpHandler =
-        let names = Dictionary<uint64, string>()
+        let names = ConcurrentDictionary<uint64, string>()
         fun ctx ->
             task {
                 let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -982,9 +931,11 @@ module LeaderboardHandlers =
                                             if names.ContainsKey dId' then None
                                             else Some dId'
                                         | _ -> None)
-                                [ for dId in ids do task { return! client.GetUserAsync(dId) } ]
+                                [ for dId in ids do task { 
+                                    return! client.GetUserAsync(dId) }
+                                ]
                             let! us = Task.WhenAll(users)
-                            us |> Array.iter(fun u -> names.Add(u.Id, u.GlobalName))
+                            us |> Array.iter(fun u -> names.TryAdd(u.Id, u.GlobalName) |> ignore)
                             let view =
                                 xs
                                 |> List.map(fun d ->
@@ -1161,7 +1112,7 @@ builder
             options.DefaultChallengeScheme <- DiscordAuthenticationDefaults.AuthenticationScheme
         )
         .AddCookie(fun opt ->
-            opt.Cookie.Name <- Cookie.name
+            opt.Cookie.Name <- Cookie.Name
             opt.LoginPath <- PathString("/login")
             opt.LogoutPath <- PathString("/logout")
             opt.ExpireTimeSpan <- TimeSpan.FromDays(7)
@@ -1241,8 +1192,8 @@ wapp.UseStaticFiles() |> ignore
 
 wapp.UseRouting() |> ignore
 
-wapp.UseAuthorization() |> ignore
 wapp.UseAuthentication() |> ignore
+wapp.UseAuthorization() |> ignore
 
 wapp
     .UseFalco(endpoints)
