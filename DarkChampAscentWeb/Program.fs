@@ -40,8 +40,6 @@ module Cookie =
     let name = "DiscordAuth"
 
 module AuthenticationHandler =
-    open System.Threading.Tasks
-
     let createClaims (user: CustomUser) : Claim list =
         [
             Claim(ClaimTypes.NameIdentifier, user.CustomId.ToString())
@@ -62,39 +60,6 @@ module AuthenticationHandler =
         properties.ExpiresUtc <- DateTimeOffset.UtcNow.AddDays(7.0)
         AuthenticationTicket(principal, properties, authScheme)
 
-    /// Extracts CustomUser from ClaimsPrincipal
-    let tryGetCustomUser (principal: ClaimsPrincipal) : CustomUser option =
-        try
-            let nickname = principal.FindFirstValue ClaimTypes.Name
-            let customIdStr = principal.FindFirstValue ClaimTypes.NameIdentifier
-
-            match nickname, customIdStr with
-            | null, _ | _, null -> None
-            | nickname, customIdStr ->
-                match UInt64.TryParse(customIdStr) with
-                | true, customId -> Some(CustomUser(nickname, customId))
-                | false, _ -> None
-        with
-        | _ -> None
-
-    /// Signs in a user with the specified authentication scheme
-    let signIn (ctx: HttpContext) (user: CustomUser) (authScheme: string) : Task =
-        task {
-            let ticket = createTicket user authScheme
-            do! ctx.SignInAsync(authScheme, ticket.Principal, ticket.Properties)
-        }
-
-    /// Signs out the user
-    let signOut (ctx: HttpContext) (authScheme: string) : Task =
-        ctx.SignOutAsync(authScheme)
-
-    /// Validates that user is authenticated
-    let isAuthenticated (principal: ClaimsPrincipal) : bool =
-        principal.Identity.IsAuthenticated
-
-    /// Gets the current user from HttpContext
-    let getCurrentUser (ctx: HttpContext) : CustomUser option =
-        tryGetCustomUser ctx.User
 open AuthenticationHandler
 
 let builder = WebApplication.CreateBuilder()
@@ -207,50 +172,32 @@ let accountHandler : HttpHandler =
         task {
             let! result = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
             let dUser = getAccount result
-            let html =
+            let response = 
                 match dUser with
                 | Some opt ->
-                    match opt with
-                    | Some a ->
-                        let db = ctx.Plug<SqliteStorage>()
-                        let dId = a.ID
-                        // a user may not be registered with discord bot
-                        match a with
-                        | Account.Discord d ->
-                            db.TryRegisterDiscordUser d.DiscordId |> ignore
-                        | _ -> ()
-                        match db.GetUserWallets dId, db.GetUserChampsCount dId,
-                            db.GetUserMonstersCount dId, db.GetUserBalance dId with
-                        | Ok ar, Some champs, Some monsters, Some balance ->
-                            let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
-                            let ua = UserAccount(a, wallets, balance, int champs, int monsters)
-                            let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
-                            AccountView.accountView ua dcprice
-                        | _ -> Ui.unError "Can't fetch user data, please try again later"
-                    | None -> Ui.incompleteResponseError
+                    let html =
+                        match opt with
+                        | Some a ->
+                            let db = ctx.Plug<SqliteStorage>()
+                            let dId = a.ID
+                            // a user may not be registered with discord bot
+                            match a with
+                            | Account.Discord d ->
+                                db.TryRegisterDiscordUser d.DiscordId |> ignore
+                            | _ -> ()
+                            match db.GetUserWallets dId, db.GetUserChampsCount dId,
+                                db.GetUserMonstersCount dId, db.GetUserBalance dId with
+                            | Ok ar, Some champs, Some monsters, Some balance ->
+                                let wallets = ar |> List.map(fun ar -> Wallet(ar.Wallet, ar.IsConfirmed, ar.Code))
+                                let ua = UserAccount(a, wallets, balance, int champs, int monsters)
+                                let dcprice = db.GetNumKey(Db.DbKeysNum.DarkCoinPrice)
+                                AccountView.accountView ua dcprice
+                            | _ -> Ui.unError "Can't fetch user data, please try again later"
+                        | None -> Ui.incompleteResponseError
+                        |> Ui.layout "Account" dUser.IsSome
+                    Response.ofHtml html ctx
                 | None ->
-                    // TODO: redirect to login
-                    Elem.main [
-                        Attr.class' "dashboard"
-                        Attr.role "main"
-                        XmlAttribute.KeyValueAttr("aria-label", "Account dashboard")
-                    ] [
-                        Text.raw "Log-in to view account details"
-                        Elem.form [
-                            Attr.methodGet
-                            Attr.action Route.login
-                        ] [
-                            Elem.input [
-                                Attr.class' "btn-primary"
-                                Attr.typeSubmit
-                                Attr.value "Login"
-                            ]
-                        ]
-                    ]
-                |> Ui.layout "Account" dUser.IsSome
-
-            let response = Response.ofHtml html ctx
-
+                    Response.redirectTemporarily Route.login ctx
             return! response
         }
 
@@ -583,7 +530,6 @@ let useItemHandler : HttpHandler =
             return! response
         }
 
-
 let myMonstersHandler : HttpHandler =
     fun ctx ->
         task {
@@ -906,7 +852,6 @@ let createMonsterHandler : HttpHandler =
             return! response
         }
 
-
 let lvlUpHandler : HttpHandler =
     fun ctx ->
         task {
@@ -965,7 +910,6 @@ let rescanHandler : HttpHandler =
 
             return! response
         }
-
 
 let logoutHandler : HttpHandler =
     Response.signOutAndRedirect "Cookies" Route.index

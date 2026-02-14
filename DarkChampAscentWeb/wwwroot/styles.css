@@ -1739,12 +1739,12 @@ main.monsters-under-effects {
 }
 
 .auth-container {
-    inline-size: 100%;
-    max-inline-size: 580px;
+    inline-size: 75%;
     background: linear-gradient(180deg, var(--color-surface-elevated), rgba(255, 255, 255, 0.01));
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
-    padding: var(--space-6);
+    padding: var(--space-4);
+    margin: var(--space-4);
     box-shadow: var(--shadow-lg);
     position: relative;
     overflow: hidden;
