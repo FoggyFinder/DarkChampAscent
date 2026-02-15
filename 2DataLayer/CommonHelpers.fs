@@ -2,9 +2,10 @@ module CommonHelpers
 
 open Db
 open GameLogic.Champs
+open DarkChampAscent.Account
 
-let updateChamps(db:SqliteStorage, discordId:uint64, wallets:string list) =
-    match db.FindUserIdByDiscordId discordId with
+let updateChamps(db:SqliteStorage, uId:UserId, wallets:string list) =
+    match db.FindUserIdByUserId uId with
     | Some userId ->
         wallets
         |> Seq.collect Blockchain.getChampsForWallet

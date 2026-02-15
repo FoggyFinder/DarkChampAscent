@@ -12,6 +12,7 @@ open Display
 open Components
 open GameLogic.Champs
 open GameLogic.Battle
+open DarkChampAscent.Account
 
 let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
     task {
@@ -22,10 +23,10 @@ let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
             task {
                 match Decimal.TryParse str with
                 | true, d ->
-                    let r = db.Donate(context.User.Id, d)
+                    let r = db.Donate(UserId.Discord context.User.Id, d)
                     match r with
                     | Ok () ->
-                        let card = donationCard d context.User.Id
+                        let card = context.User.Id |> Utils.mention |> donationCard d 
                         let newInGameDonationMessage =
                             MessageProperties()
                                 .WithComponents([ card ])
@@ -57,7 +58,7 @@ let buyItem (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
         try
             let i = Int32.Parse str
             let item = enum<ShopItem> i 
-            let r = db.BuyItem(context.User.Id, item, 1)
+            let r = db.BuyItem(UserId.Discord context.User.Id, item, 1)
             r
         with exn ->
             Log.Error(exn, "buyItemCommand")
@@ -76,7 +77,7 @@ let buyItem (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
 }
 
 let useItem (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) = task {
-    let r = db.GetUserChamps(context.User.Id)
+    let r = db.GetUserChamps(UserId.Discord context.User.Id)
                 
     let callback = InteractionCallback.ModifyMessage(fun options ->
         match r with
@@ -106,7 +107,7 @@ let useSelectItem (db:SqliteStorage) (context:StringMenuInteractionContext) (str
             let i = Int32.Parse str
             let item = enum<ShopItem> i 
             let id = UInt64.Parse <| (context.SelectedValues |> Seq.tryHead |> Option.defaultValue "").Trim()
-            let r = db.UseItemFromStorage(context.User.Id, item, id)
+            let r = db.UseItemFromStorage(UserId.Discord context.User.Id, item, id)
             r
         with exn ->
             Log.Error(exn, "useSelectItem")
@@ -168,7 +169,7 @@ let lvlupbtn (context:ButtonInteractionContext) (champId:string) = task {
 let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName:string) (newName:string)= task {
     let! str = 
         task {
-            match db.RenameChamp(context.User.Id, oldName, newName) with
+            match db.RenameChamp(UserId.Discord context.User.Id, oldName, newName) with
             | Ok(()) ->
                 try      
                     let logMessage = MessageProperties(Content = $"{oldName} changed name to {newName}")
@@ -196,7 +197,7 @@ let mcreate (db:SqliteStorage) (context:ButtonInteractionContext) (mtype:string)
         let str = 
             match Enum.TryParse<MonsterType>(mtype), Enum.TryParse<MonsterSubType>(msubtype) with
             | (true, mtype), (true, msubtype) ->
-                match db.CreateGenRequest(context.User.Id, mtype, msubtype) with
+                match db.CreateGenRequest(UserId.Discord context.User.Id, mtype, msubtype) with
                 | Ok str -> str
                 | Error err -> $"Error: {err}"
             | _, _ -> "Error: Incorrect input"
@@ -294,7 +295,7 @@ let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:str
         let str = 
             match Int64.TryParse mids, nNameO with
             | (true, mid), Some newName ->
-                match db.RenameUserMonster(context.User.Id, newName, mid) with
+                match db.RenameUserMonster(UserId.Discord context.User.Id, newName, mid) with
                 | Ok () -> "Done!"
                 | Error err -> err
             | _, _ -> "Error: Incorrect input"

@@ -16,25 +16,6 @@ open Types
 
 type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
     let cs = options.Value.ConnectionString
-    let getUserIdByDiscordId(discordId: uint64) =
-        try 
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetUserIdByDiscordId conn
-            |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-            |> Db.scalar (fun v -> tryUnbox<int64> v)
-        with exn ->
-            Log.Error(exn, $"getUserIdByDiscordId: {discordId}")
-            None
-    
-    let isRegistered(discordId: uint64) =
-        try 
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UserExists conn
-            |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
-        with exn ->
-            Log.Error(exn, $"userExists: {discordId}")
-            false
 
     member _.GetLastRoundId() =
         try 
@@ -84,39 +65,6 @@ type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
         with exn ->
             Log.Error(exn, "GetBattleStatus")
             None
-    
-    member _.GetActiveUserChamps(discordId: uint64, roundId: uint64) =
-        match getUserIdByDiscordId discordId with
-        | Some userId ->
-            try
-                use conn = new SqliteConnection(cs)
-                Db.newCommand SQL.GetActiveUserChamps conn
-                |> Db.setParams [
-                    "userId", SqlType.Int64 userId
-                    "roundId", SqlType.Int64 <| int64 roundId
-                ]
-                |> Db.query (fun r ->
-                   uint64 <| r.GetInt64(0),
-                   r.GetString(1),
-                   ""
-                )
-                |> Ok
-            with exn ->
-                Log.Error(exn, $"GetActiveUserChamps {discordId}")
-                Error("Unexpected error")
-        | None -> Error("Unable to find user")
-    
-    member x.GetAvailableUserChamps(userId:uint64): Result<(uint64 * string * string) list, string> =
-        match x.GetLastRoundId() with
-        | Some roundId ->
-            match x.GetRoundStatus roundId with
-            | Some status ->
-                if status = RoundStatus.Started then
-                    x.GetActiveUserChamps(userId, roundId)
-                else
-                    Error("Please wait until new round is started")
-            | None -> Error("Something went wrong - unable to get round status")
-        | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
 
     member x.GetLastRoundParticipants(): Result<(uint64 * string * string) list, string> =
         match x.GetLastRoundId() with
@@ -240,10 +188,7 @@ type SqliteWebUiStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "GetBattleHistory")
             Error("Unexpected error")
 
-    member _.IsRegistered (userId:uint64) =
-        isRegistered userId
-
-    member t.PerformAction(raction:RoundActionRecord) =
+    member _.PerformAction(raction:RoundActionRecord) =
         try
             use conn = new SqliteConnection(cs)
             let lastRoundId =
