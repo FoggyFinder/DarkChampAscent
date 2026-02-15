@@ -101,6 +101,8 @@ open System.Text.Json
 open System.Text.Json.Serialization
 open Microsoft.Extensions.Options
 open Conf
+open DarkChampAscent.Account
+open System.Collections.Concurrent
 
 type SqliteStorage(options:IOptions<DbConfiguration>)=
     let updateShop (conn:SqliteConnection) =
@@ -311,47 +313,40 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "setStakingKey")
             false
 
-    let addStakingColumn(conn:SqliteConnection) = 
+    let migrateUsers(conn:SqliteConnection) =
         let sql = """
-            CREATE TABLE IF NOT EXISTS RewardsHistoryNew (
-                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                RoundId INT NOT NULL,
-                Unclaimed NUMERIC NOT NULL,
-                Burn NUMERIC NOT NULL,
-                DAO NUMETIC NOT NULL,
-                Reserve NUMERIC NOT NULL,
-                Devs NUMERIC NOT NULL,
-                Champs NUMERIC NOT NULL,
-                Staking NUMERIC NOT NULL,
-                FOREIGN KEY (RoundId)
-                    REFERENCES Round (ID),
-                CHECK (
-                    Unclaimed > -0.0001 AND
-                    Burn >= 0 AND
-                    DAO >= 0 AND
-                    Reserve >= 0 AND
-                    Devs >= 0 AND
-                    Champs >= 0 AND
-                    Staking >= 0 
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE IF NOT EXISTS UserNew (
+	            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                DiscordId INTEGER UNIQUE,
+                CustomUserId INTEGER UNIQUE,
+                Balance NUMERIC NOT NULL,
+                FOREIGN KEY (CustomUserId)
+                REFERENCES CustomUser (ID),
+                CHECK (Balance >= 0 AND 
+                    (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL)
                 )
             );
 
-        INSERT INTO RewardsHistoryNew(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
-        SELECT RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, 0.000000
-        FROM RewardsHistory;
+        INSERT INTO UserNew(DiscordId, CustomUserId, Balance)
+        SELECT DiscordId, NULL, Balance
+        FROM User;
 
-        DROP TABLE RewardsHistory;
+        DROP TABLE User;
 
-        ALTER TABLE RewardsHistoryNew RENAME TO RewardsHistory;
+        ALTER TABLE UserNew RENAME TO User;
+
+        PRAGMA foreign_keys = ON;
         """
 
-        let stakingColumnCount = """
+        let customUserIdColumnCount = """
             SELECT COUNT(*) FROM
-            pragma_table_info('RewardsHistory')
-            WHERE name='Staking'
+            pragma_table_info('User')
+            WHERE name='CustomUserId'
         """
         try
-            Db.newCommand stakingColumnCount conn
+            Db.newCommand customUserIdColumnCount conn
             |> Db.scalar(fun v -> tryUnbox<int64> v)
             |> Option.iter(fun i ->
                 if i = 0L then
@@ -359,7 +354,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     |> Db.exec)
             true
         with exn ->
-            Log.Error(exn, $"addStakingColumn")
+            Log.Error(exn, $"migrateUsers")
             false
     
     let createNewMonster(cs:string, monster:MonsterRecord) =
@@ -407,22 +402,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
     do setInitBalance(_conn) |> ignore
     do setLockedKey(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
-    do addStakingColumn(_conn)|> ignore
+    do migrateUsers(_conn)|> ignore
     do _conn.Dispose()
 
     do Log.Information("Db init is finished")
 
     do Monster.DefaultsMonsters |> List.iter(fun mr -> createNewMonster(cs, mr) |> ignore)
-
-    let userExists(discordId: uint64) =
-        try 
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UserExists conn
-            |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
-        with exn ->
-            Log.Error(exn, $"userExists: {discordId}")
-            false
 
     let walletExists(wallet: string) =
         try 
@@ -434,15 +419,61 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"walletExists: {wallet}")
             false
 
-    let getUserIdByDiscordId(discordId: uint64) =
+    let dbIdByDiscordId = ConcurrentDictionary<uint64, int64>()
+    let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
+    let getUserIdByUserId(uId: UserId) =
+        try
+            match uId with
+            | UserId.Discord discordId ->
+                match dbIdByDiscordId.TryGetValue discordId with
+                | true, dbId -> Some dbId
+                | false, _ ->
+                    let dbIdOpt =
+                        use conn = new SqliteConnection(cs)
+                        Db.newCommand SQL.GetUserIdByDiscordId conn
+                        |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    dbIdOpt |> Option.iter (fun dbId -> dbIdByDiscordId.TryAdd(discordId, dbId) |> ignore)
+                    dbIdOpt
+            | UserId.Custom customId ->
+                match dbIdByCustomId.TryGetValue customId with
+                | true, dbId -> Some dbId
+                | false, _ ->
+                    let dbIdOpt =
+                        use conn = new SqliteConnection(cs)
+                        Db.newCommand SQL.GetUserIdByCustomId conn
+                        |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    dbIdOpt |> Option.iter (fun dbId -> dbIdByCustomId.TryAdd(customId, dbId) |> ignore)
+                    dbIdOpt
+        with exn ->
+            Log.Error(exn, $"getUserIdByUserId: {uId}")
+            None
+
+    let discordUserExists(discordId: uint64) =
         try 
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetUserIdByDiscordId conn
+            Db.newCommand SQL.UserExistsByDiscordId conn
             |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-            |> Db.scalar (fun v -> tryUnbox<int64> v)
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
         with exn ->
-            Log.Error(exn, $"getUserIdByDiscordId: {discordId}")
-            None
+            Log.Error(exn, $"userExists: {discordId}")
+            false
+    
+    let customUserExists(customId: uint64) =
+        try 
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UserExistsByCustomId conn
+            |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+        with exn ->
+            Log.Error(exn, $"customUserExists: {customId}")
+            false
+
+    let userExists(uId:UserId) =
+        match uId with
+        | UserId.Discord discordId -> discordUserExists discordId
+        | UserId.Custom inGameId -> customUserExists inGameId
 
     let getShopItemIdByItem(shopItem: ShopItem) =
         try 
@@ -454,20 +485,62 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"getShopItemIdByItem: {shopItem}")
             None
 
-    let registerNewUser(discordId:uint64) =
-        if userExists discordId then
+    let registerNewDiscordUser(discordId:uint64) =
+        if discordUserExists discordId then
             false
         else
             try
                 use conn = new SqliteConnection(cs)
-                Db.newCommand SQL.AddNewUser conn
+                Db.newCommand SQL.AddNewDiscordUser conn
                 |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
                 |> Db.exec
                 true
             with exn ->
-                Log.Error(exn, $"registerNewUser: {discordId}")
+                Log.Error(exn, $"registerNewDiscordUser: {discordId}")
                 false
-             
+    
+    let userNameExists(nickname:string)=
+        use conn = new SqliteConnection(cs)
+        Db.newCommand SQL.UserNameAlreadyExists conn
+        |> Db.setParams [ "name", SqlType.String nickname ]
+        |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+    let registerNewCustomUser(nickname:string, password:string) =
+        match Validation.validateNickname nickname, Validation.validatePassword password with
+        | Ok validNickname, Ok validPassword ->
+            try
+                use conn = new SqliteConnection(cs)
+                let nameExists =
+                    Db.newCommand SQL.UserNameAlreadyExists conn
+                    |> Db.setParams [ "name", SqlType.String validNickname ]
+                    |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+                if nameExists then Error("Nickname already taken, try something else")
+                else
+                    Db.batch(fun tn ->
+                        let customIdO =
+                            Db.newCommand SQL.AddNewCustomUser conn
+                            |> Db.setParams [ 
+                                "nickname", SqlType.String validNickname
+                                "password", SqlType.String validPassword
+                            ]
+                            |> Db.scalar (fun v -> tryUnbox<int64> v)
+                        match customIdO with
+                        | Some customId ->
+                            Db.newCommand SQL.AddCustomUser conn
+                            |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+                            |> Db.exec
+                            Ok(customId)
+                        | None ->
+                            tn.Rollback()
+                            Error("Unexpected error")
+
+                    ) conn
+            with exn ->
+                Log.Error(exn, $"registerNewCustomUser: {nickname}")
+                Error("Unexpected error")
+        | Error nicknameErr, _ -> Error nicknameErr
+        | _, Error passwordErr -> Error passwordErr
+
     let confirmationCodeIsMatchedForWallet(wallet:string, code:string) =
         try 
             use conn = new SqliteConnection(cs)
@@ -510,7 +583,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"FindUserIdByWallet: {wallet}")
             None
     
-    member _.FindUserIdByDiscordId = getUserIdByDiscordId
+    member _.FindUserIdByUserId = getUserIdByUserId
 
     member _.FindDiscordIdByWallet(wallet: string) =
         try 
@@ -522,17 +595,47 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"FindDiscordIdByWallet: {wallet}")
             None
     
-    member _.TryRegisterUser(discordId:uint64) = registerNewUser discordId
-    
-    member _.RegisterNewWallet(discordId:uint64, wallet:string) =
-        let isRegistered = 
-            userExists discordId || registerNewUser discordId
+    member _.TryRegisterDiscordUser(discordId:uint64) = registerNewDiscordUser discordId
+    member _.UserNameExists(nickname:string) = userNameExists nickname
+    member _.GetCustomUserInfoByNickname(nickname:string) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetCustomUserInfoByNickname conn
+            |> Db.setParams [ "name", SqlType.String nickname ]
+            |> Db.querySingle(fun r ->
+                r.GetInt64(0) |> uint64,
+                r.GetString(1))
+        with exn ->
+            Log.Error(exn, $"GetCustomUserInfoByNickname: {nickname}")
+            None
+    member _.TryRegisterCustomUser(nickname:string, password:string) =
+        registerNewCustomUser(nickname, password)
+    member _.UpdatePassword(cId:int64, password:string) =
+        match Validation.validatePassword password with
+        | Ok validPassword ->
+            try 
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.UpdatePassword conn
+                |> Db.setParams [
+                    "password", SqlType.String <| validPassword
+                    "cId", SqlType.Int64 cId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            with exn ->
+                Log.Error(exn, $"UpdatePassword: {cId}")
+                None
+        | Error _ -> None
+    member _.RegisterNewWallet(uId:UserId, wallet:string) =
+        let isRegistered =
+            match uId with
+            | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
+            | UserId.Custom _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
                 Error("This wallet already registered")
             else
-                let userId = getUserIdByDiscordId discordId
+                let userId = getUserIdByUserId uId
                 match userId with
                 | Some id ->
                     try
@@ -553,13 +656,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | None -> Error("Can't find user")
         else Error("User doesn't exist")
     
-    member _.DeactivateWallet(discordId:uint64, wallet:string) =
-        let isRegistered = 
-            userExists discordId || registerNewUser discordId
+    member _.DeactivateWallet(uId:UserId, wallet:string) =
+        let isRegistered =
+            match uId with
+            | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
+            | UserId.Custom _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
-                let userId = getUserIdByDiscordId discordId
+                let userId = getUserIdByUserId uId
                 match userId with
                 | Some _ ->
                     try
@@ -634,26 +739,22 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"ChampExists: {assetId}")
             Error("Unexpected error")
 
-    member _.UpdateUserForChamp(discordId:uint64, assetId:uint64) =
-        let userId = getUserIdByDiscordId discordId
-        match userId with
-        | Some id ->
-            try
-                use conn = new SqliteConnection(cs)
-                Db.newCommand SQL.UpsertChampAndUser conn
-                |> Db.setParams [ 
-                    "userId", SqlType.Int64 id
-                    "assetId", SqlType.Int64 <| int64 assetId
-                ]
-                |> Db.exec
-                Ok(())
-            with exn ->
-                Log.Error(exn, $"UpdateUserForChamp: {discordId}, {assetId}")
-                Error("Something went wrong: unable to attach champ to user")              
-        | None -> Error("Can't find user")    
+    member _.UpdateUserForChamp(userId:uint64, assetId:uint64) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UpsertChampAndUser conn
+            |> Db.setParams [ 
+                "userId", SqlType.Int64 <| int64 userId
+                "assetId", SqlType.Int64 <| int64 assetId
+            ]
+            |> Db.exec
+            Ok(())
+        with exn ->
+            Log.Error(exn, $"UpdateUserForChamp: {userId}, {assetId}")
+            Error("Something went wrong: unable to attach champ to user")              
     
-    member _.GetUserWallets(discordId:uint64) =
-        let userId = getUserIdByDiscordId discordId
+    member _.GetUserWallets(uId:UserId) =
+        let userId = getUserIdByUserId uId
         match userId with
         | Some id ->
             try
@@ -672,12 +773,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 )
                 |> Ok
             with exn ->
-                Log.Error(exn, $"GetUserWallets: {discordId}")
+                Log.Error(exn, $"GetUserWallets: {id}")
                 Error("Something went wrong")              
         | None -> Error("Can't find user")    
     
-    member t.Donate(discordId: uint64, amount:decimal) =
-        match getUserIdByDiscordId discordId with
+    member _.Donate(uId: UserId, amount:decimal) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -723,11 +824,11 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | None ->
                     Error("Unexpected error")
             with exn ->
-                Log.Error(exn, $"Donate: {discordId}")
+                Log.Error(exn, $"Donate: {uId}")
                 Error("Unexpected error")
         | None -> Error("Unexpected error")
 
-    member t.AddOrInsertChamp(champ:NewChampDb) =
+    member _.AddOrInsertChamp(champ:NewChampDb) =
         try
             use conn = new SqliteConnection(cs)
             Db.batch (fun tn ->
@@ -874,8 +975,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"ProcessDeposit: {wallet}, {tx}, {amount}")
             ProcessDepositStatus.Error
 
-    member _.GetUserBalance(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserBalance(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -885,108 +986,95 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 ]
                 |> Db.querySingle (fun r -> r.GetDecimal(0))
             with exn ->
-                Log.Error(exn, $"GetUserBalance: {discordId}")
+                Log.Error(exn, $"GetUserBalance: {uId}")
                 None
         | None -> None
 
-    member _.BuyItem(discordId:uint64, item:ShopItem, amount:int) =
-        try
-            use conn = new SqliteConnection(cs)
+    member _.BuyItem(uId:UserId, item:ShopItem, amount:int) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
 
-            Db.batch (fun tn ->
-                let userId = 
-                    tn
-                    |> Db.newCommandForTransaction SQL.GetUserIdByDiscordId
-                    |> Db.setParams [ 
-                        "discordId", SqlType.Int64 <| int64 discordId
-                    ]
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                let itemId =
-                    tn
-                    |> Db.newCommandForTransaction SQL.GetShopItemIdByItem
-                    |> Db.setParams [
-                        "item", SqlType.Int <| int item
-                    ]
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                match userId, itemId with
-                | Some uid, Some iid ->
-                    let balance =
+                use conn = new SqliteConnection(cs)
+
+                Db.batch (fun tn ->
+                    let itemId =
                         tn
-                        |> Db.newCommandForTransaction SQL.GetUserBalance
+                        |> Db.newCommandForTransaction SQL.GetShopItemIdByItem
                         |> Db.setParams [
-                            "userId", SqlType.Int64 uid 
+                            "item", SqlType.Int <| int item
                         ]
-                        |> Db.querySingle (fun r -> r.GetDecimal(0))
-                    let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
-                    match balance, darkCoinPrice with
-                    | Some b, Some dcPrice ->
-                        let price = Math.Round(Shop.getPrice item / dcPrice, 6)
-                        let subs = Math.Round(decimal amount * price, 6)
-                        if subs > b then Error($"Your balance is {b} while {subs} is required")
-                        else
-                            let newBalance = Math.Round(b - subs, 6)
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    match itemId with
+                    | Some iid ->
+                        let balance =
                             tn
-                            |> Db.newCommandForTransaction SQL.UpdateUserBalance
+                            |> Db.newCommandForTransaction SQL.GetUserBalance
                             |> Db.setParams [
-                                "balance", SqlType.Decimal newBalance
-                                "userId", SqlType.Int64 uid
+                                "userId", SqlType.Int64 userId 
                             ]
-                            |> Db.exec
+                            |> Db.querySingle (fun r -> r.GetDecimal(0))
+                        let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
+                        match balance, darkCoinPrice with
+                        | Some b, Some dcPrice ->
+                            let price = Math.Round(Shop.getPrice item / dcPrice, 6)
+                            let subs = Math.Round(decimal amount * price, 6)
+                            if subs > b then Error($"Your balance is {b} while {subs} is required")
+                            else
+                                let newBalance = Math.Round(b - subs, 6)
+                                tn
+                                |> Db.newCommandForTransaction SQL.UpdateUserBalance
+                                |> Db.setParams [
+                                    "balance", SqlType.Decimal newBalance
+                                    "userId", SqlType.Int64 userId
+                                ]
+                                |> Db.exec
 
-                            tn
-                            |> Db.newCommandForTransaction SQL.PurchaseItem
-                            |> Db.setParams [
-                                "userId", SqlType.Int64 uid
-                                "itemId", SqlType.Int64 iid
-                                "price", SqlType.Decimal dcPrice
-                                "amount", SqlType.Int amount
-                            ]
-                            |> Db.exec
+                                tn
+                                |> Db.newCommandForTransaction SQL.PurchaseItem
+                                |> Db.setParams [
+                                    "userId", SqlType.Int64 userId
+                                    "itemId", SqlType.Int64 iid
+                                    "price", SqlType.Decimal dcPrice
+                                    "amount", SqlType.Int amount
+                                ]
+                                |> Db.exec
                             
-                            tn
-                            |> Db.newCommandForTransaction SQL.AddToStorage
-                            |> Db.setParams [
-                                "userId", SqlType.Int64 uid
-                                "itemId", SqlType.Int64 iid
-                                "amount", SqlType.Int amount
-                            ]
-                            |> Db.exec
+                                tn
+                                |> Db.newCommandForTransaction SQL.AddToStorage
+                                |> Db.setParams [
+                                    "userId", SqlType.Int64 userId
+                                    "itemId", SqlType.Int64 iid
+                                    "amount", SqlType.Int amount
+                                ]
+                                |> Db.exec
 
-                            tn
-                            |> Db.newCommandForTransaction SQL.AddToKeyNum
-                            |> Db.setParams [
-                                "amount", SqlType.Decimal subs
-                                "key", SqlType.String (DbKeysNum.Rewards.ToString())
-                            ]
-                            |> Db.exec
-                            Ok(())
-                    | None, Some _ -> Error("Can't fetch balance. Try again later")
-                    | Some _, None -> Error("Can't fetch price. Try again later")
-                    | _, _ -> Error("Can't fetch balance and price")
-                | Some _, None ->
-                    Error("Item not found")
-                | None, Some _ ->
-                    Error("User not found")
-                | None, None -> Error("User and Item not found")
-            ) conn
-        with exn ->
-            Log.Error(exn, $"Buy item: {discordId}, {item}, {amount}")
-            Error($"Unexpected error: {exn.Message}")
+                                tn
+                                |> Db.newCommandForTransaction SQL.AddToKeyNum
+                                |> Db.setParams [
+                                    "amount", SqlType.Decimal subs
+                                    "key", SqlType.String (DbKeysNum.Rewards.ToString())
+                                ]
+                                |> Db.exec
+                                Ok(())
+                        | None, Some _ -> Error("Can't fetch balance. Try again later")
+                        | Some _, None -> Error("Can't fetch price. Try again later")
+                        | _, _ -> Error("Can't fetch balance and price")
+                    | None ->
+                        Error("Item not found")
+                ) conn
+            with exn ->
+                Log.Error(exn, $"Buy item: {uId}, {item}, {amount}")
+                Error($"Unexpected error: {exn.Message}")
+        | None -> Error("User not found")
     
-    member _.RenameChamp(discordId:uint64, champName:string, name:string) =
-        try
-            use conn = new SqliteConnection(cs)
+    member _.RenameChamp(uId:UserId, champName:string, name:string) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
 
-            Db.batch (fun tn ->
-                let userId = 
-                    tn
-                    |> Db.newCommandForTransaction SQL.GetUserIdByDiscordId
-                    |> Db.setParams [ 
-                        "discordId", SqlType.Int64 <| int64 discordId
-                    ]
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                match userId with
-                | Some uid ->
+                Db.batch (fun tn ->
                     let champIdO =
                         Db.newCommandForTransaction SQL.GetChampIdByName tn
                         |> Db.setParams [
@@ -998,7 +1086,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         let champsIds =
                             Db.newCommandForTransaction SQL.GetChampIdsForUser tn
                             |> Db.setParams [
-                                "userId", SqlType.Int64 uid
+                                "userId", SqlType.Int64 userId
                             ]
                             |> Db.query (fun r -> r.GetInt64(0))
                             |> Set.ofList
@@ -1007,7 +1095,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                                 tn
                                 |> Db.newCommandForTransaction SQL.GetUserBalance
                                 |> Db.setParams [
-                                    "userId", SqlType.Int64 uid 
+                                    "userId", SqlType.Int64 userId 
                                 ]
                                 |> Db.querySingle (fun r -> r.GetDecimal(0))
                             let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
@@ -1021,7 +1109,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                                     |> Db.newCommandForTransaction SQL.UpdateUserBalance
                                     |> Db.setParams [
                                         "balance", SqlType.Decimal newBalance
-                                        "userId", SqlType.Int64 uid
+                                        "userId", SqlType.Int64 userId
                                     ]
                                     |> Db.exec
 
@@ -1045,7 +1133,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                                     |> Db.newCommandForTransaction SQL.InsertNewOldNames
                                     |> Db.setParams [
                                         "champId", SqlType.Int64 <| int64 champId
-                                        "userId", SqlType.Int64 <| int64 uid
+                                        "userId", SqlType.Int64 <| int64 userId
                                         "price", SqlType.Decimal subs
                                         "oldName", SqlType.String champName
                                         "name", SqlType.String name
@@ -1058,12 +1146,11 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         else
                             Error("This champ doesn't belong to you")
                     | None -> Error($"Champ with name = {champName} not found")
-                | None ->
-                    Error("User not found")
-            ) conn
-        with exn ->
-            Log.Error(exn, $"Rename champ: {discordId}, {champName}")
-            Error($"Unexpected error: {exn.Message}")
+                ) conn
+            with exn ->
+                Log.Error(exn, $"Rename champ: {uId}, {champName}")
+                Error($"Unexpected error: {exn.Message}")
+        | None -> Error("User not found")
 
     member _.GetShopItems() =
         try
@@ -1094,8 +1181,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetChampsCount")
             None
 
-    member _.GetUserChampsCount(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserChampsCount(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1105,12 +1192,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v)
             with exn ->
-                Log.Error(exn, $"GetUserChampsCount: {discordId}")
+                Log.Error(exn, $"GetUserChampsCount: {uId}")
                 None
         | None -> None
 
-    member _.GetUserMonstersCount(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserMonstersCount(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1120,7 +1207,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v)
             with exn ->
-                Log.Error(exn, $"GetUserMonstersCount: {discordId}")
+                Log.Error(exn, $"GetUserMonstersCount: {uId}")
                 None
         | None -> None  
 
@@ -1164,8 +1251,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetChampsCount")
             Error("Unexpected error")
 
-    member _.GetUserStorage(discordId:uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserStorage(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1178,12 +1265,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     r.GetInt32(1))
                 |> Some
             with exn ->
-                Log.Error(exn, $"GetUserStorage: {discordId}")
+                Log.Error(exn, $"GetUserStorage: {uId}")
                 None
         | None -> None
 
-    member _.GetUserChamps(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserChamps(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1202,12 +1289,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 )
                 |> Some
             with exn ->
-                Log.Error(exn, $"GetUserChamps {discordId}")
+                Log.Error(exn, $"GetUserChamps {uId}")
                 None
         | None -> None        
 
-    member _.GetUserChampsInfo(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserChampsInfo(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1220,12 +1307,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         uint64 <| r.GetInt64(3)), r.GetDecimal(4))
                 |> Some
             with exn ->
-                Log.Error(exn, $"GetUserChampsInfo {discordId}")
+                Log.Error(exn, $"GetUserChampsInfo {uId}")
                 None
         | None -> None  
 
-    member _.GetActiveUserChamps(discordId: uint64, roundId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetActiveUserChamps(uId: UserId, roundId: uint64) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1235,19 +1322,31 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     "roundId", SqlType.Int64 <| int64 roundId
                 ]
                 |> Db.query (fun r ->
-                   {|
-                        Id = r.GetInt64(0)
-                        Name = r.GetString(1)
-                   |}
+                   uint64 <| r.GetInt64(0), 
+                   r.GetString(1),
+                   // TODO: get ipfs
+                   ""
                 )
                 |> Ok
             with exn ->
-                Log.Error(exn, $"GetActiveUserChamps {discordId}")
+                Log.Error(exn, $"GetActiveUserChamps {uId}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-    member _.GetUserChampsUnderEffect(discordId: uint64, roundId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member x.GetAvailableUserChamps(uId: UserId): Result<(uint64 * string * string) list, string> =
+        match x.GetLastRoundId() with
+        | Some roundId ->
+            match x.GetRoundStatus roundId with
+            | Some status ->
+                if status = RoundStatus.Started then
+                    x.GetActiveUserChamps(uId, roundId)
+                else
+                    Error("Please wait until new round is started")
+            | None -> Error("Something went wrong - unable to get round status")
+        | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
+
+    member _.GetUserChampsUnderEffect(uId: UserId, roundId: uint64) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1262,7 +1361,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 )
                 |> Ok
             with exn ->
-                Log.Error(exn, $"GetUserChampsUnderEffect {discordId} at {roundId}")
+                Log.Error(exn, $"GetUserChampsUnderEffect {uId} at {roundId}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
@@ -1286,8 +1385,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetMonstersUnderEffect at {roundId}")
             Error("Unexpected error")
 
-    member _.GetUserChampsWithStats(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserChampsWithStats(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1321,7 +1420,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 )
                 |> Some
             with exn ->
-                Log.Error(exn, $"GetUserChampsWithStats {discordId}")
+                Log.Error(exn, $"GetUserChampsWithStats {uId}")
                 None
         | None -> None 
 
@@ -1515,6 +1614,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         with exn ->
             Log.Error(exn, $"GetChampInfoById {champId}")
             None
+
     member _.GetBalances() =
         try
             use conn = new SqliteConnection(cs)
@@ -1570,8 +1670,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetBattleReward")
             Error("Unexpected error")
 
-    member _.GetUserEarnings(discordId: uint64, startRound:uint64, endRound:uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.GetUserEarnings(uId: UserId, startRound:uint64, endRound:uint64) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -1583,180 +1683,176 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 ]
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
             with exn ->
-                Log.Error(exn, $"GetUserEarnings {discordId}: [{startRound}-{endRound}]")
+                Log.Error(exn, $"GetUserEarnings {uId}: [{startRound}-{endRound}]")
                 None
         | None -> None 
 
-    member t.UseItemFromStorage(discordId: uint64, item:ShopItem, champId: uint64) =
-        try
-            use conn = new SqliteConnection(cs)
-            let userIdOpt = 
-                Db.newCommand SQL.GetUserIdByDiscordId conn
-                |> Db.setParams [ 
-                    "discordId", SqlType.Int64 <| int64 discordId
-                ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
-            let itemIdO =
-                Db.newCommand SQL.GetShopItemIdByItem conn
-                |> Db.setParams [
-                    "item", SqlType.Int <| int item
-                ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
-
-            let lastRoundId =
-                Db.newCommand SQL.GetLastRound conn
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
-
-            match userIdOpt, itemIdO, lastRoundId with
-            | Some userId, Some itemId, Some roundId ->
-                let amount =
-                    Db.newCommand SQL.GetAmountFromStorage conn
+    member t.UseItemFromStorage(uId: UserId, item:ShopItem, champId: uint64) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                let itemIdO =
+                    Db.newCommand SQL.GetShopItemIdByItem conn
                     |> Db.setParams [
-                        "userId", SqlType.Int64 userId
-                        "itemId", SqlType.Int64 itemId
+                        "item", SqlType.Int <| int item
                     ]
                     |> Db.scalar (fun v -> tryUnbox<int64> v)
-                match amount with
-                | Some v when v > 0 ->
-                    let isBoostUsed =
-                        Db.newCommand SQL.IsBoostAlreadyUsedAtRound conn
+
+                let lastRoundId =
+                    Db.newCommand SQL.GetLastRound conn
+                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+
+                match itemIdO, lastRoundId with
+                | Some itemId, Some roundId ->
+                    let amount =
+                        Db.newCommand SQL.GetAmountFromStorage conn
                         |> Db.setParams [
-                            "champId", SqlType.Int64 <| int64 champId
-                            "itemId", SqlType.Int64 <| int64 itemId
-                            "roundId", SqlType.Int64 <| int64 roundId
+                            "userId", SqlType.Int64 userId
+                            "itemId", SqlType.Int64 itemId
                         ]
-                        |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
-                    if isBoostUsed then
-                        Error("You already use this item in this round.")
-                    else
-                        Db.batch (fun tn ->
-                            Db.newCommandForTransaction SQL.AddToExistedStorage tn
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    match amount with
+                    | Some v when v > 0 ->
+                        let isBoostUsed =
+                            Db.newCommand SQL.IsBoostAlreadyUsedAtRound conn
                             |> Db.setParams [
-                                "amount", SqlType.Int -1
-                                "userId", SqlType.Int64 userId
-                                "itemId", SqlType.Int64 itemId
+                                "champId", SqlType.Int64 <| int64 champId
+                                "itemId", SqlType.Int64 <| int64 itemId
+                                "roundId", SqlType.Int64 <| int64 roundId
                             ]
-                            |> Db.exec
-                            match item with
-                            | ShopItem.RevivalSpell ->
-                                let deathIdO =
-                                    Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
-                                    |> Db.setParams [
-                                        "item", SqlType.Int <| int Effect.Death
-                                    ]
-                                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                                match deathIdO with
-                                | Some deathId ->
-                                    let isChampDead =
-                                        tn
-                                        |> Db.newCommandForTransaction SQL.ChampsIsUnderEffectInRound
-                                        |> Db.setParams [
-                                            "champId", SqlType.Int64 <| int64 champId
-                                            "roundId", SqlType.Int64 <| int64 roundId
-                                            "itemId", SqlType.Int64 <| int64 deathId
-                                        ]
-                                        |> Db.scalar (fun v -> tryUnbox<int64> v)
-                                        |> Option.map(fun v -> v > 0)
-                                        |> Option.defaultValue false
-                                    let isChampDeadAndItemIsRevival = isChampDead && item = ShopItem.RevivalSpell
-                                    Db.newCommandForTransaction SQL.InsertToBoosts tn
-                                    |> Db.setParams [
-                                        "champId", SqlType.Int64 <| int64 champId
-                                        "itemId", SqlType.Int64 <| int64 itemId
-                                        "roundId", SqlType.Int64 <| int64 roundId
-                                        "duration", SqlType.Int (if isChampDeadAndItemIsRevival then 0 else Shop.getRoundDuration(item))
-                                    ]
-                                    |> Db.exec
-
-                                    if isChampDeadAndItemIsRevival then
-                                        tn
-                                        |> Db.newCommandForTransaction SQL.MarkEffectsAsPassiveBeforeRound
-                                        |> Db.setParams [
-                                            "champId", SqlType.Int64 <| int64 champId
-                                            "roundId", SqlType.Int64 <| int64 roundId
-                                        ]
-                                        |> Db.exec
-                                    Ok(())
-                                | None ->
-                                    tn.Rollback()
-                                    Error("Can't find effect itemId")
-                            | ShopItem.ElixirOfLife
-                            | ShopItem.ElixirOfMagic ->
-                                // get round status - it should be active
-                                match t.GetRoundStatus (uint64 roundId) with
-                                | Some status when status = RoundStatus.Started ->
-                                    // get champ's stats
-                                    // update champ's stats
-                                    Db.newCommandForTransaction SQL.InsertToBoosts tn
-                                    |> Db.setParams [
-                                        "champId", SqlType.Int64 <| int64 champId
-                                        "itemId", SqlType.Int64 <| int64 itemId
-                                        "roundId", SqlType.Int64 <| int64 roundId
-                                        "duration", SqlType.Int 0
-                                    ]
-                                    |> Db.exec
-
-                                    let statO =
-                                        Db.newCommandForTransaction SQL.GetChampStats tn
-                                        |> Db.setParams [
-                                            "champId", SqlType.Int64 <| int64 champId
-                                        ]
-                                        |> Db.querySingle(fun r -> {
-                                            Health = r.GetInt64(0)
-                                            Magic = r.GetInt64(1)
-
-                                            Accuracy = r.GetInt64(2)
-                                            Luck = r.GetInt64(3)
-
-                                            Attack = r.GetInt64(4)
-                                            MagicAttack = r.GetInt64(5)
-
-                                            Defense = r.GetInt64(6)
-                                            MagicDefense = r.GetInt64(7)
-                                        })
-                                    match statO with
-                                    | Some stat ->
-                                        stat |> Shop.applyShopItem item
-                                        |> updateChampStat tn (uint64 champId)
-                                        Ok()
-                                    | None ->
-                                        tn.Rollback()
-                                        Error("Unable to get stats")
-                                | Some _ ->
-                                    tn.Rollback()
-                                    Error("Wait while new round starts before using this item")
-                                | None ->
-                                    tn.Rollback()
-                                    Error("Unable to get round status")
-                            | ShopItem.ElixirOfLuck
-                            | ShopItem.ElixirOfAccuracy
-                            | ShopItem.ElixirOfDamage
-                            | ShopItem.ElixirOfMagicalDamage
-                            | ShopItem.ElixirOfDefense
-                            | ShopItem.ElixirOfMagicalDefense ->
-                                Db.newCommandForTransaction SQL.InsertToBoosts tn
+                            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+                        if isBoostUsed then
+                            Error("You already use this item in this round.")
+                        else
+                            Db.batch (fun tn ->
+                                Db.newCommandForTransaction SQL.AddToExistedStorage tn
                                 |> Db.setParams [
-                                    "champId", SqlType.Int64 <| int64 champId
-                                    "itemId", SqlType.Int64 <| int64 itemId
-                                    "roundId", SqlType.Int64 <| int64 roundId
-                                    "duration", SqlType.Int (Shop.getRoundDuration(item))
+                                    "amount", SqlType.Int -1
+                                    "userId", SqlType.Int64 userId
+                                    "itemId", SqlType.Int64 itemId
                                 ]
                                 |> Db.exec
-                                Ok(())
+                                match item with
+                                | ShopItem.RevivalSpell ->
+                                    let deathIdO =
+                                        Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
+                                        |> Db.setParams [
+                                            "item", SqlType.Int <| int Effect.Death
+                                        ]
+                                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                                    match deathIdO with
+                                    | Some deathId ->
+                                        let isChampDead =
+                                            tn
+                                            |> Db.newCommandForTransaction SQL.ChampsIsUnderEffectInRound
+                                            |> Db.setParams [
+                                                "champId", SqlType.Int64 <| int64 champId
+                                                "roundId", SqlType.Int64 <| int64 roundId
+                                                "itemId", SqlType.Int64 <| int64 deathId
+                                            ]
+                                            |> Db.scalar (fun v -> tryUnbox<int64> v)
+                                            |> Option.map(fun v -> v > 0)
+                                            |> Option.defaultValue false
+                                        let isChampDeadAndItemIsRevival = isChampDead && item = ShopItem.RevivalSpell
+                                        Db.newCommandForTransaction SQL.InsertToBoosts tn
+                                        |> Db.setParams [
+                                            "champId", SqlType.Int64 <| int64 champId
+                                            "itemId", SqlType.Int64 <| int64 itemId
+                                            "roundId", SqlType.Int64 <| int64 roundId
+                                            "duration", SqlType.Int (if isChampDeadAndItemIsRevival then 0 else Shop.getRoundDuration(item))
+                                        ]
+                                        |> Db.exec
+
+                                        if isChampDeadAndItemIsRevival then
+                                            tn
+                                            |> Db.newCommandForTransaction SQL.MarkEffectsAsPassiveBeforeRound
+                                            |> Db.setParams [
+                                                "champId", SqlType.Int64 <| int64 champId
+                                                "roundId", SqlType.Int64 <| int64 roundId
+                                            ]
+                                            |> Db.exec
+                                        Ok(())
+                                    | None ->
+                                        tn.Rollback()
+                                        Error("Can't find effect itemId")
+                                | ShopItem.ElixirOfLife
+                                | ShopItem.ElixirOfMagic ->
+                                    // get round status - it should be active
+                                    match t.GetRoundStatus (uint64 roundId) with
+                                    | Some status when status = RoundStatus.Started ->
+                                        // get champ's stats
+                                        // update champ's stats
+                                        Db.newCommandForTransaction SQL.InsertToBoosts tn
+                                        |> Db.setParams [
+                                            "champId", SqlType.Int64 <| int64 champId
+                                            "itemId", SqlType.Int64 <| int64 itemId
+                                            "roundId", SqlType.Int64 <| int64 roundId
+                                            "duration", SqlType.Int 0
+                                        ]
+                                        |> Db.exec
+
+                                        let statO =
+                                            Db.newCommandForTransaction SQL.GetChampStats tn
+                                            |> Db.setParams [
+                                                "champId", SqlType.Int64 <| int64 champId
+                                            ]
+                                            |> Db.querySingle(fun r -> {
+                                                Health = r.GetInt64(0)
+                                                Magic = r.GetInt64(1)
+
+                                                Accuracy = r.GetInt64(2)
+                                                Luck = r.GetInt64(3)
+
+                                                Attack = r.GetInt64(4)
+                                                MagicAttack = r.GetInt64(5)
+
+                                                Defense = r.GetInt64(6)
+                                                MagicDefense = r.GetInt64(7)
+                                            })
+                                        match statO with
+                                        | Some stat ->
+                                            stat |> Shop.applyShopItem item
+                                            |> updateChampStat tn (uint64 champId)
+                                            Ok()
+                                        | None ->
+                                            tn.Rollback()
+                                            Error("Unable to get stats")
+                                    | Some _ ->
+                                        tn.Rollback()
+                                        Error("Wait while new round starts before using this item")
+                                    | None ->
+                                        tn.Rollback()
+                                        Error("Unable to get round status")
+                                | ShopItem.ElixirOfLuck
+                                | ShopItem.ElixirOfAccuracy
+                                | ShopItem.ElixirOfDamage
+                                | ShopItem.ElixirOfMagicalDamage
+                                | ShopItem.ElixirOfDefense
+                                | ShopItem.ElixirOfMagicalDefense ->
+                                    Db.newCommandForTransaction SQL.InsertToBoosts tn
+                                    |> Db.setParams [
+                                        "champId", SqlType.Int64 <| int64 champId
+                                        "itemId", SqlType.Int64 <| int64 itemId
+                                        "roundId", SqlType.Int64 <| int64 roundId
+                                        "duration", SqlType.Int (Shop.getRoundDuration(item))
+                                    ]
+                                    |> Db.exec
+                                    Ok(())
                         
-                        ) conn
-                | Some v -> Error("You don't have this item in the storage")
-                | None -> Error("Record not found in storage")
-            | _, _, _ ->
-                let sb = new System.Text.StringBuilder();
-                if(userIdOpt.IsNone) then sb.Append("User not found; ") |> ignore
-                if(itemIdO.IsNone) then sb.Append("Item not found;") |> ignore
-                if(lastRoundId.IsNone) then sb.Append("Round not found; ") |> ignore
-                Error(sb.ToString())
-        with exn ->
-            Log.Error(exn, $"UseItemFromStorage: {discordId}, {item}")
-            Error($"Unexpected error: {exn.Message}")        
-    
+                            ) conn
+                    | Some _ -> Error("You don't have this item in the storage")
+                    | None -> Error("Record not found in storage")
+                | _, _ ->
+                    let sb = new System.Text.StringBuilder();
+                    if(itemIdO.IsNone) then sb.Append("Item not found;") |> ignore
+                    if(lastRoundId.IsNone) then sb.Append("Round not found; ") |> ignore
+                    Error(sb.ToString())
+            with exn ->
+                Log.Error(exn, $"UseItemFromStorage: {uId}, {item}")
+                Error($"Unexpected error: {exn.Message}")        
+        | None -> Error("User not found")
+
     member _.LevelUp(champId:uint64, ch:Characteristic) =
         try
             use conn = new SqliteConnection(cs)
@@ -1810,7 +1906,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "GetMonsters")
             None
 
-    member t.RoundsExists() =
+    member _.RoundsExists() =
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.RoundExists conn
@@ -1819,7 +1915,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "RoundsExists")
             None
     
-    member t.AnyChampJoinedRound(roundId:uint64) =
+    member _.AnyChampJoinedRound(roundId:uint64) =
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.ChampsPlayedInRound conn
@@ -1831,7 +1927,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "RoundsExists")
             None
 
-    member t.GetAssetIdByName(name:string) =
+    member _.GetAssetIdByName(name:string) =
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetAssetIdByName conn
@@ -1844,7 +1940,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "GetAssetIdByName")
             Error("Unexpected error")
 
-    member t.GetChampNameIPFSById(id:uint64) =
+    member _.GetChampNameIPFSById(id:uint64) =
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetChampNameIPFSById conn
@@ -1995,7 +2091,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "Next round")
             Error(StartRoundError.UnknownError)
 
-    member t.PerformAction(raction:RoundActionRecord) =
+    member _.PerformAction(raction:RoundActionRecord) =
         try
             use conn = new SqliteConnection(cs)
             let lastRoundId =
@@ -2532,7 +2628,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"GetMonsterForFinishedRound: {roundId}")
             Error("Unexpected error")        
 
-    member x.FinalizeRound (bresult:BattleResult) (monsterRevivalTime:uint) (boosts:Map<uint64, RoundBoost list>) =
+    member _.FinalizeRound (bresult:BattleResult) (monsterRevivalTime:uint) (boosts:Map<uint64, RoundBoost list>) =
         try
             use conn = new SqliteConnection(cs)
 
@@ -2895,10 +2991,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetTopInGameDonaters conn
             |> Db.query(fun r ->
-                {|
-                    DiscordId = r.GetInt64(0)
-                    Amount = r.GetDecimal(1)
-                |}
+                // SELECT DiscordId, CustomUserId, cu.Nickname, SUM(Amount) as Total
+                let donater =
+                    if r.IsDBNull(0) then Donater.Custom(r.GetInt64(1) |> uint64, r.GetString(2))
+                    else Donater.Discord(r.GetInt64(0) |> uint64)
+                let amount = r.GetDecimal(3)
+                Donation(donater, amount)
             )
             |> Ok
         with exn ->
@@ -2909,15 +3007,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetTopDonaters conn
-            |> Db.query(fun r ->
-                {|
-                    Wallet = r.GetString(0)
-                    Amount = r.GetDecimal(1)
-                |}
-            )
+            |> Db.query(fun r -> Donation(Donater.Unknown (r.GetString(0)), r.GetDecimal(1)))
             |> Ok
         with exn ->
-            Log.Error(exn, "GetTopInGameDonaters")
+            Log.Error(exn, "GetTopDonaters")
             Error("Unexpected error")
 
     member _.Backup(datasource:string) =
@@ -3086,26 +3179,20 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, "SendToSpecialWallet")
             None
 
-    member _.CreateGenRequest(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
-        try
-            use conn = new SqliteConnection(cs)
-            let prompt = Prompt.createMonsterNameDesc mtype msubtype
-            let payload = GenPayload.TextReqCreated prompt
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
-            let json = JsonSerializer.Serialize(payload, options)
+    member _.CreateGenRequest(uId: UserId, mtype:MonsterType, msubtype:MonsterSubType) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                let prompt = Prompt.createMonsterNameDesc mtype msubtype
+                let payload = GenPayload.TextReqCreated prompt
+                let options = JsonFSharpOptions().ToJsonSerializerOptions()
+                let json = JsonSerializer.Serialize(payload, options)
             
-            let userId = 
-                Db.newCommand SQL.GetUserIdByDiscordId conn
-                |> Db.setParams [ 
-                    "discordId", SqlType.Int64 <| int64 discordId
-                ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
-            match userId with
-            | Some uid ->
                 let balance =
                     Db.newCommand SQL.GetUserBalance conn
                     |> Db.setParams [
-                        "userId", SqlType.Int64 uid 
+                        "userId", SqlType.Int64 userId
                     ]
                     |> Db.querySingle (fun r -> r.GetDecimal(0))
                 let darkCoinPrice = getKeyNum conn DbKeysNum.DarkCoinPrice
@@ -3120,7 +3207,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                             |> Db.newCommandForTransaction SQL.UpdateUserBalance
                             |> Db.setParams [
                                 "balance", SqlType.Decimal newBalance
-                                "userId", SqlType.Int64 uid
+                                "userId", SqlType.Int64 userId
                             ]
                             |> Db.exec
 
@@ -3135,7 +3222,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                             tn
                             |> Db.newCommandForTransaction SQL.InitGenRequest
                             |> Db.setParams [
-                                "userId", SqlType.Int64 uid
+                                "userId", SqlType.Int64 userId
                                 "status", SqlType.Int <| int payload.Status
                                 "payload", SqlType.String json
                                 "cost", SqlType.Decimal subs
@@ -3148,11 +3235,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | None, Some _ -> Error("Can't fetch balance. Try again later")
                 | Some _, None -> Error("Can't fetch price. Try again later")
                 | _, _ -> Error("Can't fetch balance and price") 
-            | None ->
-                Error("User not found")
-        with exn ->
-            Log.Error(exn, $"CreateGenRequest {discordId}: {mtype}, {msubtype}")
-            Error("Unexpected error")
+            with exn ->
+                Log.Error(exn, $"CreateGenRequest {userId}: {mtype}, {msubtype}")
+                Error("Unexpected error")
+        | None -> Error("User not found")
 
     member _.GetAllUnfinishedGenRequests() =
         try
@@ -3346,8 +3432,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             false
 
     /// includes unprocessed requests
-    member _.MonstersByTypeSubtype(discordId: uint64, mtype:MonsterType, msubtype:MonsterSubType) =
-        match getUserIdByDiscordId discordId with
+    member _.MonstersByTypeSubtype(uId: UserId, mtype:MonsterType, msubtype:MonsterSubType) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try       
                 use conn = new SqliteConnection(cs)
@@ -3376,12 +3462,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | None, Some _ -> Error("Unable to count monsters")
                 | None, None -> Error("Unable to count monsters and requests")
             with exn ->
-                Log.Error(exn, $"MonstersByTypeSubtype: {discordId} | {mtype} | {msubtype}")
+                Log.Error(exn, $"MonstersByTypeSubtype: {userId} | {mtype} | {msubtype}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-    member _.UnfinishedRequestsByUser(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.UnfinishedRequestsByUser(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try       
                 use conn = new SqliteConnection(cs)
@@ -3397,12 +3483,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | Some m -> m |> Ok
                 | None -> Error("Unable to count requests")
             with exn ->
-                Log.Error(exn, $"UnfinishedRequestsByUser: {discordId}")
+                Log.Error(exn, $"UnfinishedRequestsByUser: {userId}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-     member _.GetPendingUserRequests(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+     member _.GetPendingUserRequests(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try 
                 use conn = new SqliteConnection(cs)
@@ -3417,8 +3503,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user") 
 
-     member _.GetUserMonsters(discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+     member _.GetUserMonsters(uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try 
                 let options = JsonFSharpOptions().ToJsonSerializerOptions()
@@ -3438,8 +3524,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")         
 
-     member _.FilterUserMonsters(discordId: uint64, mtype:MonsterType, msubtype: MonsterSubType) =
-        match getUserIdByDiscordId discordId with
+     member _.FilterUserMonsters(uId: UserId, mtype:MonsterType, msubtype: MonsterSubType) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try 
                 use conn = new SqliteConnection(cs)
@@ -3456,8 +3542,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-     member _.RenameUserMonster(discordId: uint64, newName:string, mid:int64) =
-        match getUserIdByDiscordId discordId with
+     member _.RenameUserMonster(uId: UserId, newName:string, mid:int64) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try 
                 use conn = new SqliteConnection(cs)
@@ -3484,8 +3570,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-    member _.ChampBelongsToAUser(champId:uint64, discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.ChampBelongsToAUser(champId:uint64, uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)
@@ -3500,8 +3586,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 None
         | None -> None
 
-    member _.MonsterBelongsToAUser(monsterId:uint64, discordId: uint64) =
-        match getUserIdByDiscordId discordId with
+    member _.MonsterBelongsToAUser(monsterId:uint64, uId: UserId) =
+        match getUserIdByUserId uId with
         | Some userId ->
             try
                 use conn = new SqliteConnection(cs)

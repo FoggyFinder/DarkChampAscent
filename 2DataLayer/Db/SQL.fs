@@ -4,11 +4,22 @@
 module internal SQL =
 
     let createTablesSQL = """
+        CREATE TABLE IF NOT EXISTS CustomUser (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            Nickname TEXT NOT NULL UNIQUE,
+            Password TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS User (
 	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            DiscordId INTEGER NOT NULL UNIQUE,
+            DiscordId INTEGER UNIQUE,
+            CustomUserId INTEGER UNIQUE,
             Balance NUMERIC NOT NULL,
-            CHECK (Balance >= 0)
+            FOREIGN KEY (CustomUserId)
+            REFERENCES CustomUser (ID),
+            CHECK (Balance >= 0 AND 
+                (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL)
+           )
         );
 
         CREATE TABLE IF NOT EXISTS Wallet (
@@ -407,7 +418,8 @@ module internal SQL =
         );
     """
 
-    let UserExists = "SELECT EXISTS(SELECT 1 FROM User WHERE DiscordId = @discordId LIMIT 1);"
+    let UserExistsByDiscordId = "SELECT EXISTS(SELECT 1 FROM User WHERE DiscordId = @discordId LIMIT 1);"
+    let UserExistsByCustomId = "SELECT EXISTS(SELECT 1 FROM User WHERE CustomUserId = @customId LIMIT 1);"
     let WalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet LIMIT 1);"
     let ConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet AND IsConfirmed = 1 LIMIT 1);"
     let UnConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE IsConfirmed = 0 LIMIT 1);"
@@ -438,6 +450,7 @@ module internal SQL =
     let UnfinishedRoundExists = "SELECT EXISTS(SELECT 1 FROM Round WHERE Status != 2);"
 
     let GetUserIdByDiscordId = "SELECT ID FROM User WHERE DiscordId = @discordId LIMIT 1"
+    let GetUserIdByCustomId = "SELECT ID FROM User WHERE CustomUserId = @customId LIMIT 1"
     let GetUserIdByWallet = "SELECT UserId FROM Wallet WHERE Address = @wallet LIMIT 1"
     let GetDiscordIdByWallet = """
         SELECT DiscordId FROM User
@@ -511,7 +524,16 @@ module internal SQL =
         INSERT INTO KeyValueBool(Key, Value) VALUES(@key, @value)
         ON CONFLICT(Key) DO UPDATE SET Value = @value;"
         
-    let AddNewUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
+    let AddNewDiscordUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
+    let UserNameAlreadyExists = "SELECT EXISTS(SELECT 1 FROM CustomUser WHERE Nickname = @name LIMIT 1);"
+    let GetCustomUserInfoByNickname = "SELECT ID, Password FROM CustomUser WHERE Nickname = @name;"
+    let AddNewCustomUser = """
+        INSERT INTO CustomUser(Nickname, Password) VALUES(@nickname, @password);
+        SELECT last_insert_rowid();
+        """
+    let UpdatePassword = "UPDATE CustomUser SET Password = @password WHERE ID = @cId;"
+    let AddCustomUser = "INSERT INTO User(CustomUserId, Balance) VALUES(@customId, 0);"
+
     let RegisterNewWallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 0, @code, 1);"
     
     let CodeIsMatchedForUnconfirmedWallet = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE NOT IsConfirmed AND Address = @wallet AND ConfirmationCode = @code LIMIT 1);"
@@ -927,9 +949,11 @@ module internal SQL =
     """
 
     let GetTopInGameDonaters = """
-        SELECT DiscordId, Sum(Amount) as Total FROM InGameDonation
-        JOIN User u ON u.ID = InGameDonation.UserId
-        GROUP BY DiscordId
+        SELECT DiscordId, CustomUserId, cu.Nickname, SUM(Amount) as Total
+        FROM InGameDonation igd
+        JOIN User u ON u.ID = igd.UserId
+        LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
+        GROUP BY u.ID
         ORDER BY Total DESC
         LIMIT 10
     """

@@ -81,3 +81,5 @@ module Utils =
 
     let sendMsgToLogChannelWithNotifications (client:GatewayClient) (mp:MessageProperties) =
         sendMsgToChannel Channels.LogChannel client mp false
+
+    let mention (uId:uint64) = $"<@{uId}>"
