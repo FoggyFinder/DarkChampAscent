@@ -102,6 +102,7 @@ open System.Text.Json.Serialization
 open Microsoft.Extensions.Options
 open Conf
 open DarkChampAscent.Account
+open System.Collections.Concurrent
 
 type SqliteStorage(options:IOptions<DbConfiguration>)=
     let updateShop (conn:SqliteConnection) =
@@ -418,20 +419,33 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"walletExists: {wallet}")
             false
 
+    let dbIdByDiscordId = ConcurrentDictionary<uint64, int64>()
+    let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
     let getUserIdByUserId(uId: UserId) =
         try
-            // ToDo: cache uId
             match uId with
             | UserId.Discord discordId ->
-                use conn = new SqliteConnection(cs)
-                Db.newCommand SQL.GetUserIdByDiscordId conn
-                |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
+                match dbIdByDiscordId.TryGetValue discordId with
+                | true, dbId -> Some dbId
+                | false, _ ->
+                    let dbIdOpt =
+                        use conn = new SqliteConnection(cs)
+                        Db.newCommand SQL.GetUserIdByDiscordId conn
+                        |> Db.setParams [ "discordId", SqlType.Int64 <| int64 discordId ]
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    dbIdOpt |> Option.iter (fun dbId -> dbIdByDiscordId.TryAdd(discordId, dbId) |> ignore)
+                    dbIdOpt
             | UserId.Custom customId ->
-                use conn = new SqliteConnection(cs)
-                Db.newCommand SQL.GetUserIdByCustomId conn
-                |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
-                |> Db.scalar (fun v -> tryUnbox<int64> v)
+                match dbIdByCustomId.TryGetValue customId with
+                | true, dbId -> Some dbId
+                | false, _ ->
+                    let dbIdOpt =
+                        use conn = new SqliteConnection(cs)
+                        Db.newCommand SQL.GetUserIdByCustomId conn
+                        |> Db.setParams [ "customId", SqlType.Int64 <| int64 customId ]
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    dbIdOpt |> Option.iter (fun dbId -> dbIdByCustomId.TryAdd(customId, dbId) |> ignore)
+                    dbIdOpt
         with exn ->
             Log.Error(exn, $"getUserIdByUserId: {uId}")
             None
@@ -492,14 +506,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
 
     let registerNewCustomUser(nickname:string, password:string) =
-        if nickname.Length < 3 then Error("Nickname must be > 3 symbols.")
-        elif String.IsNullOrWhiteSpace password then Error("Password must be non-empty")
-        else
+        match Validation.validateNickname nickname, Validation.validatePassword password with
+        | Ok validNickname, Ok validPassword ->
             try
                 use conn = new SqliteConnection(cs)
                 let nameExists =
                     Db.newCommand SQL.UserNameAlreadyExists conn
-                    |> Db.setParams [ "name", SqlType.String nickname ]
+                    |> Db.setParams [ "name", SqlType.String validNickname ]
                     |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
                 if nameExists then Error("Nickname already taken, try something else")
                 else
@@ -507,8 +520,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         let customIdO =
                             Db.newCommand SQL.AddNewCustomUser conn
                             |> Db.setParams [ 
-                                "nickname", SqlType.String nickname
-                                "password", SqlType.String password
+                                "nickname", SqlType.String validNickname
+                                "password", SqlType.String validPassword
                             ]
                             |> Db.scalar (fun v -> tryUnbox<int64> v)
                         match customIdO with
@@ -522,10 +535,11 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                             Error("Unexpected error")
 
                     ) conn
-                
             with exn ->
                 Log.Error(exn, $"registerNewCustomUser: {nickname}")
                 Error("Unexpected error")
+        | Error nicknameErr, _ -> Error nicknameErr
+        | _, Error passwordErr -> Error passwordErr
 
     let confirmationCodeIsMatchedForWallet(wallet:string, code:string) =
         try 
@@ -596,7 +610,21 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             None
     member _.TryRegisterCustomUser(nickname:string, password:string) =
         registerNewCustomUser(nickname, password)
-    
+    member _.UpdatePassword(cId:int64, password:string) =
+        match Validation.validatePassword password with
+        | Ok validPassword ->
+            try 
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.UpdatePassword conn
+                |> Db.setParams [
+                    "password", SqlType.String <| validPassword
+                    "cId", SqlType.Int64 cId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            with exn ->
+                Log.Error(exn, $"UpdatePassword: {cId}")
+                None
+        | Error _ -> None
     member _.RegisterNewWallet(uId:UserId, wallet:string) =
         let isRegistered =
             match uId with

@@ -531,6 +531,7 @@ module internal SQL =
         INSERT INTO CustomUser(Nickname, Password) VALUES(@nickname, @password);
         SELECT last_insert_rowid();
         """
+    let UpdatePassword = "UPDATE CustomUser SET Password = @password WHERE ID = @cId;"
     let AddCustomUser = "INSERT INTO User(CustomUserId, Balance) VALUES(@customId, 0);"
 
     let RegisterNewWallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 0, @code, 1);"
