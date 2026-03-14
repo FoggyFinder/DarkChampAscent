@@ -464,9 +464,11 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     | RoundStatus.Started ->
                                         let dt = DateTime.UtcNow
                                         let duration = dt - timestamp
-                                        if duration < Params.RoundDuration then
-                                            Log.Information($"Delay for {(Params.RoundDuration - duration).TotalMinutes} minutes")
-                                            do! Task.Delay(Params.RoundDuration - duration)
+                                        Log.Information($"RoundDuration: {BattleParams.RoundDuration()}")
+                                        Log.Information($" {timestamp} | DT {dt} | {duration} | {duration < BattleParams.RoundDuration()}")
+                                        if duration < BattleParams.RoundDuration() then
+                                            Log.Information($"Delay for {(BattleParams.RoundDuration() - duration).TotalMinutes} minutes")
+                                            do! Task.Delay(BattleParams.RoundDuration() - duration)
                                             do! Task.Delay(TimeSpan.FromMinutes(0.5))
                                         
                                         while db.AnyChampJoinedRound roundId |> Option.defaultValue false |> not do

@@ -177,7 +177,7 @@ let BattlePage () =
                         | RoundStatus.Started ->
                             match roundInfoDTO.RoundStarted with
                             | Some start ->
-                                let targetUtc = start + Params.RoundDuration
+                                let targetUtc = start + BattleParams.RoundDuration()
                                 let isAwaitingPlayers = now() > (toUnixMs targetUtc)
                                 if isAwaitingPlayers then
                                     if hasPlayers then None, None, "Round closes any second"

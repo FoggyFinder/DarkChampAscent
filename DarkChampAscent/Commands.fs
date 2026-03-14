@@ -676,7 +676,7 @@ type BattleModule(db:SqliteStorage) =
                         match db.GetRoundTimestamp(roundId) with
                         | Some roundStared ->
                             let dt = DateTime.UtcNow
-                            let diff = ((roundStared + Params.RoundDuration) - dt)
+                            let diff = ((roundStared + BattleParams.RoundDuration()) - dt)
                             if(diff.TotalMinutes > 0.0) then $"approx ~{diff} to the end of the round +2-3 min to process"
                             else "round is likely processing now"
                         | None -> "Something went wrong - unable to get round timestamp"
@@ -694,7 +694,7 @@ type BattleModule(db:SqliteStorage) =
                 EmbedProperties(Title = "Params:")
                     .WithFields([
                         EmbedFieldProperties(Name = "Rounds in battle", Value = $"{Constants.RoundsInBattle}", Inline = true)
-                        EmbedFieldProperties(Name = "Round duration", Value = $"{Params.RoundDuration}", Inline = true)
+                        EmbedFieldProperties(Name = "Round duration", Value = $"{BattleParams.RoundDuration()}", Inline = true)
                         EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
                     ])
             options.Embeds <- [ ep ])

@@ -54,7 +54,6 @@ let TraitsPage () =
         | Trait.Armour     -> getTraitContent Trait.Armour Champ.fromArmour AllEnums.Armours DisplayEnum.Armour
         | Trait.Magic      -> getTraitContent Trait.Magic Champ.fromMagic AllEnums.Magic DisplayEnum.Magic
         | Trait.Extra      -> getTraitContent Trait.Extra Champ.fromExtra AllEnums.Extras DisplayEnum.Extra
-        | _                -> Html.none
 
     Html.div [
         prop.className "traits"
@@ -231,7 +230,7 @@ let HomePage () =
                                 ]
                                 Html.tr [
                                     Html.td [ prop.text "Round duration" ]
-                                    Html.td [ prop.text (string Params.RoundDuration) ]
+                                    Html.td [ prop.text (string (BattleParams.RoundDuration())) ]
                                 ]
                                 Html.tr [
                                     Html.td [ prop.text "XP per level" ]

@@ -57,5 +57,5 @@ type BattleResult = {
 }
 
 [<RequireQualifiedAccess>]
-module Params =
-    let RoundDuration = TimeSpan.FromMinutes(30.0)
+module BattleParams =
+    let RoundDuration() = TimeSpan.FromMinutes(30.0)

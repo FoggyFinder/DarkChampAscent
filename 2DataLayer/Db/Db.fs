@@ -2317,7 +2317,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         |> Db.querySingle(fun r -> r.GetDateTime(0))
                     match dto with
                     | Some lastRoundTimestamp ->
-                        if lastRoundTimestamp.Add(Params.RoundDuration) > DateTime.UtcNow then
+                        if lastRoundTimestamp.Add(BattleParams.RoundDuration()) > DateTime.UtcNow then
                             Error("Not enough time passed since prev. round")
                         else
                             Db.newCommand SQL.FinishRound conn
@@ -2359,7 +2359,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         |> Db.querySingle(fun r -> r.GetDateTime(0))
                     match dto with
                     | Some lastRoundTimestamp ->
-                        if lastRoundTimestamp.Add(Params.RoundDuration) > DateTime.UtcNow then
+                        if lastRoundTimestamp.Add(BattleParams.RoundDuration()) > DateTime.UtcNow then
                             Error("Not enough time passed since prev. round")
                         else
                             Db.newCommand SQL.FinishRound conn

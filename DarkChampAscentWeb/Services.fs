@@ -105,7 +105,7 @@ type RoundStatusService(db:SqliteStorage) =
                             | RoundStatus.Started ->
                                 match rs.RoundStarted with
                                 | Some start ->
-                                    let targetUtc = start + Params.RoundDuration
+                                    let targetUtc = start + BattleParams.RoundDuration()
                                     let isAwaitingPlayers = DateTime.UtcNow > targetUtc
                                     if isAwaitingPlayers then TimeSpan.FromMinutes 1.
                                     else targetUtc - DateTime.UtcNow
