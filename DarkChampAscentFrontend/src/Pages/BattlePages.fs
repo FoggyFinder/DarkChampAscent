@@ -38,7 +38,7 @@ let private Countdown (targetMs: float) =
     ]
 
 [<ReactComponent>]
-let private JoinSection (dto: BattleDTO) =
+let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
     let selChamp, setSelChamp = React.useState None
     let selMove, setSelMove   = React.useState Move.Attack
     let joining, setJoining   = React.useState false
@@ -97,7 +97,7 @@ let private JoinSection (dto: BattleDTO) =
                                     async {
                                         let! r = Api.joinBattle cid selMove
                                         match r with
-                                        | Ok () -> setJoinMsg (Some "Joined!");
+                                        | Ok () -> setJoinMsg (Some "Joined!"); onJoined ()
                                         | Error e -> setJoinMsg (Some ("Error: " + e))
                                         setJoining false
                                     } |> Async.StartImmediate
@@ -243,7 +243,7 @@ let BattlePage () =
                                 if isChampViewVisible then
                                     Html.div [
                                         prop.className "battle-join"
-                                        prop.children [ JoinSection dto ]
+                                        prop.children [ JoinSection dto load ]
                                     ]
                             ]
                         ]
