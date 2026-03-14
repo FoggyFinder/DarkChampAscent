@@ -1,6 +1,7 @@
 ﻿namespace Gen
 open GameLogic.Monsters
 open System.Text.Json.Serialization
+open Types
 
 type TextPayload = {
     [<JsonPropertyName("name")>] Name: string
@@ -10,14 +11,6 @@ type TextPayload = {
 type ImgPayload = {
     Data: byte []
 }
-
-type GenStatus =
-    | RequstCreated = 0 // coins charged from user's balance and added to locked amount
-    | TextRequestReceived = 1 // text request send to API and its id is returned
-    | TextPayloadReceived = 2 // name and description was generated
-    | ImgRequestReceived = 3 // img request sent to API and its id is returned
-    | Failure = 4 // failure
-    | Success = 5
 
 [<RequireQualifiedAccess>]
 type GenPayload =

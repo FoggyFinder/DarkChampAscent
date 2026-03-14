@@ -72,24 +72,6 @@ type ProcessDepositStatus =
 
 open GameLogic.Effects
 
-type ChampUnderEffect(id:int64, name:string, endsAt: int64, effect:Effect, roundsLeft:int64, ipfs:string) =
-    member _.ID = id
-    member _.Name = name
-    member _.EndsAt = endsAt
-    member _.Effect = effect
-    member _.RoundsLeft = roundsLeft
-    member _.IPFS = ipfs
-
-type MonsterUnderEffect(id:int64, name:string, mtype:MonsterType, msubtype:MonsterSubType, endsAt: int64, effect:Effect, roundsLeft:int64, mpic:MonsterImg) =
-    member _.ID = id
-    member _.Name = name
-    member _.MType = mtype
-    member _.MSubType = msubtype
-    member _.EndsAt = endsAt
-    member _.Effect = effect
-    member _.RoundsLeft = roundsLeft
-    member _.Pic = mpic
-
 open Microsoft.Data.Sqlite
 open Donald
 open System
@@ -104,7 +86,8 @@ open Conf
 open DarkChampAscent.Account
 open System.Collections.Concurrent
 
-type SqliteStorage(options:IOptions<DbConfiguration>)=
+type SqliteStorage(options:IOptions<DbConfiguration>) =
+    let jsOptions = JsonFSharpOptions().ToJsonSerializerOptions()
     let updateShop (conn:SqliteConnection) =
         try
             let items = System.Enum.GetValues<ShopItem>() |> Array.map int |> Set.ofArray
@@ -321,16 +304,17 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 	            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 DiscordId INTEGER UNIQUE,
                 CustomUserId INTEGER UNIQUE,
+                PrimaryWallet TEXT UNIQUE,
                 Balance NUMERIC NOT NULL,
                 FOREIGN KEY (CustomUserId)
                 REFERENCES CustomUser (ID),
                 CHECK (Balance >= 0 AND 
-                    (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL)
+                    (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL OR PrimaryWallet IS NOT NULL)
                 )
             );
 
-        INSERT INTO UserNew(DiscordId, CustomUserId, Balance)
-        SELECT DiscordId, NULL, Balance
+        INSERT INTO UserNew(DiscordId, CustomUserId, PrimaryWallet, Balance)
+        SELECT DiscordId, CustomUserId, NULL, Balance
         FROM User;
 
         DROP TABLE User;
@@ -340,13 +324,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         PRAGMA foreign_keys = ON;
         """
 
-        let customUserIdColumnCount = """
+        let primaryWalletColumnCount = """
             SELECT COUNT(*) FROM
             pragma_table_info('User')
-            WHERE name='CustomUserId'
+            WHERE name='PrimaryWallet'
         """
         try
-            Db.newCommand customUserIdColumnCount conn
+            Db.newCommand primaryWalletColumnCount conn
             |> Db.scalar(fun v -> tryUnbox<int64> v)
             |> Option.iter(fun i ->
                 if i = 0L then
@@ -365,9 +349,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.setParams [ "name", SqlType.String monster.Name ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
             if monsterExists |> not then
-                let img = MonsterImg.DefaultFile monster.Monster
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                let bytes = JsonSerializer.SerializeToUtf8Bytes(img, options)
+                let img = Utils.MonsterImg.DefaultFile monster.Monster
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(img, jsOptions)
                 Db.newCommand SQL.CreateMonster conn
                 |> Db.setParams [
                     "name", SqlType.String monster.Name
@@ -446,6 +429,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         |> Db.scalar (fun v -> tryUnbox<int64> v)
                     dbIdOpt |> Option.iter (fun dbId -> dbIdByCustomId.TryAdd(customId, dbId) |> ignore)
                     dbIdOpt
+            | UserId.Web3 uId -> Some (int64 uId)
         with exn ->
             Log.Error(exn, $"getUserIdByUserId: {uId}")
             None
@@ -470,10 +454,21 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Log.Error(exn, $"customUserExists: {customId}")
             false
 
+    let userExistsByWeb3Id(uId: uint64) =
+        try 
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.UserExistsById conn
+            |> Db.setParams [ "id", SqlType.Int64 <| int64 uId ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+        with exn ->
+            Log.Error(exn, $"userExists: {uId}")
+            false
+
     let userExists(uId:UserId) =
         match uId with
         | UserId.Discord discordId -> discordUserExists discordId
         | UserId.Custom inGameId -> customUserExists inGameId
+        | UserId.Web3 uId -> userExistsByWeb3Id uId
 
     let getShopItemIdByItem(shopItem: ShopItem) =
         try 
@@ -506,7 +501,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
 
     let registerNewCustomUser(nickname:string, password:string) =
-        match Validation.validateNickname nickname, Validation.validatePassword password with
+        match Validation.validateNickname nickname, Validation.validateHash password with
         | Ok validNickname, Ok validPassword ->
             try
                 use conn = new SqliteConnection(cs)
@@ -611,25 +606,57 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
     member _.TryRegisterCustomUser(nickname:string, password:string) =
         registerNewCustomUser(nickname, password)
     member _.UpdatePassword(cId:int64, password:string) =
-        match Validation.validatePassword password with
-        | Ok validPassword ->
+        if String.IsNullOrWhiteSpace(password) then None
+        else
             try 
                 use conn = new SqliteConnection(cs)
                 Db.newCommand SQL.UpdatePassword conn
                 |> Db.setParams [
-                    "password", SqlType.String <| validPassword
+                    "password", SqlType.String <| password
                     "cId", SqlType.Int64 cId
                 ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v)
             with exn ->
                 Log.Error(exn, $"UpdatePassword: {cId}")
                 None
-        | Error _ -> None
+    member _.TryRegisterWeb3User(wallet:string) =
+        try
+            use conn = new SqliteConnection(cs)
+            let walletExists =
+                Db.newCommand SQL.PrimaryWalletAlreadyExists conn
+                |> Db.setParams [ "wallet", SqlType.String wallet ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+            if walletExists then Error("Wallet already registered")
+            else
+                Db.batch(fun tn ->
+                    let uIdO =
+                        Db.newCommandForTransaction SQL.AddNewWeb3User tn
+                        |> Db.setParams [ 
+                            "wallet", SqlType.String wallet
+                        ]
+                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    match uIdO with
+                    | Some uId ->
+                        Db.newCommandForTransaction SQL.RegisterNewWeb3Wallet tn
+                        |> Db.setParams [ 
+                            "userId", SqlType.Int64 uId
+                            "wallet", SqlType.String wallet
+                        ]
+                        |> Db.exec
+                        Ok uId
+                    | None ->
+                        tn.Rollback()
+                        Error("Unexpected error")
+                ) conn
+        with exn ->
+            Log.Error(exn, $"registerNewCustomUser: {wallet}")
+            Error("Unexpected error")
     member _.RegisterNewWallet(uId:UserId, wallet:string) =
         let isRegistered =
             match uId with
             | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
-            | UserId.Custom _ -> userExists uId
+            | UserId.Custom _
+            | UserId.Web3 _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
@@ -642,13 +669,14 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         // ToDo: improve
                         let code = System.Random.Shared.NextInt64(10000L, 99999L) |> string
                         use conn = new SqliteConnection(cs)
-                        Db.newCommand SQL.RegisterNewWallet conn
-                        |> Db.setParams [ 
-                            "userId", SqlType.Int64 id
-                            "wallet", SqlType.String wallet
-                            "code", SqlType.String code
-                        ]
-                        |> Db.exec
+                        if uId.IsWeb3 |> not then
+                            Db.newCommand SQL.RegisterNewWallet conn
+                            |> Db.setParams [ 
+                                "userId", SqlType.Int64 id
+                                "wallet", SqlType.String wallet
+                                "code", SqlType.String code
+                            ]
+                            |> Db.exec
                         Ok(code)
                     with exn ->
                         Log.Error(exn, $"RegisterNewWallet: {userId}, {wallet}")
@@ -661,6 +689,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             match uId with
             | UserId.Discord dId -> userExists uId || registerNewDiscordUser dId
             | UserId.Custom _ -> userExists uId
+            | UserId.Web3 _ -> userExists uId
         if isRegistered then
             let isWalletExists = walletExists wallet
             if isWalletExists then
@@ -682,6 +711,61 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             else
                 Error("This wallet either not registered or deactivated")
         else Error("User doesn't exist")
+
+    member _.SaveNonce(wallet: string, nonce: string, expiresAt: DateTime) =
+        try 
+            use conn = new SqliteConnection(cs)
+            let expiresUnix = DateTimeOffset(expiresAt).ToUnixTimeSeconds()
+            conn
+            |> Db.newCommand SQL.SaveNonce
+            |> Db.setParams [ 
+                "wallet", SqlType.String wallet
+                "nonce", SqlType.String nonce
+                "expiresAt", SqlType.Int64 expiresUnix 
+            ]
+            |> Db.exec
+            Ok(())
+        with exn ->
+            Log.Error(exn, "SaveNonce")
+            Error("Unexpected error")
+
+    member _.GetNonce(wallet: string) : (string * DateTime) option =
+        try 
+            use conn = new SqliteConnection(cs)
+            conn
+            |> Db.newCommand SQL.GetNonceByWallet
+            |> Db.setParams [ "wallet", SqlType.String wallet ]
+            |> Db.querySingle (fun rd ->
+                rd.ReadString "Nonce",
+                DateTimeOffset.FromUnixTimeSeconds(rd.ReadInt64 "ExpiresAt").UtcDateTime)
+        with exn ->
+            Log.Error(exn, "GetNonce")
+            None
+
+    member _.DeleteNonce(wallet: string) =
+        try 
+            use conn = new SqliteConnection(cs)
+            conn
+            |> Db.newCommand SQL.DeleteNonce
+            |> Db.setParams [ "wallet", SqlType.String wallet ]
+            |> Db.exec
+            Ok(())
+        with exn ->
+            Log.Error(exn, "DeleteNonce")
+            Error("Unexpected error")
+
+    member _.PurgeExpiredNonces() =
+        try
+            let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            use conn = new SqliteConnection(cs)
+            conn
+            |> Db.newCommand "DELETE FROM Web3Nonces WHERE ExpiresAt < @now"
+            |> Db.setParams [ "now", SqlType.Int64 now ]
+            |> Db.exec
+            Ok(())
+        with exn ->
+            Log.Error(exn, "PurgeExpiredNonces")
+            Error("Unexpected error")
 
     member _.WalletIsConfirmed(wallet:string) =
         try 
@@ -763,14 +847,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.setParams [ 
                     "userId", SqlType.Int64 id
                 ]
-                |> Db.query(fun r ->
-                    {|
-                        Wallet = r.GetString(0)
-                        IsConfirmed = r.GetBoolean(1)
-                        IsActive = r.GetBoolean(2)
-                        Code = r.GetString(3)
-                    |}
-                )
+                |> Db.query(fun r -> Wallet(r.GetString(0), r.GetBoolean(1), r.GetString(3), r.GetBoolean(2)))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetUserWallets: {id}")
@@ -1209,7 +1286,22 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             with exn ->
                 Log.Error(exn, $"GetUserMonstersCount: {uId}")
                 None
-        | None -> None  
+        | None -> None
+
+    member _.GetUserRequestsCount(uId: UserId) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetUserRequestsCount conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 <| int64 userId
+                ]
+                |> Db.scalar (fun v -> tryUnbox<int64> v)
+            with exn ->
+                Log.Error(exn, $"GetUserRequestsCount: {uId}")
+                None
+        | None -> None
 
     member _.UpdateCfgForChamp(champAssetId:uint64, ipfs:string, t:Traits) =
         try
@@ -1279,14 +1371,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     "userId", SqlType.Int64 userId
                 ]
                 |> Db.query (fun r ->
-                   {|
-                        ID = r.GetInt64(0)
-                        Name = r.GetString(1)
-                        AssetId = r.GetInt64(2)
-                        Ipfs = r.GetString(3)
-                        Balance = Math.Round(r.GetDecimal(4), 6)
-                   |}
-                )
+                    ChampFullInfo(uint64 <| r.GetInt64(0), uint64 <| r.GetInt64(2),
+                        r.GetString(1), r.GetString(3), Math.Round(r.GetDecimal(4), 6)))
                 |> Some
             with exn ->
                 Log.Error(exn, $"GetUserChamps {uId}")
@@ -1324,8 +1410,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.query (fun r ->
                    uint64 <| r.GetInt64(0), 
                    r.GetString(1),
-                   // TODO: get ipfs
-                   ""
+                   r.GetString(2)
                 )
                 |> Ok
             with exn ->
@@ -1367,7 +1452,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
     member _.GetMonstersUnderEffect(roundId: uint64) =
         try
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonstersUnderEffect  conn
             |> Db.setParams [
@@ -1378,7 +1462,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 MonsterUnderEffect(r.GetInt64(0), r.GetString(1),
                     enum<MonsterType> <| r.GetInt32(2), enum<MonsterSubType> <| r.GetInt32(3),
                     endsAt, r.GetInt32(6) |> enum<Effect>, endsAt - int64 roundId,
-                    System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 7, options))
+                    JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 7, jsOptions))
             )
             |> Ok
         with exn ->
@@ -2233,7 +2317,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         |> Db.querySingle(fun r -> r.GetDateTime(0))
                     match dto with
                     | Some lastRoundTimestamp ->
-                        if lastRoundTimestamp.Add(Battle.RoundDuration) > DateTime.UtcNow then
+                        if lastRoundTimestamp.Add(Params.RoundDuration) > DateTime.UtcNow then
                             Error("Not enough time passed since prev. round")
                         else
                             Db.newCommand SQL.FinishRound conn
@@ -2275,7 +2359,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         |> Db.querySingle(fun r -> r.GetDateTime(0))
                     match dto with
                     | Some lastRoundTimestamp ->
-                        if lastRoundTimestamp.Add(Battle.RoundDuration) > DateTime.UtcNow then
+                        if lastRoundTimestamp.Add(Params.RoundDuration) > DateTime.UtcNow then
                             Error("Not enough time passed since prev. round")
                         else
                             Db.newCommand SQL.FinishRound conn
@@ -2764,8 +2848,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
             // ToDo: handle case when rewards is 0
             let updateChampMoves (tn:Data.IDbTransaction) (champId: uint64) (pm:PerformedMove) (xpEarned: uint64) (rewards: decimal) =
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                let bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pm, options)
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(pm, jsOptions)
                 tn
                 |> Db.newCommandForTransaction SQL.UpdateChampAction
                 |> Db.setParams [
@@ -2877,8 +2960,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             let performMonsterAction (tn:Data.IDbTransaction) =
                 match bresult.MonsterPM with
                 | Some pm ->
-                    let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                    let bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pm, options)
+                    let bytes = JsonSerializer.SerializeToUtf8Bytes(pm, jsOptions)
                     tn
                     |> Db.newCommandForTransaction SQL.AddMonsterAction
                     |> Db.setParams [
@@ -2892,8 +2974,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 | None ->
                     bresult.MonsterActions
                     |> Map.iter(fun champId (pm, xp) ->
-                        let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                        let bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pm, options)
+                        let bytes = JsonSerializer.SerializeToUtf8Bytes(pm, jsOptions)
                         tn
                         |> Db.newCommandForTransaction SQL.AddMonsterAction
                         |> Db.setParams [
@@ -2956,14 +3037,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetChampsLeaderBoard10 conn
             |> Db.query(fun r ->
-                {|
-                    Name = r.GetString(0)
-                    AssetId = r.GetInt64(1)
-                    IPFS = r.GetString(2)
-                    Xp = r.GetInt64(3)
-                    Id = r.GetInt64(4)
-                |}
-            )
+                ChampShortInfo(uint64 <| r.GetInt64(4), r.GetString(0), 
+                    r.GetString(2), uint64 <| r.GetInt64(3)))
             |> Ok
         with exn ->
             Log.Error(exn, "GetChampLeaderboard")
@@ -2971,14 +3046,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
     member _.GetMonsterLeaderboard() =
         try
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterLeaderBoard10 conn
             |> Db.query(fun r ->
                 MonsterShortInfo(
                    uint64 <| r.GetInt64(0), r.GetString(1),
                    enum<MonsterType> <| r.GetInt32(2), enum<MonsterSubType> <| r.GetInt32(3),
-                   System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, options),
+                   JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, jsOptions),
                    uint64 <| r.GetInt64(5)
                 ))
             |> Ok
@@ -3027,8 +3101,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
             Error("Unexpected error")
 
     member _.GetMonsterById(monsterId:int64) =
-        try 
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
+        try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterStats conn
             |> Db.setParams [
@@ -3038,7 +3111,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 XP = uint64 <| r.GetInt64(0)
                 Name = r.GetString(1)
                 Description = r.GetString(2)
-                Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 3, options)
+                Picture = JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 3, jsOptions)
                 Stat = {
 
                     Health = r.GetInt64(4)
@@ -3186,8 +3259,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 use conn = new SqliteConnection(cs)
                 let prompt = Prompt.createMonsterNameDesc mtype msubtype
                 let payload = GenPayload.TextReqCreated prompt
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                let json = JsonSerializer.Serialize(payload, options)
+                let json = JsonSerializer.Serialize(payload, jsOptions)
             
                 let balance =
                     Db.newCommand SQL.GetUserBalance conn
@@ -3242,7 +3314,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
     member _.GetAllUnfinishedGenRequests() =
         try
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.SelectUnfinishedRequests conn
             |> Db.query(fun r ->
@@ -3251,7 +3322,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                         ID = r.GetInt64(0)
                         UserId = r.GetInt64(1)
                         Status = r.GetInt32(2) |> enum<GenStatus>
-                        Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), options)
+                        Payload = JsonSerializer.Deserialize<GenPayload>(r.GetString(3), jsOptions)
                         Cost = r.GetDecimal(4)
                         MType = r.GetInt32(5) |> enum<MonsterType>
                         MSubType = r.GetInt32(6) |> enum<MonsterSubType>
@@ -3268,8 +3339,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
 
     member _.UpdateGenRequest(rId:int64, payload:GenPayload, userId:int64, cost:decimal) =
         try
-            let options = JsonFSharpOptions().ToJsonSerializerOptions()
-            let json = JsonSerializer.Serialize(payload, options)
+            let json = JsonSerializer.Serialize(payload, jsOptions)
             let status = payload.Status
             let isFinished = payload.IsFinished
             use conn = new SqliteConnection(cs)
@@ -3326,8 +3396,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
         try
             use conn = new SqliteConnection(cs)
             Db.batch (fun tn ->
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
-                let bytes = JsonSerializer.SerializeToUtf8Bytes(mi, options)
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(mi, jsOptions)
 
                 let isMonsterNameExists =
                     Db.newCommandForTransaction SQL.IsMonsterNameExists tn
@@ -3399,7 +3468,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                     
                     // - change status to success and mark as finished
                     let payload = GenPayload.Success
-                    let json = JsonSerializer.Serialize(payload, options)
+                    let json = JsonSerializer.Serialize(payload, jsOptions)
                     let status = payload.Status
                     Db.newCommandForTransaction SQL.UpdateGenRequest tn
                     |> Db.setParams [
@@ -3496,7 +3565,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.setParams [
                     "userId", SqlType.Int64 userId
                 ]
-                |> Db.query (fun v -> v.GetInt64(0), v.GetDateTime(1), v.GetInt32(2) |> enum<GenStatus>)
+                |> Db.query (fun v -> GenRequest(v.GetInt64(0), v.GetDateTime(1), v.GetInt32(2) |> enum<GenStatus>))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetPendingUserRequests: {userId}")
@@ -3506,8 +3575,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
      member _.GetUserMonsters(uId: UserId) =
         match getUserIdByUserId uId with
         | Some userId ->
-            try 
-                let options = JsonFSharpOptions().ToJsonSerializerOptions()
+            try
                 use conn = new SqliteConnection(cs)
                 Db.newCommand SQL.GetUserMonsters conn
                 |> Db.setParams [
@@ -3516,7 +3584,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>)=
                 |> Db.query (fun v ->
                     MonsterShortInfo(uint64 <| v.GetInt64(0), v.GetString(1), 
                         v.GetInt32(2) |> enum<MonsterType>, v.GetInt32(3) |> enum<MonsterSubType>,
-                        System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData v 4, options), 
+                        JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData v 4, jsOptions), 
                         uint64 <| v.GetInt64(5)))
                 |> Ok
             with exn ->

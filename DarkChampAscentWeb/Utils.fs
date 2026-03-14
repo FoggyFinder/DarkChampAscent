@@ -1,139 +1,127 @@
-﻿module RewardsChartHelpers
+module Helpers
 
-open Falco.Markup
-open System.Globalization
+open Microsoft.AspNetCore.Http
 
-let private escapeJs (s: string) =
-  s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "")
+type IFormCollection with
+    member x.tryGetFormValue (key: string) =
+        match x.TryGetValue key with
+        | true, s -> Some s
+        | false, _ -> None
 
-let private toJsArrayOfStrings (xs: string list) =
-  "[" + (xs |> List.map (fun s -> sprintf "\"%s\"" (escapeJs s)) |> String.concat ",") + "]"
+[<RequireQualifiedAccess>]
+module Parser =
+    open System
+    let enumFromIntAsStr<'a when 'a: (new: unit -> 'a) and 'a:struct and 'a:> Enum and 'a:enum<int32>>(s:string) =
+        match Int32.TryParse s with
+        | true, i ->
+            let v = enum<'a> i
+            if Enum.IsDefined<'a> v then
+                v |> Ok
+            else Error("Value is out of range")
+        | false, _ -> Error("Not integer value")
 
-let private toJsArrayOfNumbers (xs: float list) =
-  "[" + (xs |> List.map (fun n -> n.ToString(CultureInfo.InvariantCulture)) |> String.concat ",") + "]"
+[<RequireQualifiedAccess>]
+module FileUtils =
+    open GameLogic.Monsters
+    open System.IO
+    let private monstrsDir = "monstrs"
+    let private wwwroot = "wwwroot"
+    
+    // TODO: add cacher
+    let mapToLocalImg (mpic:MonsterImg) =
 
-let chartJsLibScripts =
-  [
-    Elem.script [ Attr.src "https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js" ] []
-    Elem.script [ Attr.src "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js" ] []
-  ]
+        let imgDir = Path.Combine(wwwroot, monstrsDir)
 
-/// Renders a canvas wrapped in a sized container. Use `fixedSize = Some(widthPx,heightPx)` for fixed-mode,
-/// or `fixedSize = None` and `wrapperHeightPx` to use responsive wrapper mode (Chart fills wrapper).
-let pieCanvasWithWrapper (canvasId: string) (wrapperWidthCss: string) (wrapperHeightPx: int) (fixedSize: (int*int) option) =
-  // wrapper div ensures Chart.js measures a stable parent
-  let wrapperStyle = sprintf "max-width:%s; height:%ipx; margin:0 auto; position:relative;" wrapperWidthCss wrapperHeightPx
-  let canvasAttrs =
-    match fixedSize with
-    | Some (w, h) ->
-        // set width/height attributes (pixel) and allow Chart to run in non-responsive fixed mode
-        [ Attr.id canvasId; Attr.create "width" (string w); Attr.create "height" (string h); Attr.class' "chart-canvas" ]
-    | None ->
-        // responsive canvas that will be sized by the wrapper
-        [ Attr.id canvasId; Attr.style "width:100%; height:100%; display:block;"; Attr.class' "chart-canvas" ]
-  Elem.div [ Attr.style wrapperStyle; Attr.class' "chart-wrapper" ] [
-    Elem.canvas canvasAttrs []
-  ]
+        if Directory.Exists(imgDir) |> not then
+            Directory.CreateDirectory(imgDir) |> ignore
 
-let pieInitScript (canvasId: string) (labels: string list) (data: float list) (colors: string list) (includeDataLabels: bool) (fixedMode: bool) =
-  let labelsJs = toJsArrayOfStrings labels
-  let dataJs = toJsArrayOfNumbers data
-  let colorsJs = toJsArrayOfStrings colors
+        let fullpath = (match mpic with | MonsterImg.File fn -> fn)
 
-  let datalabelsConfig =
-    if includeDataLabels then
-      """
-        datalabels: {
-          color: '#ffffff',
-          formatter: (value, ctx) => {
-            const sum = ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
-            return Math.round(value / sum * 100) + ' %';
-          },
-          anchor: 'end',
-          align: 'start',
-          offset: 10,
-          font: { weight: '700' },
-          clamp: true
-        },
-      """
-    else ""
+        let filename =
+            Path.Combine(monstrsDir, Path.GetFileName(fullpath))
 
-  // If fixedMode = true we set responsive:false, otherwise responsive:true + maintainAspectRatio:false
-  let responsivePart =
-    if fixedMode then "responsive: false," else "responsive: true, maintainAspectRatio: false,"
+        let destFileName = Path.Combine(wwwroot, filename)
+        if File.Exists destFileName |> not then
+            try
+                File.Copy(fullpath, destFileName)
+            with
+            | _ -> () // Ignore if source file doesn't exist
 
-  let script =
-    sprintf """
-(function(){
-  const labels = %s;
-  const data = %s;
-  const colors = %s;
-  const canvas = document.getElementById('%s');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
+        if File.Exists destFileName then filename else ""
+        |> MonsterImg.File
 
-  const config = {
-    type: 'pie',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: data,
-        backgroundColor: colors,
-        borderColor: '#222',
-        borderWidth: 2
-      }]
-    },
-    options: {
-      %s
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            color: '#fff',
-            usePointStyle: true,
-            boxWidth: 12,
-            padding: 12
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const value = context.raw;
-              const sum = context.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
-              const pct = (value / sum * 100).toFixed(1) + '%%';
-              return context.label + ': ' + value + ' (' + pct + ')';
-            }
-          }
-        },
-        %s
-      }
-    }
-  };
+[<RequireQualifiedAccess>]
+module RateLimiting =
+    open System
+    open System.Collections.Concurrent
 
-  if (window['_chart_%s']) {
-    try { window['_chart_%s'].destroy(); } catch(e) {}
-  }
+    let private attempts = ConcurrentDictionary<string, DateTime list>()
 
-  window['_chart_%s'] = new Chart(ctx, config);
-})();
-""" 
-  let sc = script labelsJs dataJs colorsJs canvasId responsivePart datalabelsConfig canvasId canvasId canvasId
+    let checkRateLimit (key: string) (maxAttempts: int) (window: TimeSpan) : bool =
+        let now    = DateTime.UtcNow
+        let cutoff = now - window
+        let newAttempts =
+            attempts.AddOrUpdate(
+                key,
+                (fun _ -> [now]),
+                (fun _ old ->
+                    let recent = old |> List.filter (fun t -> t > cutoff)
+                    if recent.Length >= maxAttempts then recent
+                    else now :: recent))
+        newAttempts.Length < maxAttempts
 
-  Elem.script [] [ Text.raw sc ]
 
-/// High-level helper: wrapperWidthCss like "700px" or "100%". If you want fixed pixel canvas specify fixedCanvas = Some(widthPx,heightPx).
-let renderPieChart
-    (canvasId: string)
-    (labels: string list)
-    (data: float list)
-    (colors: string list)
-    (wrapperWidthCss: string)
-    (wrapperHeightPx: int)
-    (includeDataLabels: bool)
-    (includeLibs: bool)
-    (fixedCanvas: (int*int) option) =
-    [
-        if includeLibs then yield! chartJsLibScripts
-        pieCanvasWithWrapper canvasId wrapperWidthCss wrapperHeightPx fixedCanvas
-        pieInitScript canvasId labels data colors includeDataLabels fixedCanvas.IsSome
-    ]
+[<RequireQualifiedAccess>]
+module Cookie =
+    [<Literal>]
+    let Name = "DiscordAuth"
+
+[<RequireQualifiedAccess>]
+module AuthenticationHandler =
+    open DarkChampAscent.Account
+    open System.Security.Claims
+    open Microsoft.AspNetCore.Authentication
+    open System
+
+    let [<Literal>] Custom = "Custom"
+    let [<Literal>] Web3 = "Web3"
+
+    let private createCustomClaims (user: CustomUser) : Claim list =
+        [ Claim(ClaimTypes.NameIdentifier, user.CustomId.ToString())
+          Claim(ClaimTypes.Name, user.Nickname)
+          Claim(ClaimTypes.AuthenticationMethod, Custom) ]
+
+    let private createCustomPrincipal (user: CustomUser) (authScheme: string) : ClaimsPrincipal =
+        let identity = ClaimsIdentity(createCustomClaims user, authScheme)
+        ClaimsPrincipal(identity)
+
+    let createCustomTicket (user: CustomUser) (authScheme: string) : AuthenticationTicket =
+        let principal  = createCustomPrincipal user authScheme
+        let properties = AuthenticationProperties(IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7.0))
+        AuthenticationTicket(principal, properties, authScheme)
+
+    let private createWeb3Claims (user: Web3User) : Claim list =
+        [ Claim(ClaimTypes.NameIdentifier, user.UserId.ToString())
+          Claim(ClaimTypes.Name, user.Wallet)
+          Claim(ClaimTypes.AuthenticationMethod, Web3) ]
+
+    let private createWeb3Principal (user: Web3User) (authScheme: string) : ClaimsPrincipal =
+        let identity = ClaimsIdentity(createWeb3Claims user, authScheme)
+        ClaimsPrincipal(identity)
+
+    let createWeb3Ticket (user: Web3User) (authScheme: string) : AuthenticationTicket =
+        let principal  = createWeb3Principal user authScheme
+        let properties = AuthenticationProperties(IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7.0))
+        AuthenticationTicket(principal, properties, authScheme)
+
+[<RequireQualifiedAccess>]
+module BlockchainUtils =
+    let getDepositNote amount = $"deposit:{amount}"
+    let createDepositTx (sender:string) (amount:decimal) =
+        Blockchain.getAssetTransferTransactionTxB64(
+            sender, 
+            Blockchain.DarkCoinAssetId,
+            Blockchain.DarkChampAscent,
+            Blockchain.toLong(amount, Blockchain.Algo6Decimals),
+            getDepositNote amount
+        )

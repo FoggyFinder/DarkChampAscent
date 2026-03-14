@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\0GameLogic\0GameLogic.fsproj" />
+    <ProjectReference Include="..\0GameLogic\02GameBattle.fsproj" />
   </ItemGroup>
 
 </Project>

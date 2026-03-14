@@ -5,7 +5,7 @@ VisualStudioVersion = 18.0.11222.15
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscent", "DarkChampAscent\DarkChampAscent.fsproj", "{3113BF1C-A22D-479F-A916-A33538C6DD3A}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "0GameLogic", "0GameLogic\0GameLogic.fsproj", "{FB58FB49-068E-41E4-BDC6-D81E5A2E0DC5}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "02GameBattle", "0GameLogic\02GameBattle.fsproj", "{FB58FB49-068E-41E4-BDC6-D81E5A2E0DC5}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "1GameLogicTests", "1GameLogicTests\1GameLogicTests.fsproj", "{B51BBDCB-6D1C-4B45-AE5F-FA482F89277F}"
 EndProject
@@ -21,6 +21,12 @@ EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "3Discord", "3Discord\3Discord.fsproj", "{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscentWeb", "DarkChampAscentWeb\DarkChampAscentWeb.fsproj", "{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscentFrontend", "DarkChampAscentFrontend\DarkChampAscentFrontend.fsproj", "{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "20DTO", "20DTO\20DTO.fsproj", "{D176E38C-B6FB-48E3-BF61-0B85F5B83ACC}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "01GameLogic", "01GameLogic\01GameLogic.fsproj", "{733C900D-68EF-4050-B1B4-950A9F7D2D84}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -52,6 +58,18 @@ Global
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D176E38C-B6FB-48E3-BF61-0B85F5B83ACC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D176E38C-B6FB-48E3-BF61-0B85F5B83ACC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D176E38C-B6FB-48E3-BF61-0B85F5B83ACC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D176E38C-B6FB-48E3-BF61-0B85F5B83ACC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{733C900D-68EF-4050-B1B4-950A9F7D2D84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{733C900D-68EF-4050-B1B4-950A9F7D2D84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{733C900D-68EF-4050-B1B4-950A9F7D2D84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{733C900D-68EF-4050-B1B4-950A9F7D2D84}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

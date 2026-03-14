@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<Content Include="package.json" />
+	<None Include="index.html" />
+	<Compile Include="src/Utils/Charts.fs" />
+	<Compile Include="src/UseWallet.fs" />
+	<Compile Include="src/Decoders.fs" />
+    <Compile Include="src/Types.fs" />
+    <Compile Include="src/Api.fs" />
+    <Compile Include="src/Components.fs" />
+    <Compile Include="src/Pages/LoginPages.fs" />
+    <Compile Include="src/Pages/NonAuthPages.fs" />
+    <Compile Include="src/Pages/DetailPages.fs" />
+    <Compile Include="src/Pages/UserPages.fs" />
+    <Compile Include="src/Pages/AboutPages.fs" />
+    <Compile Include="src/Pages/LeaderboardPages.fs" />
+    <Compile Include="src/Pages/BattlePages.fs" />
+    <Compile Include="src/App.fs" />
+  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Fable.Core" Version="4.5.0" />
+		<PackageReference Include="Fable.Browser.Dom" Version="2.20.0" />
+		<PackageReference Include="Fable.SimpleHttp" Version="3.6.0" />
+		<PackageReference Include="Feliz" Version="3.1.1" />
+		<PackageReference Include="Fable.SimpleJson" Version="3.*" />
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\20DTO\20DTO.fsproj" />
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="src/Utils/" />
+	</ItemGroup>
+</Project>

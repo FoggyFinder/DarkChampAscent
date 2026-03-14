@@ -19,6 +19,9 @@ let searchApi = SearchApi(httpClient)
 let algodApiInstance = DefaultApi(fullHttpClient)
 
 let [<Literal>] DarkCoinChampsCreator = "L6VIKAHGH4D7XNH3CYCWKWWOHYPS3WYQM6HMIPNBVSYZWPNQ6OTS5VERQY"
+let [<Literal>] DarkChampAscent    = "SZYECJF52SCJYMDQG4M3RGGLDTQPEEPTD36SW4PABEGZ6MCA4KH67QKRAU"
+let [<Literal>] DarkChampAscentNFD = "darkchampascent.algo"
+
 let [<Literal>] DarkCoinAssetId = 1088771340UL
 let [<Literal>] Algo6Decimals = 1000000M
 
@@ -248,4 +251,105 @@ let sendTx(keys:string, receiver:string, amount:uint64, assetId:uint64, note:str
             return TxStatus.Error(exn)
     }
 
+let getTxB64(wallet:string, message:string) =
+    task {
+        let! transParams = algodApiInstance.TransactionParamsAsync()
+        let txn =
+            PaymentTransaction.GetPaymentTransactionWithSuggestedFee(
+                from              = Address(wallet),
+                ``to``            = Address(wallet),
+                amount            = 0UL,
+                message           = message,
+                suggestedFeePerByte = 0UL,
+                lastRound         = transParams.LastRound + 1000UL,
+                genesisId         = transParams.GenesisId,
+                genesishashb64    = Convert.ToBase64String(transParams.GenesisHash)
+            )
+        
+        return Convert.ToBase64String(Encoder.EncodeToMsgPackOrdered txn)
+    }
+
+let getAssetTransferTransactionTxB64(sender:string, assetId:uint64, receiver:string, amount:uint64, note:string) =
+    task {
+        let! transParams = algodApiInstance.TransactionParamsAsync()
+        let txn =
+            AssetTransferTransaction(
+                XferAsset = assetId,
+                AssetReceiver = Address(receiver),
+                AssetAmount = amount,
+                Fee = transParams.MinFee,
+                FirstValid = transParams.LastRound,
+                LastValid = transParams.LastRound + 1000UL,
+                GenesisHash = Digest(transParams.GenesisHash),
+                GenesisId = transParams.GenesisId,
+                Sender = Address(sender),
+                Note = System.Text.Encoding.UTF8.GetBytes(note))
+        
+        return Convert.ToBase64String(Encoder.EncodeToMsgPackOrdered txn)
+    }
+
 let isValidAddress = Address.IsValid
+
+let sendTX64(signedTxnB64: string) =
+    task {
+        let signedTxnBytes = Convert.FromBase64String(signedTxnB64)
+        let signedTx      = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
+
+        let! id = Utils.SubmitTransaction(algodApiInstance, signedTx)
+        try
+            let! resp = Utils.WaitTransactionToComplete(algodApiInstance, id.Txid, 12UL)
+            return TxStatus.Confirmed(id.Txid, resp.ConfirmedRound)
+        with inner ->
+            if inner.Message.StartsWith("Transaction not confirmed") then
+                return TxStatus.Unconfirmed id.Txid
+            else
+                return TxStatus.Error <| Exception($"Unable to confirm {id.Txid}", inner)
+    }
+
+let decodeTX64(signedTxnB64: string) =
+    task {
+        let signedTxnBytes = Convert.FromBase64String(signedTxnB64)
+        let signedTx      = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
+        let note = System.Text.Encoding.UTF8.GetString signedTx.Tx.Note
+        return signedTx.Tx.Sender.ToString(), note
+    }
+
+open Org.BouncyCastle.Crypto.Parameters
+open Org.BouncyCastle.Crypto.Signers
+
+let verifyAlgorandTxnSignature (wallet: string) (signedTxnB64: string) (txnnote: string) : bool =
+    try
+        let signedTxnBytes = Convert.FromBase64String(signedTxnB64)
+        let signedTxn      = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
+        let txn            = signedTxn.Tx
+
+        let note = System.Text.Encoding.UTF8.GetString(txn.Note)
+        if note = txnnote then
+            let pubKeyBytes =
+                // re-keyed wallet case
+                if signedTxn.AuthAddr <> null then
+                    signedTxn.AuthAddr.Bytes
+                else
+                    Address(wallet).Bytes
+            let sigBytes    = signedTxn.Sig.Bytes
+            let prefix      = System.Text.Encoding.UTF8.GetBytes "TX"
+
+            let verify (msgBytes: byte[]) =
+                let pubKey = Ed25519PublicKeyParameters(pubKeyBytes, 0)
+                let signer = Ed25519Signer()
+                signer.Init(false, pubKey)
+                signer.BlockUpdate(msgBytes, 0, msgBytes.Length)
+                signer.VerifySignature(sigBytes)
+
+            let msgOrdered   = Array.concat [ prefix; Encoder.EncodeToMsgPackOrdered txn ]
+            let msgUnordered = Array.concat [ prefix; Encoder.EncodeToMsgPackNoOrder txn ]
+
+            verify msgOrdered || verify msgUnordered
+        else
+            false
+    with _ ->
+        false
+
+// TODO: pass 0, 6, 9 instead
+let toLong (d:decimal, decimals:decimal) =
+    uint64 (d * decimals)

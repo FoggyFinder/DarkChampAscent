@@ -29,7 +29,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\0GameLogic\0GameLogic.fsproj" />
+	  <ProjectReference Include="..\0GameLogic\02GameBattle.fsproj" />
 	  <ProjectReference Include="..\2DataLayer\2DataLayer.fsproj" />
 	  <ProjectReference Include="..\3Discord\3Discord.fsproj" />
 	</ItemGroup>

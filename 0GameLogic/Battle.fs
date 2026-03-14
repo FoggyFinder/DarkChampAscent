@@ -5,63 +5,95 @@ open GameLogic.Shop
 open GameLogic.Effects
 open GameLogic.Champs
 open GameLogic.Monsters
-open GameLogic.Rewards
 
-[<RequireQualifiedAccess>]
-type BattleStatus =
-    | Started = 0
-    | Processing = 1
-    | Finished = 2
-
-[<RequireQualifiedAccess>]
-type RoundStatus =
-    | Started = 0
-    | Processing = 1
-    | Finished = 2
-
-type RoundActionRecord = {
-    Move: Move
-    ChampId: uint64
-}
-
-type RoundAction = {
-    Move: Move
-    Timestamp: DateTime
-    ChampId: uint64
-    ChampName: string
-    Stat: Stat
-    ChampLvl: uint64
-}
-
-// effect is something that already took into account boosts and other effects
-type RoundEffect = {
-    StartRoundId: int64
-    Item : Effect
-    Duration : int
-    Val : uint64 option
-}
-
-type BattleResult = {
-    RoundId: uint64
-    BattleId: uint64
-    MonsterChar: MonsterChar
-
-    Rewards: RoundRewardSplit
-            
-    ChampsMoveAndXp: Map<uint64, PerformedMove * uint64>
-    ChampsFinalStat: Map<uint64, Stat>
-    DeadChamps: uint64 list
-
-    MonsterDefeater: uint64 option
-    MonsterPM: PerformedMove option
-    MonsterActions: Map<uint64, PerformedMove * uint64>
-}
 
 [<RequireQualifiedAccess>]
 module Battle =
     open MathNet.Numerics.Distributions
-    let RoundDuration = TimeSpan.FromMinutes(30.0)
     
+    let selectMonsterAction (mc:MonsterChar) =
+        let monster = mc.Monster
+        let stat = mc.Stat
+        let v = System.Random.Shared.NextInt64(101L)
+        match monster.MType with
+        | MonsterType.Zombie ->
+            match monster.MSubType, stat.Magic > 0L with
+            | MonsterSubType.Fire, true ->
+                if v <= 80L then Move.Attack
+                elif v <= 87L then Move.Shield
+                elif v <= 93L then Move.MagicAttack
+                elif v <= 96L then Move.MagicShield
+                elif v <= 98L then Move.Meditate
+                else Move.Heal                 
+            | MonsterSubType.Frost, true ->
+                if v <= 70L then Move.Attack
+                elif v <= 85L then Move.Shield
+                elif v <= 95L then Move.MagicAttack
+                elif v <= 97L then Move.MagicShield
+                elif v <= 98L then Move.Meditate
+                else Move.Heal
+            | MonsterSubType.None, _
+            | MonsterSubType.Fire, false
+            | MonsterSubType.Frost, false ->
+                if v <= 90L then Move.Attack
+                else Move.Shield
+        | MonsterType.Demon ->
+            if stat.Magic <= 0L then
+                if v <= 60L then Move.Attack
+                elif v <= 85L then Move.Meditate
+                else Move.Shield
+            else
+                match monster.MSubType with
+                | MonsterSubType.None ->
+                    if v <= 65L then Move.Attack
+                    elif v <= 80L then Move.Shield
+                    elif v <= 85L then Move.MagicAttack
+                    elif v <= 90L then Move.MagicShield
+                    elif v <= 95L then Move.Meditate
+                    else Move.Heal                       
+                | MonsterSubType.Fire ->
+                    if v <= 50L then Move.Attack
+                    elif v <= 55L then Move.Shield
+                    elif v <= 75L then Move.MagicAttack
+                    elif v <= 85L then Move.MagicShield
+                    elif v <= 97L then Move.Meditate
+                    else Move.Heal
+                | MonsterSubType.Frost ->
+                    if v <= 60L then Move.Attack
+                    elif v <= 65L then Move.Shield
+                    elif v <= 80L then Move.MagicAttack
+                    elif v <= 90L then Move.MagicShield
+                    elif v <= 95L then Move.Meditate
+                    else Move.Heal
+        | MonsterType.Necromancer ->
+            if stat.Magic = 0L then
+                if v <= 30L then Move.Attack
+                elif v < 90L then Move.Heal
+                else Move.Shield
+            else
+                match monster.MSubType with
+                | MonsterSubType.None ->
+                    if v <= 25L then Move.Attack
+                    elif v <= 26L then Move.Shield
+                    elif v <= 76L then Move.MagicAttack
+                    elif v <= 80L then Move.MagicShield
+                    elif v <= 95L then Move.Meditate
+                    else Move.Heal                     
+                | MonsterSubType.Fire ->
+                    if v <= 20L then Move.Attack
+                    elif v <= 22L then Move.Shield
+                    elif v <= 62L then Move.MagicAttack
+                    elif v <= 67L then Move.MagicShield
+                    elif v <= 87L then Move.Meditate
+                    else Move.Heal
+                | MonsterSubType.Frost ->
+                    if v <= 22L then Move.Attack
+                    elif v <= 23L then Move.Shield
+                    elif v <= 66L then Move.MagicAttack
+                    elif v <= 75L then Move.MagicShield
+                    elif v <= 88L then Move.Meditate
+                    else Move.Heal
+
     let processEffect (stat:Stat) (re:RoundEffect) (currenrRound:int64) =
         match re.Item with
         | Effect.Death -> stat
@@ -249,7 +281,7 @@ module Battle =
     let fight(roundId: uint64, battleId: uint64, roundMoves: RoundAction list,
             boosts:Map<uint64, RoundBoost list>, lvlsStat: Map<uint64, Stat>,
             monster:MonsterChar, rewards:decimal) =
-        let monsterAction = Monster.selectMonsterAction monster
+        let monsterAction = selectMonsterAction monster
         let monsterLvl = Levels.getLvlByXp monster.XP
         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.Monster.MType, monster.Monster.MSubType, monsterLvl)
             

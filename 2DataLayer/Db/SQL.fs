@@ -14,13 +14,25 @@ module internal SQL =
 	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             DiscordId INTEGER UNIQUE,
             CustomUserId INTEGER UNIQUE,
+            PrimaryWallet TEXT UNIQUE,
             Balance NUMERIC NOT NULL,
             FOREIGN KEY (CustomUserId)
             REFERENCES CustomUser (ID),
             CHECK (Balance >= 0 AND 
-                (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL)
+                (CustomUserId IS NOT NULL 
+                  OR DiscordId IS NOT NULL
+                  OR PrimaryWallet IS NOT NULL
+                )
            )
         );
+
+        CREATE TABLE IF NOT EXISTS Web3Nonces (
+            Wallet      TEXT        NOT NULL PRIMARY KEY,
+            Nonce       TEXT        NOT NULL,
+            ExpiresAt  INTEGER     NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_Web3Nonces_ExpiresAt ON Web3Nonces (ExpiresAt);
 
         CREATE TABLE IF NOT EXISTS Wallet (
 	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -420,6 +432,8 @@ module internal SQL =
 
     let UserExistsByDiscordId = "SELECT EXISTS(SELECT 1 FROM User WHERE DiscordId = @discordId LIMIT 1);"
     let UserExistsByCustomId = "SELECT EXISTS(SELECT 1 FROM User WHERE CustomUserId = @customId LIMIT 1);"
+    let UserExistsById = "SELECT EXISTS(SELECT 1 FROM User WHERE ID = @id LIMIT 1);"
+        
     let WalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet LIMIT 1);"
     let ConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet AND IsConfirmed = 1 LIMIT 1);"
     let UnConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE IsConfirmed = 0 LIMIT 1);"
@@ -475,6 +489,7 @@ module internal SQL =
     let GetChampsCount = "SELECT Count(*) FROM Champ"
     let GetUserChampsCount = "SELECT Count(*) FROM UserChamp WHERE UserId = @userId"
     let GetUserMonstersCount = "SELECT Count(*) FROM UserMonster WHERE UserId = @userId"
+    let GetUserRequestsCount = "SELECT Count(*) FROM UserGenMonsterRequest WHERE UserId = @userId AND IsFinished = 0"
 
     let GetLastActiveRound = "SELECT Max(ID) FROM Round WHERE Status = 0"
     let GetLastRound = "SELECT Max(ID) FROM Round";
@@ -534,8 +549,14 @@ module internal SQL =
     let UpdatePassword = "UPDATE CustomUser SET Password = @password WHERE ID = @cId;"
     let AddCustomUser = "INSERT INTO User(CustomUserId, Balance) VALUES(@customId, 0);"
 
+    let PrimaryWalletAlreadyExists = "SELECT EXISTS(SELECT 1 FROM User WHERE PrimaryWallet = @wallet LIMIT 1);"
+    let AddNewWeb3User = """
+        INSERT INTO User(PrimaryWallet, Balance) VALUES(@wallet, 0);
+        SELECT last_insert_rowid();
+        """
     let RegisterNewWallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 0, @code, 1);"
-    
+    let RegisterNewWeb3Wallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 1, '', 1);"
+        
     let CodeIsMatchedForUnconfirmedWallet = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE NOT IsConfirmed AND Address = @wallet AND ConfirmationCode = @code LIMIT 1);"
     let ConfirmWallet = "UPDATE Wallet SET IsConfirmed = 1 WHERE Address = @wallet;"
     let DeactivateWallet = "UPDATE Wallet SET IsActive = 0 WHERE Address = @wallet;"
@@ -571,7 +592,7 @@ module internal SQL =
     """
 
     let GetActiveUserChamps = """
-        SELECT ChampId, Name FROM Champ
+        SELECT ChampId, Name, IPFS FROM Champ
         JOIN UserChamp uc ON uc.ChampId = Champ.ID
         WHERE UserId = @userId
             AND ChampId NOT IN (SELECT ChampId FROM Action WHERE RoundId = @roundId)
@@ -1179,3 +1200,7 @@ module internal SQL =
     """
     
     let PlayersEarned = "SELECT Sum(Rewards) FROM RewardsPayed"
+
+    let SaveNonce = "INSERT OR REPLACE INTO Web3Nonces (Wallet, Nonce, ExpiresAt) VALUES (@wallet, @nonce, @expiresAt)"
+    let GetNonceByWallet = "SELECT Nonce, ExpiresAt FROM Web3Nonces WHERE Wallet = @wallet"
+    let DeleteNonce = "DELETE FROM Web3Nonces WHERE Wallet = @wallet"
