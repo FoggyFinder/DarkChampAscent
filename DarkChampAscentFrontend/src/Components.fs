@@ -298,11 +298,24 @@ let statRow (WebEmoji: string) (label: string) (value: string) =
 
 let useSSE (url: string) (onMessage: string -> unit) =
     React.useEffect((fun () ->
-        let es : obj = createNew (Browser.Dom.window :> obj)?EventSource url
-        es?onmessage <- fun (e: obj) -> onMessage (string e?data)
-        es?onerror <- fun _ -> Browser.Dom.console.warn("SSE error on", url)
+        let mutable es : obj = null
+        let mutable disposed = false
+
+        let rec connect () =
+            es <- createNew (Browser.Dom.window :> obj)?EventSource url
+            es?onmessage <- fun (e: obj) -> onMessage (string e?data)
+            es?onerror <- fun _ ->
+                Browser.Dom.console.warn("SSE error on", url)
+                es?close()
+                if not disposed then
+                    Browser.Dom.window.setTimeout((fun () -> connect ()), 3000) |> ignore
+
+        connect ()
+
         { new System.IDisposable with
-            member _.Dispose() = es?close() }
+            member _.Dispose() =
+                disposed <- true
+                if es <> null then es?close() }
     ), [| box url |])
 
 let deferred<'T> (state: Deferred<'T>) (render: 'T -> ReactElement) =
