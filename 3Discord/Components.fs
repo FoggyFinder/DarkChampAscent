@@ -96,6 +96,14 @@ open GameLogic.Monsters
 open GameLogic.Battle
 
 [<RequireQualifiedAccess>]
+module MonsterImg =
+    let DefaultName(mtype:MonsterType, msubtype:MonsterSubType) =
+        mtype.ToString().ToLower() + "_" + msubtype.ToString().ToLower() + ".png"
+    let DefaultFile(monster:Monster) =
+        let filename = DefaultName (monster.MType, monster.MSubType)
+        System.IO.Path.Combine("Assets", filename) |> MonsterImg.File
+
+[<RequireQualifiedAccess>]
 module MonstersComponent =
 
     let monsterComponent (monster:MonsterInfo) =

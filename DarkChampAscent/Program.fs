@@ -8,7 +8,6 @@ Log.Logger <-
           .WriteTo.File("log.txt", rollingInterval=RollingInterval.Month)
           .CreateLogger()
 
-open GameLogic.Monsters
 open Db
 open Microsoft.Extensions.Hosting
 open NetCord.Gateway

@@ -82,48 +82,11 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                                         elif db.ConfirmWallet(wallet, code) then
                                             match db.FindDiscordIdByWallet wallet with
                                             | Some discordId ->
-                                                for guild in client.Cache.Guilds do
-                                                    match guild.Value.Users.TryGetValue(uint64 discordId) with
-                                                    | true, duser ->
-                                                        let rO =
-                                                            guild.Value.Roles
-                                                            |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
-                                                        match rO with
-                                                        | Some role ->
-                                                            try
-                                                                if duser.RoleIds |> Seq.contains role.Key |> not then
-                                                                    let! v = guild.Value.AddUserRoleAsync(uint64 discordId, role.Key)
-                                                                    Log.Information("Role added to a user")
-                                                            with exn ->
-                                                                Log.Error(exn, $"Unable to add role to user inside {guild.Value.Name} guild")
-                                                        | None ->
-                                                            Log.Error($"Unable to find a role to user inside {guild.Value.Name} guild")
-                                                    | false, _ -> ()
+                                                Utils.addDiscordRole client (uint64 discordId)
                                             | None -> ()
                                             match db.FindUserIdByWallet wallet with
                                             | Some userId ->
-                                                Blockchain.getChampsForWallet wallet
-                                                |> Seq.iter(fun assetId ->
-                                                    let r = db.ChampExists assetId
-                                                    let isOk =
-                                                        match r with
-                                                        | Ok b ->
-                                                            if b then
-                                                                db.UpdateUserForChamp(uint64 userId, assetId) |> Result.isOk
-                                                            else
-                                                                Blockchain.tryGetChampInfo assetId
-                                                                |> Option.map(fun (trait', ipfs) ->
-                                                                    db.AddOrInsertChamp ({
-                                                                        Name = Blockchain.getAssetName assetId
-                                                                        AssetId = assetId
-                                                                        IPFS = ipfs
-                                                                        UserId = uint64 userId
-                                                                        Stats = Champ.generateStats trait'
-                                                                        Traits = trait'
-                                                                    }))
-                                                                |> Option.defaultValue false
-                                                        | Error _ -> false
-                                                    noErrors <- noErrors && isOk)
+                                                noErrors <- noErrors && CommonHelpers.updateChampsForAUser (db, uint64 userId, [wallet]) |> Result.isOk
                                             | None -> ()
                                         else ()
                                     return noErrors
@@ -131,7 +94,7 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                             }
                         if isOk then
                             db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
-                        do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                        do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
                     else
                         do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
                 with exn ->
@@ -501,9 +464,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     | RoundStatus.Started ->
                                         let dt = DateTime.UtcNow
                                         let duration = dt - timestamp
-                                        if duration < Battle.RoundDuration then
-                                            Log.Information($"Delay for {(Battle.RoundDuration - duration).TotalMinutes} minutes")
-                                            do! Task.Delay(Battle.RoundDuration - duration)
+                                        if duration < Params.RoundDuration then
+                                            Log.Information($"Delay for {(Params.RoundDuration - duration).TotalMinutes} minutes")
+                                            do! Task.Delay(Params.RoundDuration - duration)
                                             do! Task.Delay(TimeSpan.FromMinutes(0.5))
                                         
                                         while db.AnyChampJoinedRound roundId |> Option.defaultValue false |> not do
@@ -552,7 +515,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
 
     let getImgRequest (mfulltype:string) (tp:TextPayload) =
         GenerateRequest(prompt = $"{mfulltype}. {tp.Description}",
-            models = [| "z-image-turbo" |],
+            models = [| "flux.2 klein 4b fp8" |],
             parameters = Params(height = 1024, width = 1024, samplerName = "k_dpmpp_2m"))
 
     override _.ExecuteAsync(cancellationToken) =

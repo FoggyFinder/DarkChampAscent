@@ -83,3 +83,22 @@ module Utils =
         sendMsgToChannel Channels.LogChannel client mp false
 
     let mention (uId:uint64) = $"<@{uId}>"
+
+    let addDiscordRole (client:GatewayClient) (discordId:uint64) =
+        for guild in client.Cache.Guilds do
+            match guild.Value.Users.TryGetValue discordId with
+            | true, duser ->
+                let rO =
+                    guild.Value.Roles
+                    |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
+                match rO with
+                | Some role ->
+                    try
+                        if duser.RoleIds |> Seq.contains role.Key |> not then
+                            let! _ = guild.Value.AddUserRoleAsync(discordId, role.Key)
+                            Log.Information("Role added to a user")
+                    with exn ->
+                        Log.Error(exn, $"Unable to add role to user inside {guild.Value.Name} guild")
+                | None ->
+                    Log.Error($"Unable to find a role to user inside {guild.Value.Name} guild")
+            | false, _ -> ()

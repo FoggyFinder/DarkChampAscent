@@ -17,7 +17,6 @@ open Microsoft.Extensions.Options
 open DiscordBot.Components
 open Serilog
 open System.Text
-open DiscordBot
 open DarkChampAscent.Account
 
 [<RequireQualifiedAccess>]
@@ -394,14 +393,14 @@ type ChampsModule(db:SqliteStorage) =
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     options.Components <-
                         xs
-                        |> List.sortByDescending(fun c -> c.Xp)
+                        |> List.sortByDescending(fun c -> c.XP)
                         |> List.map(fun champ ->
                             ComponentContainerProperties([
                                 ComponentSectionProperties
                                     (ComponentSectionThumbnailProperties(
                                         ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{champ.IPFS}")),
                                     [
-                                        TextDisplayProperties($"**{champ.Name} ({xp <| uint64 champ.Xp})**")
+                                        TextDisplayProperties($"**{champ.Name} ({xp <| uint64 champ.XP})**")
                                     ])
                             ]))
             | Error err -> 
@@ -567,9 +566,9 @@ type CustomModule(db:SqliteStorage) =
                     options.Components <- [ 
                         ComponentContainerProperties(
                         requests
-                        |> List.sortByDescending(fun (_, dt, _) -> dt)
-                        |> List.map(fun (id, dt, status) ->
-                            TextDisplayProperties($"{id} : [{dt}] : {status}")
+                        |> List.sortByDescending(fun gr -> gr.Timestamp)
+                        |> List.map(fun gr ->
+                            TextDisplayProperties($"{gr.ID} : [{gr.Timestamp}] : {gr.Status}")
                         )
                         )
                     ]
@@ -677,7 +676,7 @@ type BattleModule(db:SqliteStorage) =
                         match db.GetRoundTimestamp(roundId) with
                         | Some roundStared ->
                             let dt = DateTime.UtcNow
-                            let diff = ((roundStared + Battle.RoundDuration) - dt)
+                            let diff = ((roundStared + Params.RoundDuration) - dt)
                             if(diff.TotalMinutes > 0.0) then $"approx ~{diff} to the end of the round +2-3 min to process"
                             else "round is likely processing now"
                         | None -> "Something went wrong - unable to get round timestamp"
@@ -695,7 +694,7 @@ type BattleModule(db:SqliteStorage) =
                 EmbedProperties(Title = "Params:")
                     .WithFields([
                         EmbedFieldProperties(Name = "Rounds in battle", Value = $"{Constants.RoundsInBattle}", Inline = true)
-                        EmbedFieldProperties(Name = "Round duration", Value = $"{Battle.RoundDuration}", Inline = true)
+                        EmbedFieldProperties(Name = "Round duration", Value = $"{Params.RoundDuration}", Inline = true)
                         EmbedFieldProperties(Name = "XP per level", Value = $"{Levels.XPPerLvl}", Inline = true)
                     ])
             options.Embeds <- [ ep ])

@@ -33,3 +33,6 @@ packages/
 /DarkChampAscentWeb/wwwroot/monstrs/**
 /DarkChampAscentWeb/appsettings.json
 /DarkChampAscentWeb/log*.txt
+**/fableoutput/
+node_modules/
+*.fs.jsx
