@@ -6,8 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<Content Include="DC.png" />
-	<Content Include="logo.png" />
 	<Content Include="package.json" />
 	<None Include="index.html" />
 	<Compile Include="src/Utils/Charts.fs" />
