@@ -464,8 +464,6 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     | RoundStatus.Started ->
                                         let dt = DateTime.UtcNow
                                         let duration = dt - timestamp
-                                        Log.Information($"RoundDuration: {BattleParams.RoundDuration()}")
-                                        Log.Information($" {timestamp} | DT {dt} | {duration} | {duration < BattleParams.RoundDuration()}")
                                         if duration < BattleParams.RoundDuration() then
                                             Log.Information($"Delay for {(BattleParams.RoundDuration() - duration).TotalMinutes} minutes")
                                             do! Task.Delay(BattleParams.RoundDuration() - duration)
