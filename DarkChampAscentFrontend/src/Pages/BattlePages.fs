@@ -46,7 +46,9 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
 
     React.useEffect((fun () ->
         match dto.ChampsRes with
-        | Some (Ok (first :: _)) -> setSelChamp (Some first)
+        | Some (Ok (first :: _)) ->
+            setSelChamp (Some first)
+            setSelMove Move.Attack
         | _ -> ()
     ), [| box dto.ChampsRes |])
 
@@ -62,7 +64,7 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                         Html.div [
                             prop.className "select-wrap"
                             prop.children [
-                                TomSelectInput ""
+                                TomSelectInput
                                     (selChamp |> Option.map (fun (cId, _, _) -> cId.ToString()) |> Option.defaultValue "")
                                     (fun s -> champs |> List.tryFind (fun (cId, _, _) -> (cId.ToString()) = s) |> setSelChamp)
                                     [ for (id, name, _) in champs -> Html.option [ prop.value (string id); prop.text name ] ]
@@ -74,7 +76,7 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                         Html.div [
                             prop.className "select-wrap"
                             prop.children [
-                                TomSelectInput ""
+                                TomSelectInput
                                     (DisplayEnum.Move selMove)
                                     (fun (s: string) ->
                                         AllEnums.Moves

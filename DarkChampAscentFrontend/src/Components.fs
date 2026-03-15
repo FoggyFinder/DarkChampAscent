@@ -239,13 +239,69 @@ open Fable.Core.JsInterop
 open GameLogic.Monsters
 
 [<ReactComponent>]
-let TomSelectInput (className: string) (value: string) (onChange: string -> unit) (children: ReactElement list) =
-    
-    Html.select [
-        prop.className (className + " form-select tom-select")
-        prop.value value
-        prop.onChange onChange
-        prop.children children
+let TomSelectInput (value: string) (onChange: string -> unit) (children: ReactElement list) =
+    let isOpen, setIsOpen = React.useState false
+    let ref = React.useRef<Browser.Types.HTMLElement option>(None)
+
+    // Close on outside click
+    React.useEffect((fun () ->
+        let handler (e: Browser.Types.Event) =
+            match ref.current with
+            | Some el ->
+                if not (el.contains (e.target :?> Browser.Types.Node)) then
+                    setIsOpen false
+            | None -> ()
+        Browser.Dom.document.addEventListener("mousedown", handler)
+        { new System.IDisposable with
+            member _.Dispose() = Browser.Dom.document.removeEventListener("mousedown", handler) }
+    ), [||])
+
+    // Extract label/value pairs from ReactElement option children
+    let options =
+        children |> List.choose (fun child ->
+            let props = child?props
+            if isNull (box props) then None
+            else
+                let v = props?value
+                let t = props?children
+                if isNull (box v) || isNull (box t) then None
+                else Some (string v, string t)
+        )
+
+    let selectedLabel =
+        options
+        |> List.tryFind (fun (v, _) -> v = value)
+        |> Option.map snd
+        |> Option.defaultValue ""
+
+    Html.div [
+        prop.ref (fun el -> ref.current <- if isNull (box el) then None else Some (unbox el))
+        prop.className ("custom-select" + (if isOpen then " open" else ""))
+        prop.children [
+            Html.div [
+                prop.className "custom-select-control"
+                prop.onClick (fun _ -> setIsOpen (not isOpen))
+                prop.children [
+                    Html.span [ prop.className "custom-select-value"; prop.text selectedLabel ]
+                    Html.span [ prop.className "custom-select-arrow"; prop.text "▾" ]
+                ]
+            ]
+            if isOpen then
+                Html.div [
+                    prop.className "custom-select-dropdown"
+                    prop.children [
+                        for (v, label) in options do
+                            Html.div [
+                                prop.className ("custom-select-option" + (if v = value then " selected" else ""))
+                                prop.onClick (fun e ->
+                                    e.stopPropagation()
+                                    onChange v
+                                    setIsOpen false)
+                                prop.text label
+                            ]
+                    ]
+                ]
+        ]
     ]
 
 [<ReactComponent>]
