@@ -239,13 +239,112 @@ open Fable.Core.JsInterop
 open GameLogic.Monsters
 
 [<ReactComponent>]
-let TomSelectInput (className: string) (value: string) (onChange: string -> unit) (children: ReactElement list) =
-    
-    Html.select [
-        prop.className (className + " form-select tom-select")
-        prop.value value
-        prop.onChange onChange
-        prop.children children
+let CustomSelectInput (value: string) (onChange: string -> unit) (options: (string * string * string option) list) =
+    let isOpen, setIsOpen = React.useState false
+    let controlRef = React.useRef<Browser.Types.HTMLElement option>(None)
+    let dropdownRef = React.useRef<Browser.Types.HTMLElement option>(None)
+    let dropdownPos, setDropdownPos = React.useState {| top = 0.0; left = 0.0; width = 0.0 |}
+
+    let updatePos () =
+        match controlRef.current with
+        | Some el ->
+            let rect = el.getBoundingClientRect()
+            setDropdownPos {| top = rect.bottom; left = rect.left; width = rect.width |}
+        | None -> ()
+
+    // Close on outside click
+    React.useEffect((fun () ->
+        let handler (e: Browser.Types.Event) =
+            let target = e.target :?> Browser.Types.Node
+            let outsideControl =
+                match controlRef.current with
+                | Some el -> not (el.contains target)
+                | None -> true
+            let outsideDropdown =
+                match dropdownRef.current with
+                | Some el -> not (el.contains target)
+                | None -> true
+            if outsideControl && outsideDropdown then
+                setIsOpen false
+        Browser.Dom.document.addEventListener("mousedown", handler)
+        { new System.IDisposable with
+            member _.Dispose() = Browser.Dom.document.removeEventListener("mousedown", handler) }
+    ), [||])
+
+    // Reposition on scroll/resize while open
+    React.useEffect((fun () ->
+        if isOpen then
+            let onScroll _ = updatePos()
+            let onResize _ = updatePos()
+            // true = capture phase, catches scroll on any ancestor
+            Browser.Dom.window.addEventListener("scroll", onScroll, true)
+            Browser.Dom.window.addEventListener("resize", onResize)
+            { new System.IDisposable with
+                member _.Dispose() =
+                    Browser.Dom.window.removeEventListener("scroll", onScroll, true)
+                    Browser.Dom.window.removeEventListener("resize", onResize) }
+        else
+            { new System.IDisposable with member _.Dispose() = () }
+    ), [| box isOpen |])
+
+    let selectedOpt   = options |> List.tryFind (fun (v, _, _) -> v = value)
+    let selectedLabel = selectedOpt |> Option.map (fun (_, l, _) -> l) |> Option.defaultValue ""
+    let selectedImg   = selectedOpt |> Option.bind (fun (_, _, img) -> img)
+
+    let dropdown =
+        Html.div [
+            prop.ref (fun el -> dropdownRef.current <- if isNull (box el) then None else Some (unbox el))
+            prop.className "custom-select-dropdown"
+            prop.style [
+                style.position.fixedRelativeToWindow
+                style.top    (int dropdownPos.top)
+                style.left   (int dropdownPos.left)
+                style.width  (int dropdownPos.width)
+                style.zIndex 9999
+            ]
+            prop.children [
+                for (v, label, img) in options do
+                    Html.div [
+                        prop.className ("custom-select-option" + (if v = value then " selected" else ""))
+                        prop.onClick (fun e ->
+                            e.stopPropagation()
+                            onChange v
+                            setIsOpen false)
+                        prop.children [
+                            match img with
+                            | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                            | None -> ()
+                            Html.span [ prop.text label ]
+                        ]
+                    ]
+            ]
+        ]
+
+    React.Fragment [
+        Html.div [
+            prop.ref (fun el -> controlRef.current <- if isNull (box el) then None else Some (unbox el))
+            prop.className ("custom-select" + (if isOpen then " open" else ""))
+            prop.children [
+                Html.div [
+                    prop.className "custom-select-control"
+                    prop.onClick (fun _ ->
+                        if isOpen then setIsOpen false
+                        else
+                            updatePos()
+                            setIsOpen true)
+                    prop.children [
+                        match selectedImg with
+                        | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                        | None -> ()
+                        Html.span [ prop.className "custom-select-value"; prop.text selectedLabel ]
+                        Html.span [ prop.className "custom-select-arrow"; prop.text "▾" ]
+                    ]
+                ]
+            ]
+        ]
+
+        if isOpen then
+            ReactDOM.createPortal(dropdown, Browser.Dom.document.body)
     ]
 
 [<ReactComponent>]
@@ -298,11 +397,24 @@ let statRow (WebEmoji: string) (label: string) (value: string) =
 
 let useSSE (url: string) (onMessage: string -> unit) =
     React.useEffect((fun () ->
-        let es : obj = createNew (Browser.Dom.window :> obj)?EventSource url
-        es?onmessage <- fun (e: obj) -> onMessage (string e?data)
-        es?onerror <- fun _ -> Browser.Dom.console.warn("SSE error on", url)
+        let mutable es : obj = null
+        let mutable disposed = false
+
+        let rec connect () =
+            es <- createNew (Browser.Dom.window :> obj)?EventSource url
+            es?onmessage <- fun (e: obj) -> onMessage (string e?data)
+            es?onerror <- fun _ ->
+                Browser.Dom.console.warn("SSE error on", url)
+                es?close()
+                if not disposed then
+                    Browser.Dom.window.setTimeout((fun () -> connect ()), 3000) |> ignore
+
+        connect ()
+
         { new System.IDisposable with
-            member _.Dispose() = es?close() }
+            member _.Dispose() =
+                disposed <- true
+                if es <> null then es?close() }
     ), [| box url |])
 
 let deferred<'T> (state: Deferred<'T>) (render: 'T -> ReactElement) =
