@@ -240,62 +240,95 @@ open GameLogic.Monsters
 
 [<ReactComponent>]
 let CustomSelectInput (value: string) (onChange: string -> unit) (options: (string * string * string option) list) =
-    // (value, label, optional image url)
     let isOpen, setIsOpen = React.useState false
-    let ref = React.useRef<Browser.Types.HTMLElement option>(None)
+    let controlRef = React.useRef<Browser.Types.HTMLElement option>(None)
+    let dropdownRef = React.useRef<Browser.Types.HTMLElement option>(None)
+    let dropdownPos, setDropdownPos = React.useState {| top = 0.0; left = 0.0; width = 0.0 |}
 
     React.useEffect((fun () ->
         let handler (e: Browser.Types.Event) =
-            match ref.current with
-            | Some el ->
-                if not (el.contains (e.target :?> Browser.Types.Node)) then
-                    setIsOpen false
-            | None -> ()
+            let target = e.target :?> Browser.Types.Node
+            let outsideControl =
+                match controlRef.current with
+                | Some el -> not (el.contains target)
+                | None -> true
+            let outsideDropdown =
+                match dropdownRef.current with
+                | Some el -> not (el.contains target)
+                | None -> true
+            if outsideControl && outsideDropdown then
+                setIsOpen false
         Browser.Dom.document.addEventListener("mousedown", handler)
         { new System.IDisposable with
             member _.Dispose() = Browser.Dom.document.removeEventListener("mousedown", handler) }
     ), [||])
 
-    let selectedOpt = options |> List.tryFind (fun (v, _, _) -> v = value)
+    let openDropdown () =
+        match controlRef.current with
+        | Some el ->
+            let rect = el.getBoundingClientRect()
+            setDropdownPos {|
+                top   = rect.bottom + Browser.Dom.window.scrollY + 4.0
+                left  = rect.left   + Browser.Dom.window.scrollX
+                width = rect.width
+            |}
+            setIsOpen true
+        | None -> ()
+
+    let selectedOpt   = options |> List.tryFind (fun (v, _, _) -> v = value)
     let selectedLabel = selectedOpt |> Option.map (fun (_, l, _) -> l) |> Option.defaultValue ""
     let selectedImg   = selectedOpt |> Option.bind (fun (_, _, img) -> img)
 
-    Html.div [
-        prop.ref (fun el -> ref.current <- if isNull (box el) then None else Some (unbox el))
-        prop.className ("custom-select" + (if isOpen then " open" else ""))
-        prop.children [
-            Html.div [
-                prop.className "custom-select-control"
-                prop.onClick (fun _ -> setIsOpen (not isOpen))
-                prop.children [
-                    match selectedImg with
-                    | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
-                    | None -> ()
-                    Html.span [ prop.className "custom-select-value"; prop.text selectedLabel ]
-                    Html.span [ prop.className "custom-select-arrow"; prop.text "▾" ]
-                ]
+    let dropdown =
+        Html.div [
+            prop.ref (fun el -> dropdownRef.current <- if isNull (box el) then None else Some (unbox el))
+            prop.className "custom-select-dropdown"
+            prop.style [
+                style.position.fixedRelativeToWindow
+                style.top    (int dropdownPos.top)
+                style.left   (int dropdownPos.left)
+                style.width  (int dropdownPos.width)
+                style.zIndex 9999
             ]
-            if isOpen then
+            prop.children [
+                for (v, label, img) in options do
+                    Html.div [
+                        prop.className ("custom-select-option" + (if v = value then " selected" else ""))
+                        prop.onClick (fun e ->
+                            e.stopPropagation()
+                            onChange v
+                            setIsOpen false)
+                        prop.children [
+                            match img with
+                            | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                            | None -> ()
+                            Html.span [ prop.text label ]
+                        ]
+                    ]
+            ]
+        ]
+
+    React.Fragment [
+        Html.div [
+            prop.ref (fun el -> controlRef.current <- if isNull (box el) then None else Some (unbox el))
+            prop.className ("custom-select" + (if isOpen then " open" else ""))
+            prop.children [
                 Html.div [
-                    prop.className "custom-select-dropdown"
+                    prop.className "custom-select-control"
+                    prop.onClick (fun _ -> if isOpen then setIsOpen false else openDropdown())
                     prop.children [
-                        for (v, label, img) in options do
-                            Html.div [
-                                prop.className ("custom-select-option" + (if v = value then " selected" else ""))
-                                prop.onClick (fun e ->
-                                    e.stopPropagation()
-                                    onChange v
-                                    setIsOpen false)
-                                prop.children [
-                                    match img with
-                                    | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
-                                    | None -> ()
-                                    Html.span [ prop.text label ]
-                                ]
-                            ]
+                        match selectedImg with
+                        | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                        | None -> ()
+                        Html.span [ prop.className "custom-select-value"; prop.text selectedLabel ]
+                        Html.span [ prop.className "custom-select-arrow"; prop.text "▾" ]
                     ]
                 ]
+            ]
         ]
+
+        if isOpen then
+            ReactDOM.createPortal(dropdown, Browser.Dom.document.body)
     ]
 
 [<ReactComponent>]

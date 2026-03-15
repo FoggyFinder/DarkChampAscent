@@ -2949,14 +2949,10 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 }
 
 .custom-select-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    min-width: 100%;
+    /* position and top/left/width are now set via inline style (fixed) */
     background: linear-gradient(180deg, rgba(18, 8, 28, 0.98), rgba(24, 12, 40, 0.98));
     border: 1px solid var(--color-primary-alpha-12);
     border-radius: var(--radius);
-    z-index: var(--z-dropdown);
     box-shadow: var(--shadow-lg);
     max-height: 360px;
     overflow-y: auto;
