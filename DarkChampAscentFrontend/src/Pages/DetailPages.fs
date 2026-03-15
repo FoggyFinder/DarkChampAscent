@@ -67,12 +67,14 @@ let ChampDetailPage (champId: uint64) =
                                 prop.className "btn btn-secondary btn-sm"
                                 prop.disabled (newName = c.Name || newName = "")
                                 prop.onClick (fun _ ->
-                                    async {
-                                        let! r = Api.renameChamp c.Name newName c.ID
-                                        match r with
-                                        | Ok ()   -> setMsg (Some "Renamed!"); load ()
-                                        | Error e -> setMsg (Some ("Error: " + e))
-                                    } |> Async.StartImmediate)
+                                    let msg = sprintf $"Confirm renaming '{c.Name}' to '{newName}'?"
+                                    if Browser.Dom.window.confirm (msg) then
+                                        async {
+                                            let! r = Api.renameChamp c.Name newName c.ID
+                                            match r with
+                                            | Ok ()   -> setMsg (Some "Renamed!"); load ()
+                                            | Error e -> setMsg (Some ("Error: " + e))
+                                        } |> Async.StartImmediate)
                                 prop.text "Rename"
                             ]
                         ]
@@ -80,7 +82,6 @@ let ChampDetailPage (champId: uint64) =
                 else
                     Html.h2 [ prop.text c.Name ]
 
-               // ── two-column body ──────────────────────────────────────
                 Html.div [
                     prop.className "champ-body"
                     prop.children [

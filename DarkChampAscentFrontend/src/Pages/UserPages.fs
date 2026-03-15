@@ -490,7 +490,6 @@ let MyMonstersPage () =
                 if d.UserBalance.IsSome then
                     let amount = Math.Round(Shop.GenMonsterPrice / d.Price, 6)
                     let canAfford = d.UserBalance |> Option.map (fun b -> b >= amount) |> Option.defaultValue false
-                    Console.WriteLine $"Amount = {amount} | {Shop.GenMonsterPrice} | {canAfford}"
                     Html.div [
                         prop.className "create-monster"
                         prop.children [
@@ -513,12 +512,14 @@ let MyMonstersPage () =
                             Html.button [
                                 prop.className "btn btn-primary"; prop.disabled (not canAfford)
                                 prop.onClick (fun _ ->
-                                    async {
-                                        let! r = Api.createMonster selType selSubType
-                                        match r with
-                                        | Ok r   -> setMsg (Some r)
-                                        | Error e -> setMsg (Some ("Error: " + e))
-                                    } |> Async.StartImmediate)
+                                    let msg = sprintf $"Confirm creation of {Display.monsterClass(selType, selSubType)}?"
+                                    if Browser.Dom.window.confirm (msg) then
+                                        async {
+                                            let! r = Api.createMonster selType selSubType
+                                            match r with
+                                            | Ok r   -> setMsg (Some r)
+                                            | Error e -> setMsg (Some ("Error: " + e))
+                                        } |> Async.StartImmediate)
                                 prop.text "Create monster"
                             ]
                         ]
