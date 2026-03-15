@@ -2885,6 +2885,10 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     padding: var(--space-2) var(--space-4);
     margin-block: var(--space-2);
 }
+/* ==========================================================================
+   CUSTOM SELECT
+   ========================================================================== */
+
 .custom-select {
     position: relative;
     user-select: none;
@@ -2894,7 +2898,7 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 .custom-select-control {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
     background: linear-gradient(180deg, rgba(18, 8, 28, 0.98), rgba(24, 12, 40, 0.98));
     border: 1px solid var(--color-primary-alpha-12);
@@ -2913,7 +2917,14 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     box-shadow: 0 6px 30px var(--color-primary-alpha-18), 0 0 0 4px var(--color-primary-alpha-06);
 }
 
-/* Purple pill — matches TomSelect .item */
+.custom-select-control .custom-select-img {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
 .custom-select-value {
     background: linear-gradient(90deg, var(--color-primary-alpha-12), var(--color-primary-alpha-08));
     color: #fff;
@@ -2926,7 +2937,7 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 }
 
 .custom-select-arrow {
-    margin-left: var(--space-3);
+    margin-left: auto;
     color: var(--color-text-muted);
     font-size: var(--font-size-xs);
     transition: transform var(--transition-fast);
@@ -2958,6 +2969,9 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 .custom-select-dropdown::-webkit-scrollbar-thumb { background: var(--color-primary); border-radius: var(--radius); }
 
 .custom-select-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
     cursor: pointer;
     font-size: var(--font-size-base);
@@ -2975,4 +2989,12 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     font-weight: 800;
     color: var(--color-primary-light);
     pointer-events: none;
+}
+
+.custom-select-dropdown .custom-select-img {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
 }

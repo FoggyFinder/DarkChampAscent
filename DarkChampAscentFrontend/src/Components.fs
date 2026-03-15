@@ -239,11 +239,11 @@ open Fable.Core.JsInterop
 open GameLogic.Monsters
 
 [<ReactComponent>]
-let TomSelectInput (value: string) (onChange: string -> unit) (children: ReactElement list) =
+let CustomSelectInput (value: string) (onChange: string -> unit) (options: (string * string * string option) list) =
+    // (value, label, optional image url)
     let isOpen, setIsOpen = React.useState false
     let ref = React.useRef<Browser.Types.HTMLElement option>(None)
 
-    // Close on outside click
     React.useEffect((fun () ->
         let handler (e: Browser.Types.Event) =
             match ref.current with
@@ -256,23 +256,9 @@ let TomSelectInput (value: string) (onChange: string -> unit) (children: ReactEl
             member _.Dispose() = Browser.Dom.document.removeEventListener("mousedown", handler) }
     ), [||])
 
-    // Extract label/value pairs from ReactElement option children
-    let options =
-        children |> List.choose (fun child ->
-            let props = child?props
-            if isNull (box props) then None
-            else
-                let v = props?value
-                let t = props?children
-                if isNull (box v) || isNull (box t) then None
-                else Some (string v, string t)
-        )
-
-    let selectedLabel =
-        options
-        |> List.tryFind (fun (v, _) -> v = value)
-        |> Option.map snd
-        |> Option.defaultValue ""
+    let selectedOpt = options |> List.tryFind (fun (v, _, _) -> v = value)
+    let selectedLabel = selectedOpt |> Option.map (fun (_, l, _) -> l) |> Option.defaultValue ""
+    let selectedImg   = selectedOpt |> Option.bind (fun (_, _, img) -> img)
 
     Html.div [
         prop.ref (fun el -> ref.current <- if isNull (box el) then None else Some (unbox el))
@@ -282,6 +268,9 @@ let TomSelectInput (value: string) (onChange: string -> unit) (children: ReactEl
                 prop.className "custom-select-control"
                 prop.onClick (fun _ -> setIsOpen (not isOpen))
                 prop.children [
+                    match selectedImg with
+                    | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                    | None -> ()
                     Html.span [ prop.className "custom-select-value"; prop.text selectedLabel ]
                     Html.span [ prop.className "custom-select-arrow"; prop.text "▾" ]
                 ]
@@ -290,14 +279,19 @@ let TomSelectInput (value: string) (onChange: string -> unit) (children: ReactEl
                 Html.div [
                     prop.className "custom-select-dropdown"
                     prop.children [
-                        for (v, label) in options do
+                        for (v, label, img) in options do
                             Html.div [
                                 prop.className ("custom-select-option" + (if v = value then " selected" else ""))
                                 prop.onClick (fun e ->
                                     e.stopPropagation()
                                     onChange v
                                     setIsOpen false)
-                                prop.text label
+                                prop.children [
+                                    match img with
+                                    | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
+                                    | None -> ()
+                                    Html.span [ prop.text label ]
+                                ]
                             ]
                     ]
                 ]

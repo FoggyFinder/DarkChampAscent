@@ -110,12 +110,12 @@ let ChampDetailPage (champId: uint64) =
                                         prop.className "levelup-section"
                                         prop.children [
                                             Html.p [ prop.text (sprintf "Free points: %d" freePoints) ]
-                                            TomSelectInput "" (DisplayEnum.Characteristic selChar)
+                                            CustomSelectInput (DisplayEnum.Characteristic selChar)
                                                 (fun (s: string) ->
                                                     AllEnums.Characteristics
                                                     |> List.tryFind (fun c -> DisplayEnum.Characteristic c = s)
                                                     |> Option.iter setSelChar)
-                                                [ for ch in characteristics -> Html.option [ prop.value (DisplayEnum.Characteristic ch); prop.text (DisplayEnum.Characteristic ch) ] ]
+                                                [ for ch in characteristics -> DisplayEnum.Characteristic ch, DisplayEnum.Characteristic ch, None ]
                                             
                                             Html.button [
                                                 prop.className "btn btn-primary btn-sm"

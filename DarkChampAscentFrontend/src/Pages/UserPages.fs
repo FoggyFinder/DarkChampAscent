@@ -339,8 +339,8 @@ let StoragePage () =
                                     Html.div [
                                         prop.className "storage-use"
                                         prop.children [
-                                            TomSelectInput "" selChamp setSelChamp
-                                                [ for c in d.Champs -> Html.option [ prop.value (string c.ID); prop.text c.Name ] ]
+                                            CustomSelectInput selChamp setSelChamp
+                                                [ for c in d.Champs -> (string c.ID), c.Name, None ]
                                             
                                             Html.button [
                                                 prop.className "btn btn-sm btn-primary"
@@ -495,19 +495,19 @@ let MyMonstersPage () =
                         prop.children [
                             Html.p [ prop.dangerouslySetInnerHTML (sprintf "Create custom monster: %s %s DarkCoins" (string amount) WebEmoji.DarkCoin) ]
                             
-                            TomSelectInput "" (DisplayEnum.MonsterType selType)
+                            CustomSelectInput (DisplayEnum.MonsterType selType)
                                 (fun (s: string) ->
                                     AllEnums.MonsterTypes
                                     |> List.tryFind (fun t -> DisplayEnum.MonsterType t = s)
                                     |> Option.iter setSelType)
-                                [ for t in AllEnums.MonsterTypes -> Html.option [ prop.value (DisplayEnum.MonsterType t); prop.text (DisplayEnum.MonsterType t) ] ]
+                                [ for t in AllEnums.MonsterTypes -> DisplayEnum.MonsterType t, DisplayEnum.MonsterType t, None ]
                             
-                            TomSelectInput "" (DisplayEnum.MonsterSubType selSubType)
+                            CustomSelectInput (DisplayEnum.MonsterSubType selSubType)
                                 (fun (s: string) ->
                                     AllEnums.MonsterSubTypes
                                     |> List.tryFind (fun t -> DisplayEnum.MonsterSubType t = s)
                                     |> Option.iter setSelSubType)
-                                [ for t in AllEnums.MonsterSubTypes -> Html.option [ prop.value (DisplayEnum.MonsterSubType t); prop.text (DisplayEnum.MonsterSubType t) ] ]
+                                [ for t in AllEnums.MonsterSubTypes -> DisplayEnum.MonsterSubType t, DisplayEnum.MonsterSubType t, None ]
                             
                             Html.button [
                                 prop.className "btn btn-primary"; prop.disabled (not canAfford)
