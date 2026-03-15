@@ -93,7 +93,7 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                                     async {
                                         let! r = Api.joinBattle cid selMove
                                         match r with
-                                        | Ok () -> setJoinMsg (Some "Joined!"); onJoined ()
+                                        | Ok () -> onJoined ()
                                         | Error e -> setJoinMsg (Some ("Error: " + e))
                                         setJoining false
                                     } |> Async.StartImmediate
