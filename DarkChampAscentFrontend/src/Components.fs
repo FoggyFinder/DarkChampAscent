@@ -245,6 +245,14 @@ let CustomSelectInput (value: string) (onChange: string -> unit) (options: (stri
     let dropdownRef = React.useRef<Browser.Types.HTMLElement option>(None)
     let dropdownPos, setDropdownPos = React.useState {| top = 0.0; left = 0.0; width = 0.0 |}
 
+    let updatePos () =
+        match controlRef.current with
+        | Some el ->
+            let rect = el.getBoundingClientRect()
+            setDropdownPos {| top = rect.bottom; left = rect.left; width = rect.width |}
+        | None -> ()
+
+    // Close on outside click
     React.useEffect((fun () ->
         let handler (e: Browser.Types.Event) =
             let target = e.target :?> Browser.Types.Node
@@ -263,17 +271,21 @@ let CustomSelectInput (value: string) (onChange: string -> unit) (options: (stri
             member _.Dispose() = Browser.Dom.document.removeEventListener("mousedown", handler) }
     ), [||])
 
-    let openDropdown () =
-        match controlRef.current with
-        | Some el ->
-            let rect = el.getBoundingClientRect()
-            setDropdownPos {|
-                top   = rect.bottom + Browser.Dom.window.scrollY + 4.0
-                left  = rect.left   + Browser.Dom.window.scrollX
-                width = rect.width
-            |}
-            setIsOpen true
-        | None -> ()
+    // Reposition on scroll/resize while open
+    React.useEffect((fun () ->
+        if isOpen then
+            let onScroll _ = updatePos()
+            let onResize _ = updatePos()
+            // true = capture phase, catches scroll on any ancestor
+            Browser.Dom.window.addEventListener("scroll", onScroll, true)
+            Browser.Dom.window.addEventListener("resize", onResize)
+            { new System.IDisposable with
+                member _.Dispose() =
+                    Browser.Dom.window.removeEventListener("scroll", onScroll, true)
+                    Browser.Dom.window.removeEventListener("resize", onResize) }
+        else
+            { new System.IDisposable with member _.Dispose() = () }
+    ), [| box isOpen |])
 
     let selectedOpt   = options |> List.tryFind (fun (v, _, _) -> v = value)
     let selectedLabel = selectedOpt |> Option.map (fun (_, l, _) -> l) |> Option.defaultValue ""
@@ -315,7 +327,11 @@ let CustomSelectInput (value: string) (onChange: string -> unit) (options: (stri
             prop.children [
                 Html.div [
                     prop.className "custom-select-control"
-                    prop.onClick (fun _ -> if isOpen then setIsOpen false else openDropdown())
+                    prop.onClick (fun _ ->
+                        if isOpen then setIsOpen false
+                        else
+                            updatePos()
+                            setIsOpen true)
                     prop.children [
                         match selectedImg with
                         | Some url -> Html.img [ prop.className "custom-select-img"; prop.src url ]
