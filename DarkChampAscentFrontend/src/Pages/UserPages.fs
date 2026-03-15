@@ -287,17 +287,20 @@ let AccountPage (onLogout: unit -> unit) =
 
 [<ReactComponent>]
 let StoragePage () =
-    let data, setData     = React.useState<Deferred<UserStorageDTO>> Loading
-    let selChamp, setSelChamp = React.useState ""
-    let msg, setMsg       = React.useState<string option> None
+    let data, setData = React.useState<Deferred<UserStorageDTO>> Loading
+    let selChamps, setSelChamps = React.useState Map.empty<int, string>
+    let msg, setMsg = React.useState<string option> None
 
+    let getSelected i = selChamps |> Map.tryFind i |> Option.defaultValue ""
+    let setSelected i v = selChamps |> Map.add i v |> setSelChamps
     let load() =
         async {
             let! r = Api.getStorage ()
             match r with
             | Ok d ->
                 setData (Loaded d)
-                match d.Champs with c :: _ -> setSelChamp (string c.ID) | [] -> ()
+                let defaultChamp = d.Champs |> List.tryHead |> Option.map (fun c -> string c.ID) |> Option.defaultValue ""
+                setSelChamps (d.Storage |> List.mapi (fun i _ -> i, defaultChamp) |> Map.ofList)
             | Error e -> setData (Failed e)
         } |> Async.StartImmediate
     React.useEffect(load, [||])
@@ -313,7 +316,7 @@ let StoragePage () =
                     Html.thead [
                         Html.tr [
                             Html.th [prop.text "#"]; Html.th [prop.text "Kind"]; Html.th [prop.text "Duration"]
-                            Html.th [prop.text "Effect"]; Html.th [prop.text "Target"];
+                            Html.th [prop.text "Effect"]; Html.th [prop.text "Target"]
                             Html.th [prop.text "Amount"]; Html.th [prop.text ""]
                         ]
                     ]
@@ -324,8 +327,7 @@ let StoragePage () =
                                 if v <> 0L then $"+ {v}" else ""
                             let dStr =
                                 let dur = Shop.getRoundDuration item
-                                if dur = Int32.MaxValue then ""
-                                else dur.ToString()
+                                if dur = Int32.MaxValue then "" else dur.ToString()
                             let target = Shop.getTarget item
                             let kind = Shop.getKind item
                             Html.tr [
@@ -339,18 +341,20 @@ let StoragePage () =
                                     Html.div [
                                         prop.className "storage-use"
                                         prop.children [
-                                            CustomSelectInput selChamp setSelChamp
-                                                [ for c in d.Champs -> (string c.ID), c.Name, None ]
-                                            
+                                            CustomSelectInput
+                                                (getSelected i)
+                                                (setSelected i)
+                                                [ for c in d.Champs -> (string c.ID), c.Name, Some (Links.IPFS + c.IPFS) ]
+
                                             Html.button [
                                                 prop.className "btn btn-sm btn-primary"
                                                 prop.onClick (fun _ ->
-                                                    match UInt64.TryParse selChamp with
+                                                    match UInt64.TryParse (getSelected i) with
                                                     | true, cid ->
                                                         async {
                                                             let! r = Api.useItem item cid
                                                             match r with
-                                                            | Ok ()   ->
+                                                            | Ok () ->
                                                                 setMsg (Some "Used!")
                                                                 load()
                                                             | Error e -> setMsg (Some ("Error: " + e))
