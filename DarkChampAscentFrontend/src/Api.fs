@@ -110,11 +110,11 @@ let registerWallet (wallet: string) =
         return parseUnit json
     }
 
-let getBattle () =
+let getActiveUserChamps () =
     async { 
         let p = Pattern.Battle
         let! json = fetchJson p.Str p.Method None
-        return parseResult decodeBattleDTO json
+        return decodeActiveChamps json
     }
 
 let joinBattle (champId: uint64) (move: Move) =

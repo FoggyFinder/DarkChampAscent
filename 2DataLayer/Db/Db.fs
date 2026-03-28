@@ -85,6 +85,7 @@ open Microsoft.Extensions.Options
 open Conf
 open DarkChampAscent.Account
 open System.Collections.Concurrent
+open DTO
 
 type SqliteStorage(options:IOptions<DbConfiguration>) =
     let jsOptions = JsonFSharpOptions().ToJsonSerializerOptions()
@@ -1401,24 +1402,80 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         match getUserIdByUserId uId with
         | Some userId ->
             try
+                let roundId' = int64 roundId
                 use conn = new SqliteConnection(cs)
+                // TODO: cache this for fast lookup
+                let lvls =
+                    Db.newCommand SQL.GetLvlsForRoundForUserChamps conn
+                    |> Db.setParams [
+                        "roundId", SqlType.Int64 roundId'
+                        "userId", SqlType.Int64 <| int64 userId
+                    ]
+                    |> Db.query(fun r -> {|
+                        ChampId = uint64 <| r.GetInt64(0)
+                        Characteristic = enum<Characteristic> <| r.GetInt32(1)
+                    |})
+                    |> List.groupBy(fun v -> v.ChampId)
+                    |> dict
+                    |> Seq.map(fun kv ->
+                        kv.Key,
+                        kv.Value |> List.countBy(fun l -> l.Characteristic) |> dict |> Levels.statFromCharacteristics)
+                    |> Map.ofSeq
+
+                let boosts =
+                    Db.newCommand SQL.GetBoostsForUserChampsAtRound conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 <| int64 userId
+                        "roundId", SqlType.Int64 roundId'
+                    ]
+                    |> Db.query(fun r -> {|
+                        ChampId = uint64 <| r.GetInt64(0)
+                        RoundBoost = {
+                            StartRoundId = r.GetInt64(1)
+                            Boost = enum<ShopItem> <| r.GetInt32(2)
+                            Duration = r.GetInt32(3)
+                        }
+                    |})
+                    |> List.groupBy(fun v -> v.ChampId)
+                    |> List.map(fun (k,v) ->
+                        k, 
+                        v
+                        |> List.map(fun r -> r.RoundBoost)
+                        |> List.fold(fun stat boost ->
+                                Battle.processShopItem stat boost roundId') Stat.Zero)
+                    |> Map.ofList
+
                 Db.newCommand SQL.GetActiveUserChamps conn
                 |> Db.setParams [
                     "userId", SqlType.Int64 userId
                     "roundId", SqlType.Int64 <| int64 roundId
                 ]
                 |> Db.query (fun r ->
-                   uint64 <| r.GetInt64(0), 
-                   r.GetString(1),
-                   r.GetString(2)
-                )
+                    let cId = uint64 <| r.GetInt64(0)
+                    let bStat =
+                        {
+                            Health = r.GetInt64(3)
+                            Magic = r.GetInt64(4)
+
+                            Accuracy = r.GetInt64(5)
+                            Luck = r.GetInt64(6)
+
+                            Attack = r.GetInt64(7)
+                            MagicAttack = r.GetInt64(8)
+
+                            Defense = r.GetInt64(9)
+                            MagicDefense = r.GetInt64(10)
+                        }
+                    let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
+                    let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), bStat + lStat + bsStat))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetActiveUserChamps {uId}")
                 Error("Unexpected error")
         | None -> Error("Unable to find user")
 
-    member x.GetAvailableUserChamps(uId: UserId): Result<(uint64 * string * string) list, string> =
+    member x.GetAvailableUserChamps(uId: UserId): Result<ChampInfoWithStat list, string> =
         match x.GetLastRoundId() with
         | Some roundId ->
             match x.GetRoundStatus roundId with
@@ -2547,7 +2604,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.querySingle(fun r -> enum<RoundStatus> <| r.GetInt32(0))
             match statusO with
-            | Some status when status = RoundStatus.Processing->
+            | Some status when status = RoundStatus.Processing ->
                 Db.newCommand SQL.GetBoostsForRound conn
                 |> Db.setParams [
                     "roundId", SqlType.Int64 <| int64 roundId
@@ -2717,18 +2774,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             use conn = new SqliteConnection(cs)
 
             let updateRewards (tn:Data.IDbTransaction) (roundId: uint64) (roundRewards: RoundRewardSplit) =
+                let sRoundRewards = roundRewards.SRewards
                 // insert to round rewards
                 tn
                 |> Db.newCommandForTransaction SQL.InsertRoundRewards
                 |> Db.setParams [ 
                     "roundId", SqlType.Int64 <| int64 roundId
                     "unclaimed", SqlType.Decimal roundRewards.Unclaimed
-                    "burn", SqlType.Decimal roundRewards.Burn
-                    "dao", SqlType.Decimal roundRewards.DAO
-                    "reserve", SqlType.Decimal roundRewards.Reserve
-                    "devs", SqlType.Decimal roundRewards.Dev
+                    "burn", SqlType.Decimal sRoundRewards.Burn
+                    "dao", SqlType.Decimal sRoundRewards.DAO
+                    "reserve", SqlType.Decimal sRoundRewards.Reserve
+                    "devs", SqlType.Decimal sRoundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
-                    "staking", SqlType.Decimal roundRewards.Staking
+                    "staking", SqlType.Decimal sRoundRewards.Staking
                 ]
                 |> Db.exec
 
@@ -2744,7 +2802,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal roundRewards.Reserve
+                    "amount", SqlType.Decimal sRoundRewards.Reserve
                     "key", SqlType.String (DbKeysNum.Reserve.ToString())
                 ]
                 |> Db.exec
@@ -2752,7 +2810,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal roundRewards.Dev
+                    "amount", SqlType.Decimal sRoundRewards.Dev
                     "key", SqlType.String (DbKeysNum.Dev.ToString())
                 ]
                 |> Db.exec
@@ -2760,7 +2818,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal roundRewards.DAO
+                    "amount", SqlType.Decimal sRoundRewards.DAO
                     "key", SqlType.String (DbKeysNum.DAO.ToString())
                 ]
                 |> Db.exec
@@ -2768,7 +2826,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal roundRewards.Burn
+                    "amount", SqlType.Decimal sRoundRewards.Burn
                     "key", SqlType.String (DbKeysNum.Burn.ToString())
                 ]
                 |> Db.exec
@@ -2776,7 +2834,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal roundRewards.Staking
+                    "amount", SqlType.Decimal sRoundRewards.Staking
                     "key", SqlType.String (DbKeysNum.Staking.ToString())
                 ]
                 |> Db.exec
@@ -3669,6 +3727,228 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Log.Error(exn, "MonsterBelongsToAUser")
                 None
         | None -> None
+
+    member x.GetLastRoundParticipants(): Result<RoundParticipantChamp list, string> =
+        match x.GetLastRoundId() with
+        | Some roundId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetChampsFromRound conn
+                |> Db.setParams [
+                    "roundId", SqlType.Int64 <| int64 roundId
+                ]
+                |> Db.query (fun r -> RoundParticipantChamp(uint64 <| r.GetInt64(0), r.GetString(1), r.GetString(2)))
+                |> Ok
+            with exn ->
+                Log.Error(exn, "GetLastRoundParticipants")
+                Error("Unexpected error")
+        | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
+    
+    /// includes stats from the level
+    member _.GetCurrentBattleInfo() : Result<CurrentBattleInfo, string> =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetLastBattleInfo conn
+            |> Db.querySingle (fun r ->
+                CurrentBattleInfo(
+                    uint64 <| r.GetInt64(0),
+                    r.GetInt32(1) |> enum<BattleStatus>,
+                    {
+                        Name = r.GetString(3)
+                        Description = r.GetString(4)
+                        Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 5, jsOptions)
+                        XP = uint64 <| r.GetInt32(6)
+                        Stat = {
+
+                            Health = r.GetInt64(7)
+                            Magic = r.GetInt64(8)
+
+                            Accuracy = r.GetInt64(9)
+                            Luck = r.GetInt64(10)
+
+                            Attack = r.GetInt64(11)
+                            MagicAttack = r.GetInt64(12)
+
+                            Defense = r.GetInt64(13)
+                            MagicDefense = r.GetInt64(14)
+                        }
+                        MType = enum<MonsterType> <| r.GetInt32(15)
+                        MSubType = enum<MonsterSubType> <| r.GetInt32(16)
+                    },
+                    r.GetInt64(2) |> uint64
+                )
+            )
+            |> function
+                | Some v ->
+                    let monster = v.Monster
+                    let monsterLvl = Levels.getLvlByXp monster.XP
+                    let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
+                    v.WithMonsterInfo({ v.Monster with Stat = v.Monster.Stat + monsterLvlStats })
+                    |> Ok
+                | None -> Error("Unknown error")
+        with exn ->
+            Log.Error(exn, "GetCurrentBattleInfo")
+            Error("Unexpected error")
+
+    member _.GetBattleHistory(battleId:uint64) : Result<RoundInfo list, string> =
+        try
+            use conn = new SqliteConnection(cs)
+            let chActions =
+                Db.newCommand SQL.GetBattleChampActions conn
+                |> Db.setParams [
+                    "battleId", SqlType.Int64 <| int64 battleId
+                ]
+                |> Db.query (fun r ->
+                    uint64 <| r.GetInt64(0),
+                    PMResult(
+                        PMDetail.Champ(PMChamp(
+                            System.Text.Json.JsonSerializer.Deserialize<PerformedMove>(Utils.getBytesData r 2, jsOptions),
+                            RoundParticipantChamp(uint64 <| r.GetInt64(3), r.GetString(4), r.GetString(5)),
+                            r.GetDateTime(1))),
+                        r.GetInt64(6) |> uint64,
+                        r.GetDecimal(7) |> Some)
+                )
+            
+            let mActions =
+                Db.newCommand SQL.GetBattleMonsterActions conn
+                |> Db.setParams [
+                    "battleId", SqlType.Int64 <| int64 battleId
+                ]
+                |> Db.query (fun r ->
+                    uint64 <| r.GetInt64(0),
+                    PMResult(
+                        PMDetail.Monster (PMMonster(
+                            System.Text.Json.JsonSerializer.Deserialize<PerformedMove>(Utils.getBytesData r 1, jsOptions),
+                            if r.IsDBNull(2) then None
+                            else Some(RoundParticipantChamp(uint64 <| r.GetInt64(2), r.GetString(3), r.GetString(4))))
+                   ), r.GetInt64(5) |> uint64, None))
+          
+            let mRewards =
+                Db.newCommand SQL.GetRewardsForBattle conn
+                |> Db.setParams [
+                    "battleId", SqlType.Int64 <| int64 battleId
+                ]
+                |> Db.query (fun r ->
+                    uint64 <| r.GetInt64(0),
+                    RoundReward(SpecialReward(r.GetDecimal(2), r.GetDecimal(3), r.GetDecimal(1), r.GetDecimal(4), r.GetDecimal(5)), r.GetDecimal(6)))
+                |> readOnlyDict
+
+            let defeatedChamps =
+                Db.newCommand SQL.GetListOfDefeatedChamps conn
+                |> Db.setParams [
+                    "battleId", SqlType.Int64 <| int64 battleId
+                ]
+                |> Db.query (fun r ->
+                    uint64 <| r.GetInt64(0),
+                    uint64 <| r.GetInt64(1))
+                |> List.groupBy fst
+                |> List.map(fun (k, gr) -> k, gr |> List.map snd)
+                |> readOnlyDict
+
+            let mDefeater =
+                Db.newCommand SQL.GetMonsterDefeater conn
+                |> Db.setParams [
+                    "battleId", SqlType.Int64 <| int64 battleId
+                ]
+                |> Db.querySingle (fun r -> uint64 <| r.GetInt64(0))
+
+            let res:RoundInfo list =
+                mActions
+                |> List.append chActions
+                |> List.groupBy fst
+                |> List.map(fun (rId, gr) ->
+                    let chActs =
+                        gr
+                        |> List.choose(fun (_, pmr) ->
+                            match pmr.Detail with
+                            | PMDetail.Champ c -> (c.Timestamp, pmr) |> Some
+                            | PMDetail.Monster _ -> None)
+                        |> List.sortBy(fun (dt, _) -> dt)
+                        |> List.map snd
+                    let mActs =
+                        gr
+                        |> List.choose(fun (_, pmr) ->
+                            match pmr.Detail with
+                            | PMDetail.Champ _ -> None
+                            | PMDetail.Monster _ -> Some pmr)
+                    let mActionsFirst =
+                        mActs
+                        |> List.exists(fun pmr -> 
+                            match pmr.Detail with 
+                            | PMDetail.Monster m -> m.PM.Dmg.IsNone
+                            | _ -> false)
+
+                    let details =
+                        if mActionsFirst then
+                            chActs |> List.append mActs
+                        else
+                            mActs |> List.append chActs
+                    let rRewards =
+                        match mRewards.TryGetValue rId with
+                        | true, r -> r
+                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M, 0M, 0M), 0M)
+
+                    let dChamps =
+                        match defeatedChamps.TryGetValue rId with
+                        | true, xs -> xs
+                        | false, _ -> []
+                    RoundInfo(rId, details, rRewards, dChamps, mDefeater))
+                |> List.sortByDescending (fun ri -> ri.RoundId)
+            Ok res
+        with exn ->
+            Log.Error(exn, "GetBattleHistory")
+            Error("Unexpected error")
+    
+    member _.GetStats() =
+        try
+            use conn = new SqliteConnection(cs)
+
+            let players =
+                Db.newCommand SQL.GetTotalUserCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+            
+            let confirmedPlayers =
+                Db.newCommand SQL.GetConfirmedPlayersCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let champs =
+                Db.newCommand SQL.GetChampsCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let cMonsters =
+                Db.newCommand SQL.GetCustomMonstersCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let battles =
+                Db.newCommand SQL.GetBattlesCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let rounds =
+                Db.newCommand SQL.GetRoundsCount conn
+                |> Db.scalar (tryUnbox<int64> >> Option.map uint64)
+
+            let rewards =
+                Db.newCommand SQL.GetSpecialWithdrawalSum conn
+                |> Db.query(fun r ->
+                    r.GetInt32(0) |> enum<WalletType>,
+                    r.GetDecimal(1))
+                |> Map.ofSeq
+
+            let playersEarned =
+                Db.newCommand SQL.PlayersEarned conn
+                |> Db.querySingle (fun r -> r.GetDecimal(0))
+
+
+            Stats(
+                players, confirmedPlayers, champs, cMonsters,
+                battles, rounds, playersEarned,
+                rewards.TryFind WalletType.Burn, rewards.TryFind WalletType.DAO,
+                rewards.TryFind WalletType.Reserve, rewards.TryFind WalletType.Dev,
+                rewards.TryFind WalletType.Staking
+            ) |> Some
+        with exn ->
+            Log.Error(exn, "GetStats")
+            None
 
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)

@@ -43,7 +43,7 @@ let ChampDetailPage (champId: uint64) =
     deferred data (fun d ->
         let c = d.ChampInfo
         let isOwner = d.Balance.IsSome
-        let lvl = c.XP / 1000UL
+        let lvl = Levels.getLvlByXp c.XP
 
         let bs = c.BoostStat |> Option.defaultValue Stat.Zero
         let ls = c.LevelsStat |> Option.defaultValue Stat.Zero
@@ -248,7 +248,7 @@ let MonsterDetailPage (monsterId: uint64) =
 
     deferred data (fun d ->
         let m = d.Monster
-        let lvl = m.XP / 1000UL
+        let lvl = Levels.getLvlByXp(m.XP)
 
         let bs = Stat.Zero
         let ls = Monster.getMonsterStatsByLvl(m.MType, m.MSubType, lvl)

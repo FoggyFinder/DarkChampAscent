@@ -1,38 +1,39 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net10.0</TargetFramework>
+		<InvariantGlobalization>true</InvariantGlobalization>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="NetCord.Hosting" Version="1.0.0-alpha.448" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.7" />
-		<PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.448" />
+		<PackageReference Include="Falco" Version="5.1.0" />
+		<PackageReference Include="AspNet.Security.OAuth.Discord" Version="10.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.448" />
 		<PackageReference Include="FSharp.Control.TaskSeq" Version="0.4.0" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="Assets\**">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Content>
-		<None Include="appsettings.json">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-		<Compile Include="Interactions.fs" />
 		<Compile Include="Services.fs" />
-		<Compile Include="Commands.fs" />
-		<Compile Include="GatewayHandlers.fs" />
+		<Compile Include="DiscordBot\Commands.fs" />
+		<Compile Include="DiscordBot\GatewayHandlers.fs" />
+		<Compile Include="DiscordBot\Interactions.fs" />
+		<Compile Include="Utils.fs" />
 		<Compile Include="Program.fs" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\0GameLogic\02GameBattle.fsproj" />
 	  <ProjectReference Include="..\2DataLayer\2DataLayer.fsproj" />
 	  <ProjectReference Include="..\3Discord\3Discord.fsproj" />
 	</ItemGroup>
 
-</Project>
+	<ItemGroup>
+	  <None Include="appsettings.json">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	</ItemGroup>
 
+</Project>

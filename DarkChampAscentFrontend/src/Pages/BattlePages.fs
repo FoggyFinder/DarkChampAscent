@@ -10,10 +10,158 @@ open GameLogic.Battle
 open GameLogic.Champs
 open DarkChampAscent.Api
 open Fable.Core.JS
+open GameLogic.Monsters
 
 let now () = Constructors.Date.now()
 let toUnixMs (dt: DateTime) =
     (DateTimeOffset(dt, TimeSpan.Zero).ToUnixTimeMilliseconds() |> float)
+
+let private champAvatar (c: RoundParticipantChamp) =
+    (ipfsImg c.IPFS "move-actor-img") 
+
+let private monsterAvatar (m: RoundParticipantMonster) =
+    (Html.img [ Utils.srcMonsterImg m.Img ; prop.className "move-actor-img" ])
+
+let private actor (avatar: ReactElement) (name: string) (page: Page) =
+    Html.a [
+        prop.href page.Route
+        prop.onClick (Nav.navTo page.Route)
+        prop.className "move-actor"
+        prop.children [ avatar; Html.text name ]
+    ]
+
+let private champActor (c: RoundParticipantChamp) =
+    actor (champAvatar c) c.Name (Page.ChampDetail c.ID)
+
+let private monsterActor (m: RoundParticipantMonster) =
+    actor (monsterAvatar m) m.Name (Page.MonsterDetail m.ID)
+
+let private performedMove (ri:RoundInfo) (pmd: PMResult) (monster: RoundParticipantMonster) =
+    
+    let sActor, tActor =
+        match pmd.Detail with
+        | PMDetail.Monster m ->
+            monsterActor monster,
+            m.Target |> Option.map champActor |> Option.defaultValue Html.none
+        | PMDetail.Champ c ->
+            champActor c.Champ,
+            monsterActor monster
+
+    let isKiller =
+        match pmd.Detail with
+        | PMDetail.Monster m ->
+            match m.Target with
+            | Some cId -> ri.DefeatedChamps |> List.contains cId.ID
+            | None -> false
+        | PMDetail.Champ c ->
+            Some c.Champ.ID = ri.MonsterKiller
+
+    let pm =
+        match pmd.Detail with
+        | PMDetail.Monster m -> m.PM
+        | PMDetail.Champ c -> c.PM
+
+    let attack, mattack, shield, mshield, health, magic =
+        WebEmoji.Attack, WebEmoji.MagicAttack, WebEmoji.Shield,
+        WebEmoji.MagicShield, WebEmoji.Health, WebEmoji.Magic
+
+    let parts =
+        match pm with
+        | PerformedMove.Attack dmg ->
+            match dmg with
+            | Dmg.Critical v | Dmg.Default v ->
+                if v > 0UL then 
+                    [ sActor; Html.text $" {attack} overpowered "; tActor; Html.text $" protection and took {v} {health}" ]
+                else           [ sActor; Html.text " attack but "; tActor; Html.text " defense was too strong "; ]
+            | Dmg.Missed ->    [ sActor; Html.text " missed "; tActor; Html.text ". Maybe next time?" ]
+        | PerformedMove.MagicAttack(dmg, m) ->
+            match dmg with
+            | Dmg.Critical v | Dmg.Default v ->
+                if v > 0UL then 
+                    [ sActor; Html.text $" {mattack} overpowered "; tActor; Html.text $" protection and took {v} {health}" ]
+                else           [ sActor; Html.text $" attacked, but "; tActor; Html.text $" was too good and blocked fible attempt, {m} {magic} was taken nevertheless" ]
+            | Dmg.Missed ->    [ sActor; Html.text " missed "; tActor; Html.text ". Maybe next time?" ]
+        | PerformedMove.Shield v ->
+            [ sActor; Html.text $" increased their defense: + {v} to {shield}" ]
+        | PerformedMove.MagicShield(v1, v2) ->
+            let desc =
+                if v1 > 0UL && v2 > 0UL then $" casted magical protection with {v1} {mshield} and spend {v2} {magic}"
+                elif v1 = 0UL && v2 > 0UL then $" casted magical protection, used {v2} {magic} but failed to produce anything sustainable"
+                else " don't have enough magic power to cast magic shield"
+            [ sActor; Html.text desc ]
+        | PerformedMove.Heal(v1, v2) ->
+            let desc =
+                if v1 > 0UL && v2 > 0UL then $" healed {v1} {health} life with {v2} {magic} magic"
+                elif v1 = 0UL && v2 > 0UL then $" used {v2} {magic} but failed to heal themself"
+                else " don't have enough magic power to heal"
+            [ sActor; Html.text desc ]
+        | PerformedMove.Meditate v ->
+            [ sActor; Html.text $" gained {v} {magic}" ]
+
+    Html.p [ 
+        prop.className "round-move";
+        prop.children [
+            yield! parts
+            yield Html.text $" + {pmd.XP} {WebEmoji.Gem} XP"
+            match pmd.Rewards with
+            | Some r ->
+                yield Html.span [ prop.dangerouslySetInnerHTML $"; + {r} {WebEmoji.DarkCoin}" ]
+            | _ -> ()
+        ]
+    ]
+
+let private chTable (stat:Stat) =
+    Html.table [
+        Html.tbody [
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Health ]
+                Html.td [ prop.className "stat-name"; prop.text "Health" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Health) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Magic ]
+                Html.td [ prop.className "stat-name"; prop.text "Magic" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Magic) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Attack ]
+                Html.td [ prop.className "stat-name"; prop.text "Attack" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Attack) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.MagicAttack ]
+                Html.td [ prop.className "stat-name"; prop.text "M. Attack" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.MagicAttack) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Shield ]
+                Html.td [ prop.className "stat-name"; prop.text "Defense" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Defense) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.MagicShield ]
+                Html.td [ prop.className "stat-name"; prop.text "M. Defense" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.MagicDefense) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Luck ]
+                Html.td [ prop.className "stat-name"; prop.text "Luck" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Luck) ]
+                
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Accuracy ]
+                Html.td [ prop.className "stat-name"; prop.text "Accuracy" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Accuracy) ]
+            ]
+        ]
+    ]
 
 [<ReactComponent>]
 let private Countdown (targetMs: float) =
@@ -38,23 +186,23 @@ let private Countdown (targetMs: float) =
     ]
 
 [<ReactComponent>]
-let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
+let private JoinSection (dto: ChampInfoWithStat list) (onJoined: unit -> unit) =
     let selChamp, setSelChamp = React.useState None
     let selMove, setSelMove   = React.useState Move.Attack
     let joining, setJoining   = React.useState false
     let joinMsg, setJoinMsg   = React.useState<string option> None
 
     React.useEffect((fun () ->
-        match dto.ChampsRes with
-        | Some (Ok (first :: _)) ->
+        match dto with
+        | first :: _ ->
             setSelChamp (Some first)
             setSelMove Move.Attack
         | _ -> ()
-    ), [| box dto.ChampsRes |])
+    ), [| box dto |])
 
     let champsView =
-        match dto.ChampsRes with
-        | Some (Ok champs) ->
+        match dto with
+        | champs ->
             if champs.IsEmpty then
                 Html.p [ prop.text "No champs available." ]
             else
@@ -65,11 +213,16 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                             prop.className "select-wrap"
                             prop.children [
                                 CustomSelectInput
-                                    (selChamp |> Option.map (fun (cId, _, _) -> cId.ToString()) |> Option.defaultValue "")
-                                    (fun s -> champs |> List.tryFind (fun (cId, _, _) -> (cId.ToString()) = s) |> setSelChamp)
-                                    [ for (id, name, ipfs) in champs -> id.ToString(), name, Some (Links.IPFS + ipfs) ]
+                                    (selChamp |> Option.map (fun rpc -> rpc.ID.ToString()) |> Option.defaultValue "")
+                                    (fun s -> champs |> List.tryFind (fun rpc -> (rpc.ID.ToString()) = s) |> setSelChamp)
+                                    [ for rpc in champs -> rpc.ID.ToString(), rpc.Name, Some (Links.IPFS + rpc.IPFS) ]
                             ]
                         ]
+
+                        match selChamp with
+                        | Some sChamp -> chTable sChamp.Stat                          
+                        | None -> ()
+                        
                         Html.div [
                             prop.className "select-wrap"
                             prop.children [
@@ -82,12 +235,12 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                                     [ for m in AllEnums.Moves -> DisplayEnum.Move m, DisplayEnum.Move m, None ]
                                 ]
                         ]
-                        
+
                         Html.button [
-                            prop.className "btn btn-primary"
+                            prop.className "btn btn-join"
                             prop.disabled joining
                             prop.onClick (fun _ ->
-                                match selChamp |> Option.map (fun (cid, _, _) -> cid) with
+                                match selChamp |> Option.map (fun rpc -> rpc.ID) with
                                 | Some cid ->
                                     setJoining true; setJoinMsg None
                                     async {
@@ -104,9 +257,7 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
                         | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
                         | None -> Html.none
                     ]
-                ]
-        | Some (Error e) -> Html.p [ prop.text e ]
-        | None -> Html.p [ prop.text "Sign in to join." ]
+                ] 
 
     Html.div [
         prop.className "battle-join-inner"
@@ -117,90 +268,84 @@ let private JoinSection (dto: BattleDTO) (onJoined: unit -> unit) =
 
 [<ReactComponent>]
 let BattlePage () =
-    let data, setData = React.useState<Deferred<BattleDTO>> Loading
+    let data, setData = React.useState<Deferred<BattleInfoDTO>> Loading
     let participants, setParticipants = React.useState(None)
     let roundInfo, setRoundInfo = React.useState(None)
-    let prevStatus, setPrevStatus = React.useState<RoundStatus option>(None)
-
-    useSSE (Api.baseUrl + Pattern.BattleParticipants.Str) (fun data ->
-        Decoders.parseParticipants data
-        |> Some
-        |> setParticipants
-    )
-
-    useSSE (Api.baseUrl + Pattern.BattleStatusInfo.Str) (fun data ->
-        Decoders.parseResult Decoders.decodeRoundInfoDTO data
-        |> Some
-        |> setRoundInfo
-    )
+    let activeChamps, setActiveChamps = React.useState<Deferred<ChampInfoWithStat list option>> Loading
 
     let load () =
         async {
-            let! r = Api.getBattle ()
-            match r with
-            | Ok d  -> setData (Loaded d)
-            | Error e -> setData (Failed e)
+            let! r = Api.getActiveUserChamps ()
+            match r with | Ok d  -> Loaded d | Error e -> Failed e
+            |> setActiveChamps
         } |> Async.StartImmediate
+   
+    useSSE (Api.baseUrl + Pattern.BattleStatusInfo.Str) (fun data ->
+        match Decoders.decodeBattleInfoDTO data with
+        | Some bi -> setData (Loaded bi)
+        | None -> setData (Failed "Unable to parse json")
+    )
 
-    React.useEffect((fun () -> load ()), [||])
+    useSSE (Api.baseUrl + Pattern.BattleParticipants.Str) (fun data ->
+        Decoders.parseParticipants data
+        |> setParticipants
+    )
 
-    React.useEffect((fun () ->
-        match roundInfo with
-        | Some (Ok (ri: RoundInfoDTO)) ->
-            match prevStatus with
-            | Some ps when ps <> ri.Status ->
-                setPrevStatus (Some ri.Status)
-                load ()
-            | None ->
-                setPrevStatus (Some ri.Status)
-            | _ -> ()
-        | _ -> ()
-    ), [| box roundInfo |])
+    useSSE (Api.baseUrl + Pattern.BattleRoundStatusInfo.Str) (fun data ->
+        load()
+        match Decoders.decodeRoundInfoDTO data with
+        | Some ri ->
+            match ri.Status with
+            | RoundStatus.Started -> load()
+            | _ -> Some([]) |> Loaded |> setActiveChamps
+            Some ri |> setRoundInfo
+        | None ->
+            Some([]) |> Loaded |> setActiveChamps
+            None |> setRoundInfo
+    )
+
     deferred data (fun dto ->
         let timerBlock =
             let roundChamps =
                 match participants with
-                | Some r -> match r with Ok c -> c | Error _ -> [] 
+                | Some r -> r
                 | None -> []
             let hasPlayers  = not roundChamps.IsEmpty
             
             match roundInfo with
-            | Some r ->
-                match r with
-                | Ok roundInfoDTO ->
-                    let targetUtcO, titleO, explanation =
-                        match roundInfoDTO.Status with
-                        | RoundStatus.Started ->
-                            match roundInfoDTO.RoundStarted with
-                            | Some start ->
-                                let targetUtc = start + BattleParams.RoundDuration()
-                                let isAwaitingPlayers = now() > (toUnixMs targetUtc)
-                                if isAwaitingPlayers then
-                                    if hasPlayers then None, None, "Round closes any second"
-                                    else None, None, "Round starts within 1 minute as any player joins it"
-                                else Some targetUtc, Some "Time to round update:", ""
-                            | None -> None, None, ""
-                        | RoundStatus.Processing -> None, Some "Round is processing:", ""
-                        | RoundStatus.Finished   -> None, Some "Round is finished, waiting...", ""
-                        | _ -> None, None, ""
-                    Html.div [
-                        prop.className "timer-group"
-                        prop.children [
-                            Html.text explanation
-                            match titleO with
-                            | Some title -> Html.h3 [ prop.text title ]
-                            | None -> Html.none
-                            match targetUtcO with
-                            | Some t -> Countdown (toUnixMs t)
-                            | None -> Html.none
-                        ]
+            | Some roundInfoDTO ->
+                let targetUtcO, titleO, explanation =
+                    match roundInfoDTO.Status with
+                    | RoundStatus.Started ->
+                        match roundInfoDTO.RoundStarted with
+                        | Some start ->
+                            let targetUtc = start + BattleParams.RoundDuration()
+                            let isAwaitingPlayers = now() > (toUnixMs targetUtc)
+                            if isAwaitingPlayers then
+                                if hasPlayers then None, None, "Round closes any second"
+                                else None, None, "Round starts within 1 minute as any player joins it"
+                            else Some targetUtc, Some "Time to round update:", ""
+                        | None -> None, None, ""
+                    | RoundStatus.Processing -> None, Some "Round is processing:", ""
+                    | RoundStatus.Finished   -> None, Some "Round is finished, waiting...", ""
+                    | _ -> None, None, ""
+                Html.div [
+                    prop.className "timer-group"
+                    prop.children [
+                        Html.text explanation
+                        match titleO with
+                        | Some title -> Html.h3 [ prop.text title ]
+                        | None -> Html.none
+                        match targetUtcO with
+                        | Some t -> Countdown (toUnixMs t)
+                        | None -> Html.none
                     ]
-                | Error err -> Html.p [ prop.text err ]
+                ]
             | None -> Html.none
 
         let isChampViewVisible =
             roundInfo
-            |> Option.map (fun r -> match r with | Ok ri -> ri.Status = RoundStatus.Started | Error _ -> false)
+            |> Option.map (fun r -> r.Status = RoundStatus.Started)
             |> Option.defaultValue true
 
         let currentBattleSection =
@@ -208,43 +353,51 @@ let BattlePage () =
                 prop.className "block current-battle"
                 prop.id "current-battle"
                 prop.children [
-                    match dto.CurrentBattleInfoR with
-                    | Ok cbi ->
-                        let rounds = dto.History |> Result.map (fun moves -> moves.Length) |> Result.defaultValue 0
-                        Html.h2 [ prop.text $"Current battle: {cbi.BattleNum} ({DisplayEnum.BattleStatus cbi.BattleStatus})" ]
+                    let cbi = dto.CurrentBattleInfo
+                    let rounds = dto.History.Rounds.Length
+                    Html.h2 [ prop.text $"Current battle: {cbi.BattleNum} ({DisplayEnum.BattleStatus cbi.BattleStatus})" ]
                         
-                        Html.div [
-                            prop.className "progress-row"
-                            prop.children [
-                                Html.progress [ prop.className "progress-bar"; prop.value (float rounds / float Constants.RoundsInBattle) ]
-                                Html.span [ prop.className "round-count"; prop.text $"{rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}" ]
-                                timerBlock
-                            ]
+                    Html.div [
+                        prop.className "progress-row"
+                        prop.children [
+                            Html.progress [ prop.className "progress-bar"; prop.value (float rounds / float Constants.RoundsInBattle) ]
+                            Html.span [ prop.className "round-count"; prop.text $"{rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}" ]
+                            timerBlock
                         ]
+                    ]
 
-                        Html.div [
-                            prop.className "battle-body"
-                            prop.children [
+                    Html.div [
+                        prop.className "battle-body"
+                        prop.children [
+                            Html.div [
+                                prop.className "battle-monster"
+                                prop.children [
+                                    Html.img [ prop.className "picNormal"; Utils.srcMonsterImg cbi.Monster.Picture ]
+                                    Html.div [ prop.className "center"; prop.children [ monsterLink (uint64 cbi.MonsterId) cbi.Monster.Name ] ]
+                                    Html.div [ prop.className "center muted"; prop.text (Display.monsterClass(cbi.Monster.MType, cbi.Monster.MSubType)) ]
+                                    Html.div [ prop.className "center"; prop.text $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)" ]
+                       
+                                    chTable cbi.Monster.Stat
+                                ]
+                            ]
+                            
+                            if isChampViewVisible then
                                 Html.div [
-                                    prop.className "battle-monster"
-                                    prop.children [
-                                        Html.img [ prop.className "picNormal"; Utils.srcMonsterImg cbi.Monster.Picture ]
-                                        Html.div [ prop.className "center"; prop.children [ monsterLink (uint64 cbi.MonsterId) cbi.Monster.Name ] ]
-                                        Html.div [ prop.className "center muted"; prop.text (Display.monsterClass(cbi.Monster.MType, cbi.Monster.MSubType)) ]
-                                        Html.div [ prop.className "center"; prop.text $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)" ]
-                                        Html.div [ prop.className "center"; prop.text $"{WebEmoji.Health} {cbi.Monster.Stat.Health} Health" ]
-                                        Html.div [ prop.className "center"; prop.text $"{WebEmoji.Magic} {cbi.Monster.Stat.Magic} Magic" ]
+                                    prop.className "battle-join"
+                                    prop.children [ 
+                                        match activeChamps with
+                                        | Deferred.Loaded xsO ->
+                                            match xsO with
+                                            | Some xs -> JoinSection xs load
+                                            | None -> Html.p [ prop.text "Sign in to join." ]
+                                        | Deferred.Loading | Deferred.NotStarted ->
+                                            Html.p [ prop.text "loading..." ]
+                                        | Deferred.Failed e ->
+                                            Html.p [ prop.text e ]
                                     ]
                                 ]
-                                if isChampViewVisible then
-                                    Html.div [
-                                        prop.className "battle-join"
-                                        prop.children [ JoinSection dto load ]
-                                    ]
-                            ]
                         ]
-                    | Error e ->
-                        Html.p [ prop.text e ]
+                    ]
                 ]
             ]
 
@@ -254,29 +407,26 @@ let BattlePage () =
                 prop.id "active-participant"
                 prop.children [
                     match participants with
-                    | Some r ->
-                        match r with
-                        | Ok champs ->
-                            if champs.IsEmpty then
-                                Html.p [ prop.text "Waiting for players" ]
-                            else
-                                Html.h2 [ prop.text $"Participants ({champs.Length}):" ]
-                                Html.div [
-                                    prop.className "participants-grid"
-                                    prop.children [
-                                        for p in champs do
-                                            Html.a [
-                                                prop.href (Page.ChampDetail p.ID).Route
-                                                prop.onClick (Nav.navTo (Page.ChampDetail p.ID).Route)
-                                                prop.className "participant-avatar"
-                                                prop.title p.Name
-                                                prop.children [
-                                                    ipfsImg p.IPFS "participant-img"
-                                                ]
+                    | Some champs ->
+                        if champs.IsEmpty then
+                            Html.p [ prop.text "Waiting for players" ]
+                        else
+                            Html.h2 [ prop.text $"Participants ({champs.Length}):" ]
+                            Html.div [
+                                prop.className "participants-grid"
+                                prop.children [
+                                    for p in champs do
+                                        Html.a [
+                                            prop.href (Page.ChampDetail p.ID).Route
+                                            prop.onClick (Nav.navTo (Page.ChampDetail p.ID).Route)
+                                            prop.className "participant-avatar"
+                                            prop.title p.Name
+                                            prop.children [
+                                                ipfsImg p.IPFS "participant-img"
                                             ]
-                                    ]
+                                        ]
                                 ]
-                        | Error e -> Html.p [ prop.text e ]
+                            ]
                     | None -> Html.none
                 ]
             ]
@@ -286,26 +436,56 @@ let BattlePage () =
                 prop.className "block history"
                 prop.id "history"
                 prop.children [
-                    match dto.History with
-                    | Ok moves ->
-                        let rounds = moves.Length
-                        if moves.IsEmpty then
-                            Html.p [ prop.text "Waiting for round completion" ]
-                        else
-                            Html.h2 [ prop.className "center"; prop.text $"{WebEmoji.History} Battle history" ]
-                            Html.hr []
-                            for (r, roundMoves) in moves |> List.truncate 3 do
-                                Html.div [
-                                    prop.children [
-                                        Html.p [ prop.className "round-header center"; prop.text $"Round {r}" ]
-                                        Html.hr []
-                                        for (sn, pm, tn) in roundMoves do
-                                            Html.p [ prop.className "round-move"; prop.text (Display.performedMoveWebUi pm sn tn) ]
+                    let bh = dto.History
+                    let rounds = bh.Rounds.Length
+                    if bh.Rounds.IsEmpty then
+                        Html.p [ prop.text "Waiting for round completion" ]
+                    else
+                        Html.h2 [ prop.className "center"; prop.text $"{WebEmoji.History} Battle history" ]
+                        Html.hr []
+                        for ri in bh.Rounds |> List.truncate 3 do
+                            let srewards = ri.Rewards
+                            Html.div [
+                                prop.children [
+                                    Html.p [ prop.className "round-header center"; prop.text $"Round {ri.RoundId}" ]
+                                    Html.hr []
+                                    for pmd in ri.Details do
+                                        performedMove ri pmd bh.Monster
+                                    Html.hr []
+
+                                    Html.p [ prop.className "rewards-subheader center"; prop.text $"Rewards" ]
+                                    Html.table [
+                                        Html.tbody [
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.Champs} Players {WebEmoji.Champs}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Champs)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.DAO} DAO {WebEmoji.DAO}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.DAO)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.Dev} Dev {WebEmoji.Dev}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Dev)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.Reserve} Reserve {WebEmoji.Reserve}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Reserve)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.Staking} Staking {WebEmoji.Staking}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Staking)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                            Html.tr [
+                                                Html.td [ prop.text $"{WebEmoji.Fire} Burn {WebEmoji.Fire}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Burn)} {WebEmoji.DarkCoin}" ]
+                                            ]
+                                        ]
                                     ]
                                 ]
-                            if rounds > 3 then
-                                Html.p [ prop.text $"{rounds - 3} more rounds {WebEmoji.Rounds} omitted for clarity" ]
-                    | Error e -> Html.p [ prop.text e ]
+                            ]
+                        if rounds > 3 then
+                            Html.p [ prop.text $"{rounds - 3} more rounds {WebEmoji.Rounds} omitted for clarity" ]
                 ]
             ]
 

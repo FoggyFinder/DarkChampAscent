@@ -7,6 +7,7 @@ open GameLogic.Champs
 open GameLogic.Monsters
 open Types
 open GameLogic.Battle
+open System.Text
 
 type ShopItemRow(item:ShopItem, dcprice: decimal) =
     member _.Item = item
@@ -489,11 +490,18 @@ type FullStat(s:Stat, bs:Stat, ls:Stat) =
     let format2 (emoj:string) (name:string) (v:string) = $"{emoj} {name}: {v}"
 
     let property getValue =
-        let c, b, l = getValue s, getValue bs, getValue ls 
-        let boosted = if b > 0L then $" +`{b}` {a1} " else ""
-        let lvled = if l > 0L then $" +`{l}` {a2}" else ""
-        $"{c}{boosted}{lvled}"   
-    
+        let c, b, l = getValue s, getValue bs, getValue ls
+        let total = c + b + l
+        let hasBonus = b > 0L || l > 0L
+        if hasBonus then
+            let sb = StringBuilder()
+            sb.Append($"{total} ({c}") |> ignore
+            if b > 0L then sb.Append($" +`{b}` {a1}") |> ignore
+            if l > 0L then sb.Append($" +`{l}` {a2}") |> ignore
+            sb.Append($")") |> ignore
+            sb.ToString()
+        else total.ToString()
+
     member _.GetValue (ch:Characteristic) =
         match ch with
         | Characteristic.Health -> (fun s -> s.Health)
@@ -622,4 +630,3 @@ let private performedMove (isDiscord:bool) (pm:PerformedMove) (sname:string) (tn
     | PerformedMove.Meditate v -> $"{sname} gained {v} {magic}"
 
 let performedMoveDiscord = performedMove true
-let performedMoveWebUi = performedMove false

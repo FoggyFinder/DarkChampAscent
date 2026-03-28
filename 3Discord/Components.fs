@@ -5,15 +5,19 @@ open NetCord
 open Display
 open GameLogic.Champs
 
-let donationCard (d:decimal) (donater:string) =
+let donationCard (d:decimal) (donater:string) (uriO:string option) =
+    let title =
+        match uriO with
+        | Some uri -> $"[New Donation!]({uri})"
+        | None -> "New Donation!"
     ComponentContainerProperties([
-        TextDisplayProperties($"{Emoj.Rocket} **New Donation!** {Emoj.Rocket}")
+        TextDisplayProperties($"{Emoj.Rocket} **{title}** {Emoj.Rocket}")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
         TextDisplayProperties($" {d} {Emoj.Coin} added to reward pool ")
         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
         TextDisplayProperties($"Thank you, {donater}")
     ])
-
+                            
 [<RequireQualifiedAccess>]
 module ChampsComponent =
     let champComponent (champ:ChampInfo) =
@@ -184,7 +188,7 @@ module MonstersComponent =
 [<RequireQualifiedAccess>]
 module BattleComponent =
 
-    let battleResults(br:BattleResult) (names:Map<uint64, string>) =
+    let battleResults(br:BattleResult) (names:Map<uint64, string>) (lvlsStat: Map<uint64, Stat>) (boosts:Map<uint64, Stat>)=
         let movesComponent =
             ComponentContainerProperties([
                 TextDisplayProperties($"** Actions **")
@@ -220,7 +224,7 @@ module BattleComponent =
                     |> Some
 
         let totalRewardsComponent =
-            let rewards = br.Rewards
+            let rewards = br.Rewards.SRewards
             ComponentContainerProperties([
                 TextDisplayProperties($"** Rewards **")
                 ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
@@ -228,7 +232,7 @@ module BattleComponent =
                 TextDisplayProperties($"** Dev **: {Display.toRound6StrD rewards.Dev} {Emoj.Coin}")
                 TextDisplayProperties($"** Reserve **: {Display.toRound6StrD rewards.Reserve} {Emoj.Coin}")
                 TextDisplayProperties($"** Burn **: {Display.toRound6StrD rewards.Burn} {Emoj.Coin}")
-                TextDisplayProperties($"** Champs **: {Display.toRound6StrD rewards.ChampsTotal} {Emoj.Coin}")
+                TextDisplayProperties($"** Champs **: {Display.toRound6StrD br.Rewards.ChampsTotal} {Emoj.Coin}")
             ])
 
         // ToDo: split by group with 30 champs
@@ -253,16 +257,21 @@ module BattleComponent =
                         TextDisplayProperties($"{names.[r]}") :> IComponentContainerComponentProperties
                     )
                 ]) |> Some
-
+        let monster = br.MonsterChar.Monster
+        let monsterLvl = Levels.getLvlByXp br.MonsterChar.XP
+        let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
+        let mstat' = monsterLvlStats + br.MonsterChar.Stat
         let stats =
             ComponentContainerProperties([
                 TextDisplayProperties($"** Basic stats (without boosts and levels) **")
                 ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                TextDisplayProperties($"{br.MonsterChar.Name}: {br.MonsterChar.Stat.Health} {Emoj.Health} {br.MonsterChar.Stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
+                TextDisplayProperties($"{br.MonsterChar.Name}: {mstat'.Health} {Emoj.Health} {mstat'.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
                 ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                 yield! br.ChampsFinalStat |> Seq.map(fun kv ->
                     let name = names.[kv.Key]
-                    let stat = kv.Value
+                    let lStat = Map.tryFind kv.Key lvlsStat |> Option.defaultValue (Stat.Zero)
+                    let bStat = Map.tryFind kv.Key boosts |> Option.defaultValue (Stat.Zero)
+                    let stat = kv.Value + lStat + bStat
                     TextDisplayProperties($"{name}: {stat.Health} {Emoj.Health} {stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
                 )
             ])

@@ -12,7 +12,7 @@ type private Tab =
 
 let private tabOf (page: Page) =
     match page with
-    | Page.Battle | Page.Shop                                                    -> Some Tab.Battle
+    | Page.Battle | Page.Shop | Page.MonstersEffects                             -> Some Tab.Battle
     | Page.Account | Page.MyChamps | Page.MyChampsEffects
     | Page.MyMonsters | Page.MyRequests | Page.Storage | Page.Login              -> Some Tab.AccountOrLogin
     | Page.TopChamps | Page.TopMonsters | Page.TopDonaters
@@ -69,6 +69,7 @@ let NavBar (isLoggedIn: bool) (currentPage: Page) =
             SubBar [
                 Page.Battle, "Battle", WebEmoji.Battle
                 Page.Shop,   "Shop",   WebEmoji.Shop
+                Page.MonstersEffects, "Monsters under effects", WebEmoji.MonstersUnderEffects
             ] currentPage |> Some
 
         | Some Tab.AccountOrLogin ->
@@ -409,12 +410,22 @@ let useSSE (url: string) (onMessage: string -> unit) =
                 if not disposed then
                     Browser.Dom.window.setTimeout((fun () -> connect ()), 3000) |> ignore
 
-        connect ()
+        let onVisible _ =
+            if Browser.Dom.document.visibilityState = "visible" then
+                es?close()
+                Browser.Dom.window.setTimeout((fun () ->
+                    if not disposed && Browser.Dom.document.visibilityState = "visible" then
+                        connect()
+                ), 300) |> ignore
+
+        connect()
+        Browser.Dom.document.addEventListener("visibilitychange", onVisible)
 
         { new System.IDisposable with
             member _.Dispose() =
                 disposed <- true
-                if es <> null then es?close() }
+                if es <> null then es?close()
+                Browser.Dom.document.removeEventListener("visibilitychange", onVisible) }
     ), [| box url |])
 
 let deferred<'T> (state: Deferred<'T>) (render: 'T -> ReactElement) =
@@ -425,6 +436,6 @@ let deferred<'T> (state: Deferred<'T>) (render: 'T -> ReactElement) =
 
 [<RequireQualifiedAccess>]
 module Utils =
-    let srcMonsterImg(mimg:MonsterImg)=
+    let srcMonsterImg (mimg:MonsterImg)=
         match mimg with
         | MonsterImg.File f -> prop.src (Api.baseUrl + "/" + f)

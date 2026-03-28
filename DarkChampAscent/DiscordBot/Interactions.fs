@@ -26,14 +26,14 @@ let donate (db:SqliteStorage) (context:ButtonInteractionContext) (str:string) =
                     let r = db.Donate(UserId.Discord context.User.Id, d)
                     match r with
                     | Ok () ->
-                        let card = context.User.Id |> Utils.mention |> donationCard d 
+                        let card = donationCard d (context.User.Id |> DUtils.mention) None
                         let newInGameDonationMessage =
                             MessageProperties()
                                 .WithComponents([ card ])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                 .WithAllowedMentions(AllowedMentionsProperties.None)
 
-                        Utils.sendMsgToLogChannel context.Client newInGameDonationMessage |> ignore
+                        DUtils.sendMsgToLogChannel context.Client newInGameDonationMessage |> ignore
                         return Ok(())
                     | Error err -> return Error(err)
                 | false, _ ->
@@ -174,7 +174,7 @@ let confirmRename (db:SqliteStorage) (context:ButtonInteractionContext) (oldName
                 try      
                     let logMessage = MessageProperties(Content = $"{oldName} changed name to {newName}")
 
-                    Utils.sendMsgToLogChannel context.Client logMessage |> ignore
+                    DUtils.sendMsgToLogChannel context.Client logMessage |> ignore
                 with exn ->
                     Log.Error(exn, "Send to discord")
                 return "Done!"
@@ -277,6 +277,7 @@ let mselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
 }
 
 open System.Linq
+open Services
 let cmrenamemodal (db:SqliteStorage) (context:ModalInteractionContext) (mids:string) =
     task {
         let callback = InteractionCallback.ModifyMessage(fun options ->
@@ -341,7 +342,7 @@ let cmselect (db:SqliteStorage) (context:StringMenuInteractionContext) = task {
     return callback
 }
 
-let actionselect (db:SqliteStorage) (context:StringMenuInteractionContext) (move:string) = task {
+let actionselect (bs:BattleService) (context:StringMenuInteractionContext) (move:string) = task {
     let res =
         let str = (context.SelectedValues |> Seq.tryHead |> Option.defaultValue "").Trim()
         match UInt64.TryParse(str) with
@@ -353,34 +354,19 @@ let actionselect (db:SqliteStorage) (context:StringMenuInteractionContext) (move
             match Enum.TryParse<Move>(move) with
             | true, m ->
                 let rar = { ChampId = id; Move = m }
-                Some(rar, rar |> db.PerformAction)
+                Some(rar)
             | false, _ ->
                 Log.Error($"Unable to parse {move}")
                 None)
         
-    let! str =
+    let str =
         match res with
-        | Some (rar, r) ->
+        | Some rar ->
+            let r = bs.JoinRound rar
             match r with
-            | Ok() ->
-                let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue("", "")
-                let joinedRoundComponent =
-                    ComponentContainerProperties([
-                            ComponentSectionProperties
-                                (ComponentSectionThumbnailProperties(
-                                    ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
-                                [
-                                    TextDisplayProperties($"**{name}**")
-                                    TextDisplayProperties("joined round!")
-                                ])
-                        ])
-                let mp = MessageProperties().WithComponents([ joinedRoundComponent ]).WithFlags(MessageFlags.IsComponentsV2)
-                task { 
-                    Utils.sendMsgToLogChannel context.Client mp |> ignore
-                    return "Action is recorded"
-                }
-            | Error str ->  task { return str }
-        | None -> task { return "Something went wrong" }
+            | Ok() -> "Action is recorded"
+            | Error str ->  str
+        | None -> "Something went wrong"
 
     let callback = InteractionCallback.ModifyMessage(fun options ->
         options.Components <- [ TextDisplayProperties(str) ]
