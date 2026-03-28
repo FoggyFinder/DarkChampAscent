@@ -1,27 +1,30 @@
-﻿namespace DiscordBot.Services
+﻿module Services
 
-open System
-open GameLogic.Champs
 open Db
-open NetCord.Rest
 open Microsoft.Extensions.Hosting
+open System.Threading.Tasks
+open System
+open DTO
+open Serilog
+open GameLogic.Battle
+
+open GameLogic.Champs
+open NetCord.Rest
 open NetCord.Gateway
 open DiscordBot
-open System.Threading.Tasks
-open Serilog
 open Microsoft.Extensions.Options
 open Blockchain
 open GameLogic.Monsters
 open Display
 open NetCord
 open System.IO
-open GameLogic.Battle
 open DiscordBot.Components
+open Utils
 
 type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguration>) =
     inherit BackgroundService()
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
@@ -49,13 +52,15 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
                             Log.Error(err)
                     do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
                 with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
                     Log.Error(exn, "BackupService")
         }
 
+// TODO: remove, confirm only from web-app
 type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             while cancellationToken.IsCancellationRequested |> not do
                 do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
@@ -82,7 +87,7 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                                         elif db.ConfirmWallet(wallet, code) then
                                             match db.FindDiscordIdByWallet wallet with
                                             | Some discordId ->
-                                                Utils.addDiscordRole client (uint64 discordId)
+                                                DUtils.addDiscordRole client (uint64 discordId)
                                             | None -> ()
                                             match db.FindUserIdByWallet wallet with
                                             | Some userId ->
@@ -90,7 +95,6 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                                             | None -> ()
                                         else ()
                                     return noErrors
-                            
                             }
                         if isOk then
                             db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
@@ -98,13 +102,14 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                     else
                         do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
                 with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
                     Log.Error(exn, "confirmationTracker2")
         }
 
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
     inherit BackgroundService()
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
@@ -123,18 +128,19 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                             if db.SetNumKey(Db.DbKeysNum.DarkCoinPrice, price) then
                                 db.SetDateTimeKey(Db.DbKeys.LastTimePriceIsUpdated, now) |> ignore
                                 let mp = MessageProperties(Content = $"In-game DarkCoin price was updated to {price}")
-                                do! Utils.sendMsgToLogChannel gclient mp
+                                do! DUtils.sendMsgToLogChannel gclient mp
                         | None ->
                             Log.Error("UpdatePriceService: Vestige didn't return price")
                     do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
                 with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
                     Log.Error(exn, "UpdatePriceService")
         }
 
 type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
@@ -156,21 +162,13 @@ type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<C
                         | ProcessDepositStatus.Donation ->
                             let (tx, sender, value) = ar.Info
                             let uri = $"https://allo.info/tx/{tx}"
-                            let donationCard =
-                                ComponentContainerProperties([
-                                    TextDisplayProperties($"{Emoj.Rocket} **[New Donation!]({uri})** {Emoj.Rocket}")
-                                    ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                    TextDisplayProperties($" {value} {Emoj.Coin} added to reward pool ")
-                                    ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                    TextDisplayProperties($"Thank you, {sender}")
-                                ])
-                            
+                            let card = donationCard value sender (Some uri)
                             let newDonationMessage =
                                 MessageProperties()
-                                    .WithComponents([ donationCard ])
+                                    .WithComponents([ card ])
                                     .WithFlags(MessageFlags.IsComponentsV2)
                             
-                            do! Utils.sendMsgToLogChannel gclient newDonationMessage
+                            do! DUtils.sendMsgToLogChannel gclient newDonationMessage
                         | _ -> ()                  
                 with exn ->
                     Log.Error(exn, "DepositService")
@@ -181,7 +179,7 @@ type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<C
 type TrackChampCfgService(db:SqliteStorage) =
     inherit BackgroundService()
 
-    override this.ExecuteAsync(cancellationToken) =
+    override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
@@ -203,21 +201,40 @@ type TrackChampCfgService(db:SqliteStorage) =
                         if isOk then
                            db.SetDateTimeKey(DbKeys.LastTrackedChampCfg, dt) |> ignore
                         do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
-                    | Some v ->
+                    | Some _ ->
                         // no champs registered, no point to spam with requests
                         db.SetDateTimeKey(DbKeys.LastTrackedChampCfg, dt) |> ignore
                         do! Task.Delay(TimeSpan.FromHours(6), cancellationToken)
-                    | None -> ()
+                    | None ->
+                        do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
                 with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
                     Log.Error(exn, "TrackedChampCfg")
         }
 
+open Types
 type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
     inherit BackgroundService()
 
     let wallets = options.Value.Wallet
     let keys = options.Value.Chain.GameWalletKeys
     let toLong (d:decimal) = uint64 (d * Algo6Decimals)
+
+    let roundParticipants = Signal<RoundParticipantChamp list>([])
+    let roundStatus = Signal<RoundInfoDTO>(RoundInfoDTO(RoundStatus.Processing, None, 0UL))
+    let battleStatus = Signal<BattleInfoDTO option>(None)
+
+    let updateBattleStatus() =
+        match db.GetCurrentBattleInfo() with
+        | Ok cbi ->
+            match db.GetBattleHistory(cbi.BattleNum) with
+            | Ok bh ->
+                let bidto = 
+                    BattleInfoDTO(cbi, BattleHistory(bh,
+                        RoundParticipantMonster(cbi.MonsterId, cbi.Monster.Name, cbi.Monster.Picture)))
+                battleStatus.Set(Some bidto)
+            | _ -> battleStatus.Set None
+        | _ -> battleStatus.Set None
 
     let balanceCorrectness() =
         // sum of burn / dev / rewards / reserve / user balances / champs balances
@@ -284,7 +301,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                 .WithComponents([ tnComponent ])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                                 
-                        do! Utils.sendMsgToLogChannel gclient tnMessage
+                        do! DUtils.sendMsgToLogChannel gclient tnMessage
                     | None -> () 
                 | Error err -> Log.Error(err)
         | Error _ -> ()
@@ -305,25 +322,27 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         .WithComponents([ tnComponent ])
                         .WithFlags(MessageFlags.IsComponentsV2)
                                                 
-                do! Utils.sendMsgToLogChannel gclient tnMessage
+                do! DUtils.sendMsgToLogChannel gclient tnMessage
             | None -> ()
         
         // change status to finalized
         if db.FinalizeBattle battleId then
             let battleStartMessage = MessageProperties(Content = $"Battle {battleId} is completed.")
-            do! Utils.sendMsgToLogChannel gclient battleStartMessage
+            do! DUtils.sendMsgToLogChannel gclient battleStartMessage
     }
 
     let startBattle() = task {
         match balanceCorrectness() with
-        | Ok v ->
+        | Ok () ->
             // start new round
             let monsterIdR = db.GetRandomMonsterId()
             match monsterIdR with
             | Ok monsterId ->
+                let dt = DateTime.UtcNow
                 let sbr = db.StartBattle(monsterId)
                 match sbr with
                 | Ok ar ->
+                    roundStatus.Set(RoundInfoDTO(RoundStatus.Started, Some dt, uint64 ar.RoundId))
                     match db.GetMonsterById(monsterId) with
                     | Some monster ->
                         let createMP() =
@@ -339,7 +358,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                 .WithComponents([battleCard; monsterCard])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                                 
-                        do! Utils.createAndSendMsgToChannel Channels.BattleChannel gclient createMP true
+                        do! DUtils.createAndSendMsgToChannel Channels.BattleChannel gclient createMP true
 
                         let roundCard =
                             ComponentContainerProperties([
@@ -349,7 +368,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             ])
 
                         let roundStartMessage = MessageProperties().WithComponents([ roundCard ]).WithFlags(MessageFlags.IsComponentsV2)
-                        do! Utils.sendMsgToLogChannel gclient roundStartMessage
+                        do! DUtils.sendMsgToLogChannel gclient roundStartMessage
                     | _ -> ()
                 | Error err ->
                     Log.Error($"StartBattleError: {err}")
@@ -357,31 +376,35 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             | Error _ -> ()   
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
-            do! Utils.sendMsgToLogChannel gclient mp
+            do! DUtils.sendMsgToLogChannel gclient mp
             do! Task.Delay(TimeSpan.FromHours(1))
     }
 
     let startRound() = task {
         match balanceCorrectness() with
-        | Ok v ->
+        | Ok () ->
             // start new round
+            let dt = DateTime.UtcNow
             let roundIdO = db.NextRound()
             match roundIdO with
             | Ok roundId ->
+                roundStatus.Set(RoundInfoDTO(RoundStatus.Started, Some dt, uint64 roundId))
+                roundParticipants.Set([])
+                updateBattleStatus()
                 let mp = MessageProperties(Content = $"Round {roundId} has started!")
-                do! Utils.sendMsgToBattleChannel gclient mp
-                do! Utils.sendMsgToLogChannel gclient mp
+                do! DUtils.sendMsgToBattleChannel gclient mp
+                do! DUtils.sendMsgToLogChannel gclient mp
             | Error err ->
                 match err with
                 | StartRoundError.MaxRoundsInBattle ->
                     let mp = MessageProperties(Content = $"Battle is finished - max amount of rounds ({Constants.RoundsInBattle}) is reached!")
-                    do! Utils.sendMsgToBattleChannelSilently gclient mp  
+                    do! DUtils.sendMsgToBattleChannelSilently gclient mp  
                 | _ ->
                     Log.Error($"StartRoundError: {err}")
                     do! Task.Delay(TimeSpan.FromMinutes(5.0))
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new round - {err}")
-            do! Utils.sendMsgToLogChannel gclient mp
+            do! DUtils.sendMsgToLogChannel gclient mp
             do! Task.Delay(TimeSpan.FromHours(1))
     }
 
@@ -390,8 +413,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         let roundIdO = db.FinishRound()
         match roundIdO with
         | Ok _ ->
+            roundStatus.Set(RoundInfoDTO(RoundStatus.Processing, None, roundId))
             let mp = MessageProperties(Content = $"Round {roundId} is closed. Processing...")
-            do! Utils.sendMsgToLogChannel gclient mp
+            do! DUtils.sendMsgToLogChannel gclient mp
         | Error _ -> ()    
     }
 
@@ -423,7 +447,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         ChampLvl = Levels.getLvlByXp xp
                     })
 
-            let champNames = champs |> Map.map(fun k (_,_,name) -> name)
+            let champNames = champs |> Map.map(fun _ (_,_,name) -> name)
 
             let monsterChar = MonsterChar(monster.MonsterId, monster.MonsterRecord.Monster, monster.MonsterRecord.Stats, monster.MonsterRecord.Xp, monster.MonsterRecord.Name)
 
@@ -432,23 +456,69 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 let revivalTime = Monster.getRevivalDuration monsterChar.Monster
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
-                    for msg in BattleComponent.battleResults bres champNames do
+                    roundStatus.Set(RoundInfoDTO(RoundStatus.Finished, None, roundId))
+                    let boostsStat =
+                        let nextRound = roundId + 1UL |> int64
+                        boosts
+                        |> Map.map(fun _ v -> 
+                            v |> List.fold(fun stat boost ->
+                                Battle.processShopItem stat boost nextRound) Stat.Zero)
+                    for msg in BattleComponent.battleResults bres champNames levels boostsStat do
                         let mp = MessageProperties().WithComponents([ msg ]).WithFlags(MessageFlags.IsComponentsV2)
-                        do! Utils.sendMsgToBattleChannelSilently gclient mp
+                        do! DUtils.sendMsgToBattleChannelSilently gclient mp
 
                     let mp = MessageProperties(Content = $"Round {roundId} is completed.")
-                    do! Utils.sendMsgToLogChannel gclient mp
+                    do! DUtils.sendMsgToLogChannel gclient mp
                 | Error _ -> ()
             | Error err ->
                 Log.Error($"Error during fight: {err}")
             
         | _ ->
-            printfn "Errors: champs = %A; actions = %A; boosts = %A; lvls = %A; monster = %A"
-                champsR.IsOk actionsR.IsOk boostsR.IsOk lvlsR.IsOk monsterR.IsOk
+            Log.Error (sprintf "Errors: champs = %A; actions = %A; boosts = %A; lvls = %A; monster = %A"
+                champsR.IsOk actionsR.IsOk boostsR.IsOk lvlsR.IsOk monsterR.IsOk)
     }
 
-    override this.ExecuteAsync(cancellationToken) =
+    member _.RoundParticipants: IReadOnlySignal<RoundParticipantChamp list> = roundParticipants
+    member _.RoundStatus:IReadOnlySignal<RoundInfoDTO> = roundStatus
+    member _.BattleStatus:IReadOnlySignal<BattleInfoDTO option> = battleStatus
+
+    member _.JoinRound(rar:RoundActionRecord) =
+        let t () =
+            task {
+                let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue ("", "")
+                let joinedRoundComponent =
+                    ComponentContainerProperties(
+                        [ ComponentSectionProperties(
+                                ComponentSectionThumbnailProperties(
+                                    ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                                [ TextDisplayProperties($"**{name}**")
+                                  TextDisplayProperties("joined round!") ]) ])
+                let mp =
+                    MessageProperties()
+                        .WithComponents([ joinedRoundComponent ])
+                        .WithFlags(MessageFlags.IsComponentsV2)
+                DUtils.sendMsgToLogChannel gclient mp |> ignore
+            }
+        if roundParticipants.Value |> List.exists (fun rp -> rp.ID = rar.ChampId) then
+            Error "Already joined"
+        else
+            match db.PerformAction rar with
+            | Ok () ->
+                match db.GetChampNameIPFSById(rar.ChampId) with
+                | Some (name, ipfs) ->
+                    roundParticipants.Set(RoundParticipantChamp(rar.ChampId, name, ipfs)::roundParticipants.Value)
+                | None -> ()
+                t() |> ignore
+                Ok ()
+            | Error err -> Error err
+
+    override _.ExecuteAsync(cancellationToken) =
         task {
+            db.GetLastRoundParticipants()
+            |> Result.iter roundParticipants.Set
+
+            updateBattleStatus()
+            
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
                 try
@@ -462,6 +532,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                 | Some (battleId, timestamp, status) ->
                                     match status with
                                     | RoundStatus.Started ->
+                                        roundStatus.Set(RoundInfoDTO(status, Some timestamp, roundId))
                                         let dt = DateTime.UtcNow
                                         let duration = dt - timestamp
                                         if duration < BattleParams.RoundDuration() then
@@ -474,8 +545,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
                                         do! finishRound(roundId)
                                     | RoundStatus.Processing ->
+                                        roundStatus.Set(RoundInfoDTO(status, None, roundId))
                                         do! finalizeRound(roundId, battleId)
                                     | RoundStatus.Finished ->
+                                        roundStatus.Set(RoundInfoDTO(status, None, roundId))
                                         // get battle status
                                         let battleStatusO = db.GetBattleStatus battleId
                                         match battleStatusO with
@@ -498,7 +571,6 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 with exn ->
                     Log.Error(exn, "BattleService")
         }
-
 
 open Gen
 open GenAIPG
@@ -622,7 +694,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                                 .WithComponents([monsterCard uri])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
                                            
-                                           do! Utils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false
+                                           do! DUtils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false
 
                                         with ex ->
                                             Log.Error(ex, "CreateCustomMonster msg")

@@ -25,3 +25,26 @@ module MonsterImg =
     let DefaultFile(monster:Monster) =
         let filename = DefaultName (monster.MType, monster.MSubType)
         System.IO.Path.Combine("Assets", filename) |> MonsterImg.File
+
+
+type IReadOnlySignal<'a> =
+    abstract Value: 'a
+    abstract Publish: IEvent<'a>
+
+type Signal<'a when 'a: equality>(initial: 'a) =
+    let mutable current = initial
+    let locker = obj()
+    let changed = Event<'a>()
+
+    member _.Value = lock locker (fun _ -> current)
+    member _.Publish = changed.Publish
+
+    member _.Set(value: 'a) =
+        lock locker (fun _ ->
+            if current <> value then
+                current <- value
+                changed.Trigger value)
+
+    interface IReadOnlySignal<'a> with
+        member this.Value = this.Value
+        member this.Publish = this.Publish

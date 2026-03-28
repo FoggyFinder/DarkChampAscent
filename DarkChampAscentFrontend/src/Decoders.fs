@@ -9,6 +9,7 @@ open GameLogic.Monsters
 open GameLogic.Shop
 open GameLogic.Effects
 open DarkChampAscent.Account
+open GameLogic.Rewards
 
 let private str (j: Json) =
     match j with JString s -> Some s | _ -> None
@@ -436,24 +437,6 @@ let parseDonaterList (json: string) : Result<{| name: string; amount: decimal |}
             |> Some
         | _ -> None) json
 
-let private decodeRoundParticipantDTO (j: Json) =
-    match j with
-    | JObject m ->
-        match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m with
-        | Some id, Some name, Some ipfs ->
-            Some (RoundParticipantDTO(uint64 id, name, ipfs))
-        | _ -> None
-    | _ -> None
-
-
-let parseParticipants (json: string) : Result<RoundParticipantDTO list, string> =
-    parseResultRaw (function
-        | JArray items ->
-            items
-            |> List.choose decodeRoundParticipantDTO
-            |> Some
-        | _ -> None) json
-
 let private decodeDmg (j: Json) : Dmg option =
     match j with
     | JObject m ->
@@ -492,22 +475,131 @@ let private decodePerformedMove (j: Json) : PerformedMove option =
         | None -> None
     | _ -> None
 
-let private decodeMoveEntry (j: Json) : (string * PerformedMove * string) option =
+let private decodeRoundParticipantChamp (j: Json) =
     match j with
-    | JArray [JString actor; pmJ; JString target] ->
-        decodePerformedMove pmJ |> Option.map (fun pm -> actor, pm, target)
+    | JObject m ->
+        match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m with
+        | Some id, Some name, Some ipfs ->
+            Some (RoundParticipantChamp(uint64 id, name, ipfs))
+        | _ -> None
     | _ -> None
 
-let private decodeHistoryRound (j: Json) : (uint64 * (string * PerformedMove * string) list) option =
-    match j with
-    | JArray [JNumber roundId; JArray moves] ->
-        let decoded = moves |> List.choose decodeMoveEntry
-        Some (asUInt64 roundId, decoded)
+let decodeChampInfoWithStat (m: Map<string, Json>) =
+    let stat = (field "Stat" m) |> Option.bind asObj |> Option.bind decodeStat
+    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, stat with
+    | Some id, Some name, Some ipfs, Some stat ->
+        Some (ChampInfoWithStat(uint64 id, name, ipfs, stat))
     | _ -> None
 
-let private decodeChampTriple (j: Json) : (uint64 * string * string) option =
+let decodeActiveChamps (raw: string) =
+    parseResultRaw (function
+        | JNull -> Some None
+        | JArray items ->
+            items
+            |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
+            |> Some
+            |> Some
+        | _ -> None) raw
+
+let private decodeRoundParticipantMonster (j: Json) =
     match j with
-    | JArray [JNumber id; JString name; JString ipfs] -> Some (asUInt64 id, name, ipfs)
+    | JObject m ->
+        match reqNum "ID" m, reqStr "Name" m, (field "Img" m) |> Option.bind decodeMonsterImg with
+        | Some id, Some name, Some ipfs ->
+            Some (RoundParticipantMonster(uint64 id, name, ipfs))
+        | _ -> None
+    | _ -> None
+
+let private decodePMMonster (j: Json) : PMMonster option =
+    match j with
+    | JObject m ->
+        match field "PM" m |> Option.bind decodePerformedMove with
+        | Some pm ->
+            let target = field "Target" m |> Option.bind (function JNull -> None | j -> decodeRoundParticipantChamp j)
+            Some (PMMonster(pm, target))
+        | _ -> None
+    | _ -> None
+
+let private decodePMChamp (j: Json) : PMChamp option =
+    match j with
+    | JObject m ->
+        match field "PM" m |> Option.bind decodePerformedMove,
+              field "Champ" m |> Option.bind decodeRoundParticipantChamp,
+              reqStr "Timestamp" m with
+        | Some pm, Some champ, Some ts ->
+            match System.DateTime.TryParse(ts) with
+            | true, dt -> Some (PMChamp(pm, champ, dt))
+            | _ -> None
+        | _ -> None
+    | _ -> None
+
+let private decodePMDetail (j: Json) : PMDetail option =
+    match j with
+    | JObject m ->
+        match field "Monster" m |> Option.bind decodePMMonster with
+        | Some pmm -> Some (PMDetail.Monster pmm)
+        | None ->
+            match field "Champ" m |> Option.bind decodePMChamp with
+            | Some pmc -> Some (PMDetail.Champ pmc)
+            | None -> None
+    | _ -> None
+
+let private decodePMResult (j: Json) : PMResult option =
+    match j with
+    | JObject m ->
+        match field "Detail" m |> Option.bind decodePMDetail with
+        | Some detail ->
+            let xp = reqNum "XP" m |> Option.map asUInt64 |> Option.defaultValue 0UL
+            let rewards = optNum "Rewards" m |> Option.map asDecimal
+            Some (PMResult(detail, xp, rewards))
+        | _ -> None
+    | _ -> None
+
+let private decodeRoundReward (m: Map<string, Json>) : RoundReward option =
+    match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Burn" m,
+          reqNum "Dev" m, reqNum "Staking" m, reqNum "Champs" m with
+    | Some dao, Some reserve, Some burn, Some dev, Some staking, Some champs ->
+        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal burn, asDecimal dev, asDecimal staking)
+        RoundReward(sr, asDecimal champs) |> Some
+    | _ -> None
+
+let private decodeRoundInfo (j: Json) : RoundInfo option =
+    match j with
+    | JObject m ->
+        match reqNum "RoundId" m,
+              field "Rewards" m |> Option.bind asObj |> Option.bind decodeRoundReward with
+        | Some roundId, Some rewards ->
+            let details =
+                reqArr "Details" m
+                |> List.choose decodePMResult
+            let defeatedChamps =
+                reqArr "DefeatedChamps" m
+                |> List.choose (function JNumber n -> Some (asUInt64 n) | _ -> None)
+            let monsterKiller =
+                field "MonsterKiller" m
+                |> Option.bind (function JNull -> None | JNumber n -> Some (asUInt64 n) | _ -> None)
+            Some (RoundInfo(asUInt64 roundId, details, rewards, defeatedChamps, monsterKiller))
+        | _ -> None
+    | _ -> None
+
+let private decodeBattleHistory (j: Json) : BattleHistory option =
+    match j with
+    | JObject m ->
+        match field "Monster" m |> Option.bind decodeRoundParticipantMonster with
+        | Some monster ->
+            let rounds =
+                reqArr "Rounds" m
+                |> List.choose decodeRoundInfo
+            Some (BattleHistory(rounds, monster))
+        | _ -> None
+    | _ -> None
+
+let parseParticipants (json: string) : RoundParticipantChamp list option =
+    match SimpleJson.parseNative json with
+    | JArray items ->
+        items
+        |> List.choose decodeRoundParticipantChamp
+        |> Some
     | _ -> None
 
 let private decodeCurrentBattleInfo (m: Map<string, Json>) : CurrentBattleInfo option =
@@ -519,48 +611,41 @@ let private decodeCurrentBattleInfo (m: Map<string, Json>) : CurrentBattleInfo o
         Some (CurrentBattleInfo(asUInt64 bn, bs, monster, asUInt64 mid))
     | _ -> None
 
-let private decodeInnerResult<'T> (decoder: Json -> 'T option) (j: Json) : Result<'T, string> option =
-    match j with
-    | JObject m ->
-        match Map.tryFind "Ok" m with
-        | Some inner ->
-            match decoder inner with
-            | Some v -> Some (Ok v)
-            | None -> Some (Error "Failed to decode Ok payload")
-        | None ->
-            match Map.tryFind "Error" m with
-            | Some (JString e) -> Some (Error e)
+let decodeBattleInfoDTO json : BattleInfoDTO option =
+    match SimpleJson.tryParseNative json with
+    | Some o ->
+        match o with
+        | JObject m ->
+            let cbrO =
+                field "CurrentBattleInfo" m
+                |> Option.bind asObj
+                |> Option.bind decodeCurrentBattleInfo
+
+            let historyO =
+                field "History" m
+                |> Option.bind decodeBattleHistory
+
+            match cbrO, historyO with
+            | Some cbr, Some battleHistory ->
+                BattleInfoDTO(cbr, battleHistory) |> Some
             | _ -> None
+        | _ ->
+            None
+    | None ->
+        None
+
+let decodeRoundInfoDTO (json:string) =
+    match SimpleJson.tryParseNative json with
+    | Some o ->
+        match o with
+        | JObject m ->
+            match reqNum "Status" m, reqNum "Round" m with
+            | Some n, Some r ->
+                let status = enum<RoundStatus> (int n)
+                let started = optStr "RoundStarted" m |> Option.map (fun s -> System.DateTimeOffset.Parse(s + "Z").UtcDateTime)
+                let round =  r |> asUInt64
+                Some (RoundInfoDTO(status, started, round))
+            | _ ->
+                None
+        | _ -> None
     | _ -> None
-
-let decodeBattleDTO (m: Map<string, Json>) : BattleDTO option =
-    let cbrR =
-        field "CurrentBattleInfoR" m
-        |> Option.bind (decodeInnerResult (fun j -> j |> asObj |> Option.bind decodeCurrentBattleInfo))
-        |> Option.defaultValue (Error "Missing CurrentBattleInfoR")
-
-    let historyR =
-        field "History" m
-        |> Option.bind (decodeInnerResult (function
-            | JArray rounds -> rounds |> List.choose decodeHistoryRound |> Some
-            | _ -> None))
-        |> Option.defaultValue (Error "Missing History")
-
-    let champsRes =
-        field "ChampsRes" m
-        |> Option.bind (function
-            | JNull -> None
-            | j ->
-                decodeInnerResult (function
-                    | JArray items -> items |> List.choose decodeChampTriple |> Some
-                    | _ -> None) j)
-
-    Some (BattleDTO(cbrR, historyR, champsRes))
-
-let decodeRoundInfoDTO (m: Map<string, Json>) =
-    match reqNum "Status" m with
-    | Some n ->
-        let status = enum<RoundStatus> (int n)
-        let started = optStr "RoundStarted" m |> Option.map (fun s -> System.DateTimeOffset.Parse(s + "Z").UtcDateTime)
-        Some (RoundInfoDTO(status, started))
-    | None -> None

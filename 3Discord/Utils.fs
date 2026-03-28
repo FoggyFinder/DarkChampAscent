@@ -15,7 +15,7 @@ module Channels =
     let [<Literal>] DarkAscentBotRole = "DarkChampAscent"
 
 [<RequireQualifiedAccess>]
-module Utils =
+module DUtils =
     open System
     open NetCord
     open System.Threading.Tasks

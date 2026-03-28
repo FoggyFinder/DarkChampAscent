@@ -42,24 +42,18 @@ type RewardsPriceDTO(rewards:decimal, price:decimal option) =
     member _.Price = price
 
 [<Struct>]
-type RoundInfoDTO(status:RoundStatus, roundStarted:DateTime option) =
+type RoundInfoDTO(status:RoundStatus, roundStarted:DateTime option, roundId:uint64) =
     member _.Status = status
     member _.RoundStarted = roundStarted
+    member _.Round = roundId
 
 [<Struct>]
-type RoundParticipantDTO(chId:uint64, name:string, ipfs:string) =
-    member _.ID = chId
-    member _.Name = name
-    member _.IPFS = ipfs
-
-type BattleDTO(cbr:Result<CurrentBattleInfo, string>,
-    history: Result<(uint64 * (string * PerformedMove * string) list) list, string>,
-    champsRes: Result<(uint64 * string * string) list, string> option) =
-    member _.CurrentBattleInfoR = cbr
+type BattleInfoDTO(cbr:CurrentBattleInfo, history:BattleHistory) =
+    member _.CurrentBattleInfo = cbr
     member _.History = history
-    member _.ChampsRes = champsRes
+    member x.WithMonsterImg(pic:MonsterImg) =
+        BattleInfoDTO(cbr.WithMonsterImg pic, history.WithMonsterImg pic)
 
 type NonceDTO(txnB64: string, nonce: string) =
     member _.TxnB64 = txnB64
     member _.Nonce  = nonce
-

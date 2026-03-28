@@ -27,27 +27,28 @@ type ChampEarnedReward = {
     Reward: decimal
 }
 
-type RoundRewardSplit private (
-        champs: ChampEarnedReward list,
-        dao: decimal,
-        reserve: decimal,
-        burn: decimal,
-        dev: decimal,
-        staking: decimal,
-        unclaimed: decimal) =
-
-    let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
-    let claimed = champsTotal + dao + reserve + burn + dev + staking
-    
-    member _.Champs = champs
+[<Struct>]
+type SpecialReward(dao: decimal, reserve: decimal, burn: decimal, dev: decimal, staking: decimal) =
     member _.DAO = dao
     member _.Reserve = reserve
     member _.Burn = burn
     member _.Dev = dev
+    member _.Staking = staking
+    member _.Total = dao + reserve + burn + dev + staking
+
+type RoundRewardSplit private (
+        champs: ChampEarnedReward list,
+        srewards:SpecialReward,
+        unclaimed:decimal) =
+
+    let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
+    let claimed = champsTotal + srewards.Total
+    
+    member _.Champs = champs
+    member _.SRewards = srewards
     member _.ChampsTotal = champsTotal
     member _.Claimed = claimed
     member _.Unclaimed = unclaimed
-    member _.Staking = staking
 
     static member CalculateRewards (roundRewards:decimal) (monsterDefeater:uint64 option) (actions:(Move * uint64 * Dmg option) list) =
 
@@ -149,6 +150,7 @@ type RoundRewardSplit private (
         let reserve = Math.Round(5M * x, 6)
         let staking = Math.Round(x, 6)
         let burn = Math.Round(x, 6)
+        let sRewards = SpecialReward(dao, reserve, burn, devs, staking)
         let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
         
         let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - burn - staking
@@ -159,5 +161,5 @@ type RoundRewardSplit private (
         //    else reserve
         if unclaimed < -0.0001M then
             Error($"Unclaimed is less than prec: {roundRewards};ChampsTotal = {champsTotal};DAO = {dao}; Devs = {devs}; Reserve = {reserve}; Burn = {burn}; Staking = {staking}")
-        else RoundRewardSplit(champs, dao, reserve, burn, devs, staking, unclaimed) |> Ok
+        else RoundRewardSplit(champs, sRewards, unclaimed) |> Ok
         

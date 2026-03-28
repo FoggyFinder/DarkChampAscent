@@ -4,9 +4,9 @@ open GameLogic.Champs
 open GameLogic.Battle
 open GameLogic.Monsters
 
-open System.Globalization
 open System
 open DarkChampAscent.Account
+open GameLogic.Rewards
 
 type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo, mId: uint64) =
     member _.BattleNum = battleNum
@@ -15,19 +15,81 @@ type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:Mon
     member _.MonsterId = mId
     member x.WithMonsterImg(pic:MonsterImg) =
         CurrentBattleInfo(x.BattleNum, x.BattleStatus, { x.Monster with Picture = pic }, x.MonsterId)
+    member x.WithMonsterInfo(mi:MonsterInfo) =
+        CurrentBattleInfo(x.BattleNum, x.BattleStatus, mi, x.MonsterId)
 
+[<Struct>]
+type RoundParticipantChamp(chId:uint64, name:string, ipfs:string) =
+    member _.ID = chId
+    member _.Name = name
+    member _.IPFS = ipfs
+
+[<Struct>]
+type RoundParticipantMonster(mId:uint64, name:string, pic:MonsterImg) =
+    member _.ID = mId
+    member _.Name = name
+    member _.Img = pic
+    member x.WithMonsterImg(pic:MonsterImg) =
+        RoundParticipantMonster(x.ID, x.Name, pic)
+
+[<Struct>]
+type PMMonster(pm:PerformedMove, target:RoundParticipantChamp option) =
+    member _.PM = pm
+    member _.Target = target
+
+[<Struct>]
+type PMChamp(pm:PerformedMove, champ:RoundParticipantChamp, timestamp:DateTime) =
+    member _.PM = pm
+    member _.Champ = champ
+    member _.Timestamp = timestamp
+    
 [<RequireQualifiedAccess>]
-type PM =
-    | Monster of uint64 * PerformedMove * string option
-    | Champ of uint64 * string * PerformedMove * DateTime
-    member x.RoundId =
-        match x with
-        | Monster(id, _, _) -> id
-        | Champ(id,_,_,_) -> id
-    member x.PM =
-        match x with
-        | Monster(_, pm, _) -> pm
-        | Champ(_,_,pm,_) -> pm
+type PMDetail =
+    | Monster of pmm:PMMonster
+    | Champ of pmc:PMChamp
+
+[<Struct>]
+type PMResult(detail:PMDetail, xp:uint64, rewards:decimal option) =
+    member _.Detail = detail
+    member _.XP = xp
+    member _.Rewards = rewards
+
+[<Struct>]
+type RoundReward(sr:SpecialReward, champs:decimal) =
+    member _.DAO = sr.DAO
+    member _.Reserve = sr.Reserve
+    member _.Burn = sr.Burn
+    member _.Dev = sr.Dev
+    member _.Staking = sr.Staking
+    member _.Champs = champs
+    member _.Total = sr.Total + champs
+
+[<Struct>]
+type RoundInfo(roundId:uint64, details:PMResult list, rewards:RoundReward, 
+    defeatedChamps:uint64 list, monsterKiller: uint64 option) =
+    member _.RoundId = roundId
+    member _.Details = details
+    member _.Rewards = rewards
+    member _.DefeatedChamps = defeatedChamps
+    member _.MonsterKiller = monsterKiller
+
+[<Struct>]
+type FullRoundInfo(roundInfo:RoundInfo, monster:RoundParticipantMonster) =
+    member _.RoundInfo = roundInfo
+    member _.Monster = monster
+
+[<Struct>]
+type BattleInfo(battleId:uint64, rounds: RoundInfo list, monster:RoundParticipantMonster) =
+    member _.BattleId = battleId
+    member _.Rounds = rounds
+    member _.Monster = monster
+
+[<Struct>]
+type BattleHistory(rounds: RoundInfo list, monster:RoundParticipantMonster) =
+    member _.Rounds = rounds
+    member _.Monster = monster
+    member x.WithMonsterImg(pic:MonsterImg) =
+        BattleHistory(x.Rounds, x.Monster.WithMonsterImg pic)
 
 type Wallet(wallet:string, isConfirmed:bool, code: string, isActive:bool) =
     member _.Wallet = wallet
@@ -55,6 +117,12 @@ type ChampFullInfo(cid:uint64, assetId:uint64, name:string, ipfs:string, balance
     member _.Name = name
     member _.IPFS = ipfs
     member _.Balance = balance
+
+type ChampInfoWithStat(cid:uint64, name:string, ipfs:string, stat:Stat) =
+    member _.ID = cid
+    member _.Name = name
+    member _.IPFS = ipfs
+    member _.Stat = stat
 
 type MonsterShortInfo(mid:uint64, name:string, mtype:MonsterType, msubtype:MonsterSubType, pic:MonsterImg, xp:uint64) =
     member _.ID = mid

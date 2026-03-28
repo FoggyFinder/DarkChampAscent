@@ -592,11 +592,15 @@ module internal SQL =
     """
 
     let GetActiveUserChamps = """
-        SELECT ChampId, Name, IPFS FROM Champ
-        JOIN UserChamp uc ON uc.ChampId = Champ.ID
+        SELECT
+            c.ID, Name, IPFS,
+            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense
+        FROM Champ c
+        JOIN UserChamp uc ON uc.ChampId = c.ID
+        JOIN ChampStat cs ON cs.ChampId = c.ID
         WHERE UserId = @userId
-            AND ChampId NOT IN (SELECT ChampId FROM Action WHERE RoundId = @roundId)
-            AND ChampId NOT IN  (
+            AND c.ID NOT IN (SELECT ChampId FROM Action WHERE RoundId = @roundId)
+            AND c.ID NOT IN  (
 	            SELECT ChampId FROM Impact
 	            WHERE 
                     (RoundId <= @roundId AND 
@@ -904,6 +908,22 @@ module internal SQL =
         )
     """
 
+    let GetLvlsForRoundForUserChamps = """
+        SELECT cl.ChampId, Characteristic FROM ChampLevel cl
+        JOIN UserChamp uc ON uc.ChampId = cl.ChampId
+        WHERE UserId = @userId AND cl.ChampId IN (
+            SELECT ChampId FROM Action
+            WHERE RoundId = @roundId
+        )
+    """
+
+    let GetBoostsForUserChampsAtRound = """
+        SELECT b.ChampId, RoundId, Item, Duration FROM Boost b
+        JOIN Shop s ON s.ID = b.ItemId
+        JOIN UserChamp uc ON uc.ChampId = b.ChampId
+        WHERE UserId = @userId AND RoundId <= @roundId AND Duration != 0 AND RoundId + Duration >= @roundId
+    """
+            
     let GetLvlsForChamp = """
         SELECT Characteristic FROM ChampLevel
         WHERE ChampId = @champId
@@ -1174,7 +1194,7 @@ module internal SQL =
     """
 
     let GetBattleChampActions = """
-        SELECT a.RoundId, a.Timestamp, a.MoveRes, c.Name FROM Action a
+        SELECT a.RoundId, a.Timestamp, a.MoveRes, c.ID, c.Name, c.IPFS, a.XpEarned, a.Rewards FROM Action a
         JOIN Round r ON r.ID = a.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         JOIN Champ c ON c.ID = a.ChampId
@@ -1182,11 +1202,32 @@ module internal SQL =
     """
 
     let GetBattleMonsterActions = """
-        SELECT a.RoundId, a.MoveRes, c.Name FROM MonsterAction a
+        SELECT a.RoundId, a.MoveRes, c.ID, c.Name, c.IPFS, a.XpEarned FROM MonsterAction a
         JOIN Round r ON r.ID = a.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         LEFT JOIN Champ c ON c.ID = a.ChampId
         WHERE r.BattleId = @battleId AND r.Status = 2
+    """
+
+    let GetRewardsForBattle = """
+        SELECT h.RoundId, h.Burn, h.DAO, h.Reserve, h.Devs, h.Staking, h.Champs FROM RewardsHistory h
+        JOIN Round r ON r.ID = h.RoundId
+        JOIN Battle b ON b.ID = r.BattleId
+        WHERE r.BattleId = @battleId
+    """
+
+    let GetListOfDefeatedChamps = """
+        SELECT mv.RoundId, mv.ChampId FROM MonsterVictories mv
+        JOIN Round r ON r.ID = mv.RoundId
+        JOIN Battle b ON b.ID = r.BattleId
+        WHERE r.BattleId = @battleId
+    """
+
+    let GetMonsterDefeater = """
+        SELECT ChampId FROM MonsterDefeats md
+        JOIN Round r ON r.ID = md.RoundId
+        JOIN Battle b ON b.ID = r.BattleId
+        WHERE r.BattleId = @battleId
     """
 
     let GetTotalUserCount = "SELECT Count(*) FROM User"

@@ -27,6 +27,7 @@ type Pattern =
    | Battle
    | BattleJoin
    | BattleParticipants
+   | BattleRoundStatusInfo
    | BattleStatusInfo
 
    | Shop
@@ -79,6 +80,7 @@ type Pattern =
        | Pattern.Battle -> "/api/battle"
        | Pattern.BattleJoin -> "/api/battle/join"
        | Pattern.BattleParticipants -> "/api/battle/participants"
+       | Pattern.BattleRoundStatusInfo -> "/api/battle/roundstatusinfo"
        | Pattern.BattleStatusInfo -> "/api/battle/statusinfo"
 
        | Pattern.Shop -> "/api/shop"
@@ -127,6 +129,7 @@ type Pattern =
        | Pattern.Battle
        | Pattern.BattleParticipants
        | Pattern.BattleStatusInfo
+       | Pattern.BattleRoundStatusInfo
        | Pattern.Shop
        | Pattern.Storage
        | Pattern.Champs

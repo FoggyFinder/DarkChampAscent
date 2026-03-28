@@ -13,11 +13,11 @@ open GameLogic.Shop
 open GameLogic.Limits
 open Display
 open System.Threading.Tasks
-open Microsoft.Extensions.Options
 open DiscordBot.Components
 open Serilog
 open System.Text
 open DarkChampAscent.Account
+open Microsoft.Extensions.Options
 
 [<RequireQualifiedAccess>]
 module ApplicationCommand =
@@ -76,7 +76,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
             | Error err -> 
                 moptions.Content <- $"Oh, no...there was error: {err}")
         |> ApplicationCommand.deferredMessage x.Context
-
+    
     [<SubSlashCommand("gamewallets", "Get wallets used in game")>]
     member x.GetGameWallets() =
         let w = options.Value
@@ -264,7 +264,7 @@ type UserModule(db:SqliteStorage) =
                         options.Content <- "Updating...")
                 if xs'.IsEmpty |> not then
                     // ToDo: improve, return results to a user
-                    CommonHelpers.updateChamps(db, UserId.Discord x.Context.User.Id, xs')
+                    CommonHelpers.updateChamps(db, UserId.Discord x.Context.User.Id, xs') |> ignore
                     let! _ = x.Context.Interaction.ModifyResponseAsync(fun options ->
                         options.Content <- "Done")
                     ()
@@ -653,7 +653,7 @@ type BattleModule(db:SqliteStorage) =
                 else
                     options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
                     let selectMenu = 
-                        StringMenuProperties($"actionselect:{move}", xs |> List.map(fun (id, name, _) -> StringMenuSelectOptionProperties(name, id.ToString())),
+                        StringMenuProperties($"actionselect:{move}", xs |> List.map(fun rpc -> StringMenuSelectOptionProperties(rpc.Name, rpc.ID.ToString())),
                             Placeholder = "Choose an option")
                         
                     options.Components <- [

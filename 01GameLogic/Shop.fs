@@ -44,7 +44,7 @@ type RoundBoost = {
 
 [<RequireQualifiedAccess>]
 module Shop =
-    // ToDo: investigate why adding [<Literal>] breaks program
+    // TODO: add [<Literal>] back once it's fixed: https://github.com/dotnet/fsharp/issues/18956
     let RenamePrice = 5M
     let GenMonsterPrice = 1M
 

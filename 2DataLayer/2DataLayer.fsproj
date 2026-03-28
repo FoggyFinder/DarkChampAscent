@@ -15,7 +15,6 @@
 		<Compile Include="Gen\GenAIPG.fs" />
 		<Compile Include="Db\SQL.fs" />
 		<Compile Include="Db\Db.fs" />
-		<Compile Include="Db\ReadOnlyDb.fs" />
 		<Compile Include="CommonHelpers.fs" />
 	</ItemGroup>
 	
