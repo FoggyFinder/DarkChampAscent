@@ -908,13 +908,10 @@ module internal SQL =
         )
     """
 
-    let GetLvlsForRoundForUserChamps = """
+    let GetLvlsForUserChamps = """
         SELECT cl.ChampId, Characteristic FROM ChampLevel cl
         JOIN UserChamp uc ON uc.ChampId = cl.ChampId
-        WHERE UserId = @userId AND cl.ChampId IN (
-            SELECT ChampId FROM Action
-            WHERE RoundId = @roundId
-        )
+        WHERE UserId = @userId
     """
 
     let GetBoostsForUserChampsAtRound = """

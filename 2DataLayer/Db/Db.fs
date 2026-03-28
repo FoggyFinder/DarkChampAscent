@@ -1406,9 +1406,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 use conn = new SqliteConnection(cs)
                 // TODO: cache this for fast lookup
                 let lvls =
-                    Db.newCommand SQL.GetLvlsForRoundForUserChamps conn
+                    Db.newCommand SQL.GetLvlsForUserChamps conn
                     |> Db.setParams [
-                        "roundId", SqlType.Int64 roundId'
                         "userId", SqlType.Int64 <| int64 userId
                     ]
                     |> Db.query(fun r -> {|
