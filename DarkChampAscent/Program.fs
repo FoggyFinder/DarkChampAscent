@@ -348,7 +348,7 @@ open Services
 
 [<RequireQualifiedAccess>]
 module SSEHelper =
-    let handler (signal:Utils.IReadOnlySignal<'a>) : HttpHandler =
+    let handler (signal:Utils.IReadOnlySignal<'a>) (apply:('a -> 'a) option): HttpHandler =
         fun ctx ->
             task {
                 let res = ctx.Response
@@ -361,7 +361,8 @@ module SSEHelper =
 
                 let update v =
                     task {
-                        let json = JsonSerializer.Serialize(v, options)
+                        let v' = match apply with | Some f -> f v | None -> v
+                        let json = JsonSerializer.Serialize(v', options)
                         let msg = $"data: {json}\n\n"
                         let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
                         do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct)
@@ -382,21 +383,24 @@ let battleParticipantsHandler : HttpHandler =
     fun ctx ->
         task {
             let s = ctx.Plug<BattleService>()
-            return! SSEHelper.handler s.RoundParticipants ctx
+            return! SSEHelper.handler s.RoundParticipants None ctx
         }
 
 let battleRoundInfoHandler : HttpHandler =
     fun ctx ->
         task {
             let s = ctx.Plug<BattleService>()
-            return! SSEHelper.handler s.RoundStatus ctx
+            return! SSEHelper.handler s.RoundStatus None ctx
         }
 
 let battleInfoHandler : HttpHandler =
     fun ctx ->
         task {
             let s = ctx.Plug<BattleService>()
-            return! SSEHelper.handler s.BattleStatus ctx
+            let apply =
+                Some(Option.map(fun (bi:BattleInfoDTO) ->
+                    bi.WithMonsterImg (FileUtils.mapToLocalImg bi.CurrentBattleInfo.Monster.Picture)))
+            return! SSEHelper.handler s.BattleStatus apply ctx
         }
 
 let battleHandler : HttpHandler =
