@@ -345,97 +345,58 @@ let registerNewWalletHandler : HttpHandler =
 
 open System.Threading.Tasks
 open Services
+
+[<RequireQualifiedAccess>]
+module SSEHelper =
+    let handler (signal:Utils.IReadOnlySignal<'a>) : HttpHandler =
+        fun ctx ->
+            task {
+                let res = ctx.Response
+                res.Headers["Content-Type"] <- "text/event-stream"
+                res.Headers["Cache-Control"] <- "no-cache"
+                res.Headers["Connection"] <- "keep-alive"
+                res.Headers["X-Accel-Buffering"] <- "no"
+                do! res.Body.FlushAsync()
+                let ct = ctx.RequestAborted
+
+                let update v =
+                    task {
+                        let json = JsonSerializer.Serialize(v, options)
+                        let msg = $"data: {json}\n\n"
+                        let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
+                        do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct)
+                        do! res.Body.FlushAsync()
+                    }
+                do! update(signal.Value)
+                let d = signal.Publish.Subscribe (fun v -> update v |> ignore)
+                while not ct.IsCancellationRequested do
+                    try
+                        do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
+                    with
+                    | :? OperationCanceledException -> ()
+                    | ex -> Log.Error("sseHandler:" + ex.ToString())
+                d.Dispose()
+            }
+
 let battleParticipantsHandler : HttpHandler =
     fun ctx ->
         task {
-            let res = ctx.Response
-            res.Headers["Content-Type"] <- "text/event-stream"
-            res.Headers["Cache-Control"] <- "no-cache"
-            res.Headers["Connection"] <- "keep-alive"
-            res.Headers["X-Accel-Buffering"] <- "no"  // important if behind nginx
-            do! res.Body.FlushAsync()
             let s = ctx.Plug<BattleService>()
-            let ct = ctx.RequestAborted
-            let update (participants:RoundParticipantChamp list) =
-                Async.Start(async {
-                    let json = JsonSerializer.Serialize(participants, options)
-                    let msg = $"data: {json}\n\n"
-                    let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
-                    do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct) |> Async.AwaitTask
-                    do! res.Body.FlushAsync() |> Async.AwaitTask
-                }, ct)
-            s.RoundParticipants.Value |> update
-            let d = s.RoundParticipants.Publish.Subscribe update
-            while not ct.IsCancellationRequested do
-                try
-                    do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
-                with
-                | :? OperationCanceledException -> ()
-                | ex -> Log.Error("battleParticipantsHandler:" + ex.ToString())
-            d.Dispose()
+            return! SSEHelper.handler s.RoundParticipants ctx
         }
 
 let battleRoundInfoHandler : HttpHandler =
     fun ctx ->
         task {
-            let res = ctx.Response
-            res.Headers["Content-Type"] <- "text/event-stream"
-            res.Headers["Cache-Control"] <- "no-cache"
-            res.Headers["Connection"] <- "keep-alive"
-            res.Headers["X-Accel-Buffering"] <- "no"
-            do! res.Body.FlushAsync()
             let s = ctx.Plug<BattleService>()
-            let ct = ctx.RequestAborted
-
-            let update (roundInfo:RoundInfoDTO) =
-                Async.Start(async {
-                    let json = JsonSerializer.Serialize(roundInfo, options)
-                    let msg = $"data: {json}\n\n"
-                    let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
-                    do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct) |> Async.AwaitTask
-                    do! res.Body.FlushAsync() |> Async.AwaitTask
-                }, ct)
-            s.RoundStatus.Value |> update
-            let d = s.RoundStatus.Publish.Subscribe update
-            while not ct.IsCancellationRequested do
-                try
-                    do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
-                with
-                | :? OperationCanceledException -> ()
-                | ex -> Log.Error("battleRoundInfoHandler:" + ex.ToString())
-            d.Dispose()
+            return! SSEHelper.handler s.RoundStatus ctx
         }
 
 let battleInfoHandler : HttpHandler =
     fun ctx ->
         task {
-            let res = ctx.Response
-            res.Headers["Content-Type"] <- "text/event-stream"
-            res.Headers["Cache-Control"] <- "no-cache"
-            res.Headers["Connection"] <- "keep-alive"
-            res.Headers["X-Accel-Buffering"] <- "no"
-            do! res.Body.FlushAsync()
             let s = ctx.Plug<BattleService>()
-            let ct = ctx.RequestAborted
-
-            let update (battleInfo:BattleInfoDTO) =
-                Async.Start(async {
-                    let bi' = battleInfo.WithMonsterImg (FileUtils.mapToLocalImg battleInfo.CurrentBattleInfo.Monster.Picture)
-                    let json = JsonSerializer.Serialize(bi', options)
-                    let msg = $"data: {json}\n\n"
-                    let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
-                    do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct) |> Async.AwaitTask
-                    do! res.Body.FlushAsync() |> Async.AwaitTask
-                }, ct)
-            s.BattleStatus.Value |> Option.iter update
-            let d = s.BattleStatus.Publish.Subscribe (Option.iter update)
-            while not ct.IsCancellationRequested do
-                try
-                    do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
-                with
-                | :? OperationCanceledException -> ()
-                | ex -> Log.Error("battleRoundInfoHandler:" + ex.ToString())
-            d.Dispose()
+            return! SSEHelper.handler s.BattleStatus ctx
         }
 
 let battleHandler : HttpHandler =
