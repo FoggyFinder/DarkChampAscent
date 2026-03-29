@@ -343,6 +343,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 match sbr with
                 | Ok ar ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Started, Some dt, uint64 ar.RoundId))
+                    roundParticipants.Set([])
+                    updateBattleStatus()
                     match db.GetMonsterById(monsterId) with
                     | Some monster ->
                         let createMP() =
