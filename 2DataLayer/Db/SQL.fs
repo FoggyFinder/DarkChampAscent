@@ -727,19 +727,6 @@ module internal SQL =
     let GetShopItems = "SELECT Item FROM Shop"
     let GetEffects = "SELECT Item FROM Effect"
 
-    let GetUserBalance = "SELECT Balance FROM UserBalance WHERE UserId = @userId;"
-    let GetUsersBalanceAndWallet = """
-        SELECT ub.UserId, ub.Balance, w.Address FROM UserBalance ub
-        JOIN Wallet w ON w.UserId = ub.UserId
-        GROUP BY ub.UserId
-        HAVING SUM(ub.Balance) > 0
-    """
-    
-    let ResetUserBalance = """UPDATE UserBalance SET Balance = 0 WHERE UserId = @userId"""
-    let SetUserBalance = """UPDATE UserBalance SET Balance = @balance WHERE UserId = @userId"""
-    let ExistsUserWithNonEmptyBalance = "SELECT EXISTS(SELECT 1 FROM UserBalance WHERE Balance > 0 LIMIT 1);"
-    let UserBalanceTableExists = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('UserBalance') LIMIT 1);"
-
     /// Adds amount to current value if record already exists
     let AddToStorage = """
         INSERT INTO Storage(UserId, ItemId, Amount) VALUES(@userId, @itemId, @amount)

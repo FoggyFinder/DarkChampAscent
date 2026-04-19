@@ -310,56 +310,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
-    
-    let dropBalanceFromUserTable(conn:SqliteConnection) =
-        let balanceColumnCount = """
-                SELECT COUNT(*) FROM
-                pragma_table_info('User')
-                WHERE name='Balance'
-            """
-        let sql = """
-            PRAGMA foreign_keys = OFF;
-
-            CREATE TABLE IF NOT EXISTS UserNew (
-	            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                DiscordId INTEGER UNIQUE,
-                CustomUserId INTEGER UNIQUE,
-                PrimaryWallet TEXT UNIQUE,
-                FOREIGN KEY (CustomUserId)
-                REFERENCES CustomUser (ID),
-                CHECK (CustomUserId IS NOT NULL OR DiscordId IS NOT NULL OR PrimaryWallet IS NOT NULL)
-            );
-
-            CREATE TABLE IF NOT EXISTS UserBalance (
-	            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                UserId INTEGER UNIQUE,
-                Balance NUMERIC NOT NULL,
-                FOREIGN KEY (UserId)
-                REFERENCES User (ID),
-                CHECK (Balance >= 0)
-            );
-
-            INSERT INTO UserNew(DiscordId, CustomUserId, PrimaryWallet)
-            SELECT DiscordId, CustomUserId, PrimaryWallet
-            FROM User;
-
-            INSERT INTO UserBalance(UserId, Balance)
-            SELECT ID, Balance
-            FROM User;
-
-            DROP TABLE User;
-
-            ALTER TABLE UserNew RENAME TO User;
-
-            PRAGMA foreign_keys = ON;
-            """
-
-        Db.newCommand balanceColumnCount conn
-        |> Db.scalar(fun v -> tryUnbox<int64> v)
-        |> Option.iter(fun i ->
-            if i > 0L then
-                Db.newCommand sql conn
-                |> Db.exec)
 
     let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
@@ -371,7 +321,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
-    do dropBalanceFromUserTable(_conn) |> ignore
     do _conn.Dispose()
 
     do Log.Information("Db init is finished")
@@ -1637,7 +1586,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.GetDefeatedMonsters(roundId: uint64) =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetMonstersUnderEffect  conn
+            Db.newCommand SQL.GetDefeatedMonsters  conn
             |> Db.setParams [
                 "roundId", SqlType.Int64 <| int64 roundId
             ]
@@ -4008,23 +3957,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, "GetChampsNames")
             []
 
-    member _.UserWithNonEmptyBalanceExists() =
-        try
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UserBalanceTableExists conn
-            |> Db.scalar (fun v -> 
-                match tryUnbox<int64> v with
-                | Some v ->
-                    if v > 0 then
-                        Db.newCommand SQL.ExistsUserWithNonEmptyBalance conn
-                        |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue true)
-                    else
-                        false
-                | None -> false)
-        with exn ->
-            Log.Error(exn, "UserWithNonEmptyBalanceExists")
-            true
-
     member _.GetFailedGen() =
         try
             use conn = new SqliteConnection(cs)
@@ -4125,59 +4057,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             true
         with exn ->
             Log.Error(exn, $"AddTxRevertHistory: {txId} | {outTx}")
-            false
-
-    member _.GetUsersBalanceAndWallet() =
-        try
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetUsersBalanceAndWallet conn
-            |> Db.query (fun r ->
-                r.GetInt64(0), r.GetDecimal(1), r.GetString(2))
-        with exn ->
-            Log.Error(exn, "GetUserBalanceAndWallet")
-            []
-
-    member _.ResetUserBalance(userId:int64) =
-        try
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.ResetUserBalance conn
-            |> Db.setParams [
-                "userId", SqlType.Int64 userId
-            ]
-            |> Db.exec
-            true
-        with exn ->
-            Log.Error(exn, "ResetUserBalance")
-            false
-
-    member _.SetUserBalance(userId:int64, balance:decimal) =
-        try
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.SetUserBalance conn
-            |> Db.setParams [
-                "userId", SqlType.Int64 userId
-                "balance", SqlType.Decimal balance
-            ]
-            |> Db.exec
-            true
-        with exn ->
-            Log.Error(exn, "SetUserBalance")
-            false
-
-    member _.DropBalanceColumn() =
-        try
-            let sql = "DROP TABLE UserBalance;"
-
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.UserBalanceTableExists conn
-            |> Db.scalar(fun v -> tryUnbox<int64> v)
-            |> Option.iter(fun i ->
-                if i > 0L then
-                    Db.newCommand sql conn
-                    |> Db.exec)
-            true
-        with exn ->
-            Log.Error(exn, "DropBalanceColumn")
             false
 
     member _.GetDateTimeKey(key:DbKeys) =

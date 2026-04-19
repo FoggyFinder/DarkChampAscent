@@ -1118,7 +1118,6 @@ builder
         .AddHostedService(fun sp -> sp.GetRequiredService<BattleService>())
         .AddHostedService<BackupService>()
         .AddHostedService<GenService>()
-        .AddHostedService<RemoveBalanceService>()
         .AddHostedService<RefundInvalidTxService>()
         .AddHostedService<RefundFailedGenService>()
         .AddAuthorization()

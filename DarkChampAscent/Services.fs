@@ -21,47 +21,6 @@ open DiscordBot.Components
 open Utils
 open Helpers
 
-// TODO: remove once all user's balance are returned
-type RemoveBalanceService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfiguration>) =
-    inherit BackgroundService()
-    
-    let keys = chainOpt.Value.GameWalletKeys
-
-    override _.ExecuteAsync(cancellationToken) =
-        task {
-            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
-            let mutable userWithBalanceExists = db.UserWithNonEmptyBalanceExists()
-            Log.Information($"UserWithBalanceExists: {userWithBalanceExists}")
-            if userWithBalanceExists |> not then
-                db.DropBalanceColumn() |> ignore
-            while userWithBalanceExists && cancellationToken.IsCancellationRequested |> not do
-                try
-                    for (userId, balance, wallet) in db.GetUsersBalanceAndWallet() do
-                        Log.Information($"Processing...{userId}: send {balance} to {wallet}")
-                        if db.ResetUserBalance userId then
-                            Log.Information($"Sending {balance} to {wallet}")
-                            let amount = Blockchain.toLong (balance, Algo6Decimals)
-                            Log.Information($"Exact amount = {amount}")
-                            let! r =
-                                Blockchain.sendTx(
-                                    keys, wallet, amount,
-                                    Blockchain.DarkCoinAssetId,
-                                    $"DarkChampAscent: in-game balance is removed, direct deposits not supported anymore"
-                                )
-                            Log.Information($"Status = {r}")
-                            if r.IsError then
-                                Log.Information($"Reverting...{userId} balance to {balance}")
-                                db.SetUserBalance(userId, balance) |> ignore
-                    userWithBalanceExists <- db.UserWithNonEmptyBalanceExists()
-                    if userWithBalanceExists |> not then
-                        db.DropBalanceColumn() |> ignore
-                    else
-                        do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
-                with exn ->
-                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
-                    Log.Error(exn, "RemoveBalanceService")
-        }
-
 type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguration>) =
     inherit BackgroundService()
 
