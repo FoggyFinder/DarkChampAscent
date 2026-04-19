@@ -52,6 +52,56 @@ let private asInt (n: float) = int n
 let private asInt64 (n: float) = int64 n
 let private asUInt64 (n: float) = uint64 n
 let private asDecimal (n: float) = decimal n
+    
+let parseResult<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T, string> =
+    let json =
+        match SimpleJson.parseNative json with
+        | JString inner -> inner
+        | _ -> json
+    match SimpleJson.parseNative json with
+    | JObject fields ->
+        match Map.tryFind "Ok" fields with
+        | Some inner ->
+            match inner |> asObj |> Option.bind decoder with
+            | Some v -> Ok v
+            | None -> Error $"Failed to decode Ok payload: {SimpleJson.toString inner}"
+        | None ->
+            match Map.tryFind "Error" fields with
+            | Some (JString msg) -> Error msg
+            | _ -> Error $"Unexpected response shape: {json}"
+    | _ -> Error $"Failed to parse JSON: {json}"
+
+let parseResultRaw<'T> (decoder: Json -> 'T option) (json: string) : Result<'T, string> =
+    let json =
+        match SimpleJson.parseNative json with
+        | JString inner -> inner
+        | _ -> json
+    match SimpleJson.parseNative json with
+    | JObject fields ->
+        match Map.tryFind "Ok" fields with
+        | Some inner ->
+            match decoder inner with
+            | Some v -> Ok v
+            | None -> Error $"Failed to decode Ok payload: {SimpleJson.toString inner}"
+        | None ->
+            match Map.tryFind "Error" fields with
+            | Some (JString msg) -> Error msg
+            | _ -> Error $"Unexpected response: {json}"
+    | _ -> Error $"Failed to parse JSON: {json}"
+
+let parseUnit (json: string) : Result<unit, string> =
+    parseResultRaw (function JNull -> Some () | JObject _ -> Some () | _ -> None) json
+
+let parseBool (json: string) : Result<bool, string> =
+    parseResultRaw (function JBool b -> Some b | _ -> None) json
+
+let parseString (json: string) : Result<string, string> =
+    parseResultRaw (function JString s -> Some s | _ -> None) json
+
+let parseList<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T list, string> =
+    parseResultRaw (function
+        | JArray items -> items |> List.choose (fun j -> j |> asObj |> Option.bind decoder) |> Some
+        | _ -> None) json
 
 let private decodeEffect (j: Json) : Effect option =
     match j with JNumber n -> Some (enum<Effect> (int n)) | _ -> None
@@ -189,15 +239,14 @@ let decodeMonsterShortInfo (m: Map<string, Json>) : MonsterShortInfo option =
 
 let decodeUserAccount (m: Map<string, Json>) : UserAccount option =
     match field "User" m |> Option.bind decodeAccount,
-          reqNum "Balance" m,
           reqNum "Champs" m,
           reqNum "Monsters" m,
           reqNum "Requests" m with
-    | Some user, Some bal, Some champs, Some monsters, Some requests ->
+    | Some user, Some champs, Some monsters, Some requests ->
         let wallets =
             reqArr "Wallets" m
             |> List.choose (fun j -> j |> asObj |> Option.bind decodeWallet)
-        Some (UserAccount(user, wallets, asDecimal bal, asInt champs, asInt monsters, asInt requests))
+        Some (UserAccount(user, wallets, asInt champs, asInt monsters, asInt requests))
     | _ -> None
 
 let decodeChampFullInfo (m: Map<string, Json>) : ChampFullInfo option =
@@ -303,8 +352,7 @@ let decodeShopDTO (m: Map<string, Json>) : ShopDTO option =
         let items =
             reqArr "Items" m
             |> List.choose decodeShopItem
-        let balance = optNum "Balance" m |> Option.map asDecimal
-        Some (ShopDTO(items, asDecimal price, balance))
+        Some (ShopDTO(items, asDecimal price))
     | _ -> None
 
 let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
@@ -323,8 +371,8 @@ let decodeChampDTO (m: Map<string, Json>) : ChampDTO option =
     match field "ChampInfo" m |> Option.bind asObj |> Option.bind decodeChampInfo,
           reqNum "Price" m with
     | Some champ, Some price ->
-        let balance = optNum "Balance" m |> Option.map asDecimal
-        Some (ChampDTO(champ, balance, asDecimal price))
+        let b = reqBool "BelongsToAUser" m |> Option.defaultValue false
+        Some (ChampDTO(champ, b, asDecimal price))
     | _ -> None
 
 let decodeMonsterDTO (m: Map<string, Json>) : MonsterDTO option =
@@ -340,8 +388,7 @@ let decodeUserMonstersDTO (m: Map<string, Json>) : UserMonstersDTO option =
         let monsters =
             reqArr "Monsters" m
             |> List.choose (fun j -> j |> asObj |> Option.bind decodeMonsterShortInfo)
-        let balance = optNum "UserBalance" m |> Option.map asDecimal
-        Some (UserMonstersDTO(monsters, asDecimal price, balance))
+        Some (UserMonstersDTO(monsters, asDecimal price))
     | _ -> None
 
 let decodeRewardsPriceDTO (m: Map<string, Json>) : RewardsPriceDTO option =
@@ -350,68 +397,33 @@ let decodeRewardsPriceDTO (m: Map<string, Json>) : RewardsPriceDTO option =
         let price = optNum "Price" m |> Option.map asDecimal
         Some (RewardsPriceDTO(asDecimal rewards, price))
     | _ -> None
+let private decodeWalletValue (m: Map<string, Json>) : WalletValue option =
+    match reqStr "Wallet" m, reqNum "Value" m with
+    | Some wallet, Some value -> Some (WalletValue(wallet, asDecimal value))
+    | _ -> None
 
-let decodeStats (m: Map<string, Json>) : Stats option =
+let private decodeGameStats (m: Map<string, Json>) : GameStats option =
     let optU key = optNum key m |> Option.map asUInt64
-    let optD key = optNum key m |> Option.map asDecimal
-    Some (Stats(
+    Some (GameStats(
         optU "Players", optU "ConfirmedPlayers",
         optU "Champs", optU "CustomMonsters",
-        optU "Battles", optU "Rounds",
-        optD "Rewards", optD "Burnt",
-        optD "Dao", optD "Reserve",
-        optD "Devs", optD "Staking"
+        optU "Battles", optU "Rounds"
     ))
 
-let parseResult<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T, string> =
-    let json =
-        match SimpleJson.parseNative json with
-        | JString inner -> inner
-        | _ -> json
-    match SimpleJson.parseNative json with
-    | JObject fields ->
-        match Map.tryFind "Ok" fields with
-        | Some inner ->
-            match inner |> asObj |> Option.bind decoder with
-            | Some v -> Ok v
-            | None -> Error $"Failed to decode Ok payload: {SimpleJson.toString inner}"
-        | None ->
-            match Map.tryFind "Error" fields with
-            | Some (JString msg) -> Error msg
-            | _ -> Error $"Unexpected response shape: {json}"
-    | _ -> Error $"Failed to parse JSON: {json}"
+let private decodeTStats (m: Map<string, Json>) : TStats option =
+    let optWV key = field key m |> Option.bind asObj |> Option.bind decodeWalletValue
+    Some (TStats(
+        optWV "Burnt", optWV "Dao", optWV "Reserve",
+        optWV "Devs", optWV "Staking"
+    ))
 
-let parseResultRaw<'T> (decoder: Json -> 'T option) (json: string) : Result<'T, string> =
-    let json =
-        match SimpleJson.parseNative json with
-        | JString inner -> inner
-        | _ -> json
-    match SimpleJson.parseNative json with
-    | JObject fields ->
-        match Map.tryFind "Ok" fields with
-        | Some inner ->
-            match decoder inner with
-            | Some v -> Ok v
-            | None -> Error $"Failed to decode Ok payload: {SimpleJson.toString inner}"
-        | None ->
-            match Map.tryFind "Error" fields with
-            | Some (JString msg) -> Error msg
-            | _ -> Error $"Unexpected response: {json}"
-    | _ -> Error $"Failed to parse JSON: {json}"
-
-let parseUnit (json: string) : Result<unit, string> =
-    parseResultRaw (function JNull -> Some () | JObject _ -> Some () | _ -> None) json
-
-let parseBool (json: string) : Result<bool, string> =
-    parseResultRaw (function JBool b -> Some b | _ -> None) json
-
-let parseString (json: string) : Result<string, string> =
-    parseResultRaw (function JString s -> Some s | _ -> None) json
-
-let parseList<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T list, string> =
-    parseResultRaw (function
-        | JArray items -> items |> List.choose (fun j -> j |> asObj |> Option.bind decoder) |> Some
-        | _ -> None) json
+let decodeStats (m: Map<string, Json>) : Stats option =
+    match field "GameStats" m |> Option.bind asObj |> Option.bind decodeGameStats,
+          field "TStats" m |> Option.bind asObj |> Option.bind decodeTStats with
+    | Some gameStats, Some tStats ->
+        let rewards = optNum "Rewards" m |> Option.map asDecimal
+        Some (Stats(gameStats, tStats, rewards))
+    | _ -> None
 
 let parseChampList (json: string) : Result<(ChampShortInfo * decimal) list, string> =
     parseResultRaw (function
@@ -436,6 +448,23 @@ let parseDonaterList (json: string) : Result<{| name: string; amount: decimal |}
                     | _ -> None))
             |> Some
         | _ -> None) json
+
+let private decodeDonationDTO (m: Map<string, Json>) =
+    match reqStr "Donater" m, reqNum "Amount" m with
+    | Some donater, Some amount -> Some (DonationDTO(donater, asDecimal amount))
+    | _ -> None
+
+let private decodeLatestDonation (m: Map<string, Json>) =
+    match reqStr "Donater" m, reqNum "Amount" m, reqStr "Tx" m with
+    | Some donater, Some amount, Some tx -> Some (LatestDonationDTO(donater, asDecimal amount, tx))
+    | _ -> None
+
+let parseTopDonaters (json: string) : Result<TopDonatersDTO, string> =
+    parseResult (fun m ->
+        let top    = reqArr "Top"    m |> List.choose (fun j -> j |> asObj |> Option.bind decodeDonationDTO)
+        let latest = reqArr "Latest" m |> List.choose (fun j -> j |> asObj |> Option.bind decodeLatestDonation)
+        Some (TopDonatersDTO(top, latest))
+    ) json
 
 let private decodeDmg (j: Json) : Dmg option =
     match j with
@@ -642,7 +671,11 @@ let decodeRoundInfoDTO (json:string) =
             match reqNum "Status" m, reqNum "Round" m with
             | Some n, Some r ->
                 let status = enum<RoundStatus> (int n)
-                let started = optStr "RoundStarted" m |> Option.map (fun s -> System.DateTimeOffset.Parse(s + "Z").UtcDateTime)
+                let started =
+                    optStr "RoundStarted" m
+                    |> Option.map (fun s -> 
+                        let s = if s.EndsWith("Z") then s else s + "Z"
+                        System.DateTimeOffset.Parse(s).UtcDateTime)
                 let round =  r |> asUInt64
                 Some (RoundInfoDTO(status, started, round))
             | _ ->

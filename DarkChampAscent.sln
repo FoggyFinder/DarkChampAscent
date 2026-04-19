@@ -16,8 +16,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "2DataLayer", "2DataLayer\2DataLayer.fsproj", "{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "3Discord", "3Discord\3Discord.fsproj", "{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}"
-EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscent", "DarkChampAscent\DarkChampAscent.fsproj", "{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "DarkChampAscentFrontend", "DarkChampAscentFrontend\DarkChampAscentFrontend.fsproj", "{B9F6C65E-0246-40E3-BE33-A8D6BE7FAAFD}"
@@ -44,10 +42,6 @@ Global
 		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0D92C97D-8B82-4FD1-89ED-8AAC8BC23725}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CAD1A1EA-E548-4445-8C79-99D80CCA2C62}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D36855A-AD7C-47AE-8BF2-72900FFFFF53}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -1,5 +1,6 @@
 ﻿namespace Db.Sqlite
 
+
 [<RequireQualifiedAccess>]
 module internal SQL =
 
@@ -15,15 +16,11 @@ module internal SQL =
             DiscordId INTEGER UNIQUE,
             CustomUserId INTEGER UNIQUE,
             PrimaryWallet TEXT UNIQUE,
-            Balance NUMERIC NOT NULL,
             FOREIGN KEY (CustomUserId)
             REFERENCES CustomUser (ID),
-            CHECK (Balance >= 0 AND 
-                (CustomUserId IS NOT NULL 
+            CHECK (CustomUserId IS NOT NULL 
                   OR DiscordId IS NOT NULL
-                  OR PrimaryWallet IS NOT NULL
-                )
-           )
+                  OR PrimaryWallet IS NOT NULL)
         );
 
         CREATE TABLE IF NOT EXISTS Web3Nonces (
@@ -45,6 +42,27 @@ module internal SQL =
                REFERENCES User (ID)
         );
 
+        CREATE TABLE IF NOT EXISTS TxHistory (
+	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            TX TEXT NOT NULL UNIQUE,
+            Wallet TEXT NOT NULL,
+            Note TEXT,
+            Amount NUMERIC NOT NULL,
+            Type INT NOT NULL,
+            IsValid BOOL NOT NULL,
+            IsFinished BOOL NOT NULL,
+            Comment TEXT,
+            CHECK (Amount >= 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS TxRevertHistory (
+	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            TxId INTEGER NOT NULL UNIQUE,
+            OutTx TEXT NOT NULL UNIQUE,
+            FOREIGN KEY (TxId)
+               REFERENCES TxHistory (ID)
+        );
+        
         CREATE TABLE IF NOT EXISTS Deposit (
 	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             WalletId INTEGER NOT NULL,
@@ -52,24 +70,6 @@ module internal SQL =
             Amount INT NOT NULL,
             FOREIGN KEY (WalletId)
                REFERENCES Wallet (ID),
-            CHECK (Amount >= 0)
-        );
-
-        CREATE TABLE IF NOT EXISTS Donation (
-	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            Wallet TEXT NOT NULL,
-            TX TEXT NOT NULL UNIQUE,
-            Amount INT NOT NULL,
-            CHECK (Amount >= 0)
-        );
-
-        CREATE TABLE IF NOT EXISTS InGameDonation (
-	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            UserId INTEGER NOT NULL,
-            Timestamp DATETIME NOT NULL,
-            Amount INT NOT NULL,
-            FOREIGN KEY (UserId)
-               REFERENCES User (ID),
             CHECK (Amount >= 0)
         );
 
@@ -156,6 +156,28 @@ module internal SQL =
             FOREIGN KEY (UserId)
                REFERENCES User (ID),
             CHECK (Cost > 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS GenRequestTx (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            TxId INTEGER NOT NULL UNIQUE,
+            RequestId INTEGER NOT NULL UNIQUE,
+            FOREIGN KEY (TxId)
+               REFERENCES TxHistory (ID),
+            FOREIGN KEY (RequestId)
+               REFERENCES UserGenMonsterRequest (ID)
+        );
+
+        CREATE TABLE IF NOT EXISTS UserGenRequestRefunds (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            UserId INTEGER NOT NULL,
+            RequestId INTEGER NOT NULL UNIQUE,
+            IsFinished BOOL NOT NULL,
+            OutTx TEXT UNIQUE,
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            FOREIGN KEY (RequestId)
+               REFERENCES UserGenMonsterRequest (ID)
         );
 
         CREATE TABLE IF NOT EXISTS UserMonster (
@@ -316,34 +338,6 @@ module internal SQL =
             Item INT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS Purchase (
-            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            UserId INT NOT NULL,
-            ItemId INT NOT NULL,
-            Timestamp DATETIME NOT NULL,
-            Price NUMERIC NOT NULL,
-            Amount INT NOT NULL,
-            FOREIGN KEY (UserId)
-               REFERENCES User (ID),
-            FOREIGN KEY (ItemId)
-               REFERENCES Shop (ID),
-            CHECK (Amount > 0)
-        );
-
-        CREATE TABLE IF NOT EXISTS ChampNamesHistory (
-            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            UserId INT NOT NULL,
-            ChampId INT NOT NULL,
-            Timestamp DATETIME NOT NULL,
-            Price NUMERIC NOT NULL,
-            OldName TEXT NOT NULL,
-            Name TEXT NOT NULL,
-            FOREIGN KEY (UserId)
-               REFERENCES User (ID),
-            FOREIGN KEY (ChampId)
-               REFERENCES Champ (ID)
-        );
-
         -- Items that aren't activated yet
         CREATE TABLE IF NOT EXISTS Storage (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -439,21 +433,27 @@ module internal SQL =
     let UnConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE IsConfirmed = 0 LIMIT 1);"
     let ChampExists = "SELECT EXISTS(SELECT 1 FROM Champ WHERE AssetId = @assetId LIMIT 1);"
     let DepositExists = "SELECT EXISTS(SELECT 1 FROM Deposit WHERE Tx = @tx LIMIT 1);"
-    let DonationExists = "SELECT EXISTS(SELECT 1 FROM Donation WHERE Tx = @tx LIMIT 1);"
+    let TxExists = "SELECT EXISTS(SELECT 1 FROM TxHistory WHERE Tx = @tx LIMIT 1);"
+
     let MonsterExists = "SELECT EXISTS(SELECT 1 FROM Monster WHERE ID = @monsterId LIMIT 1);"
     let MonsterExistsByName = "SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name LIMIT 1);"
     let RoundExists = "SELECT EXISTS(SELECT 1 FROM Round LIMIT 1);"
     let MonsterBelongsToAUser = "SELECT EXISTS(SELECT 1 FROM UserMonster WHERE MonsterId = @monsterId AND UserId = @userId LIMIT 1);"
     let ChampBelongsToAUser = "SELECT EXISTS(SELECT 1 FROM UserChamp WHERE ChampId = @champId AND UserId = @userId LIMIT 1);"
+    let WalletBelongsToAUser = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet AND UserId = @userId LIMIT 1);"
 
     let GetAliveMonsters = """
-        SELECT ID FROM Monster
-        WHERE ID NOT IN (
+        SELECT m.ID, um.UserId FROM Monster m
+        LEFT JOIN UserMonster um ON um.MonsterId = m.ID 
+        WHERE m.ID NOT IN (
 	        SELECT MonsterId FROM MonsterDefeats
 	        WHERE RoundId < @roundId AND RoundId + RevivalDuration >= @roundId)      
     """
     
-    let GetMonsters = "SELECT ID FROM Monster"
+    let GetMonsters = """
+        SELECT m.ID, um.UserId FROM Monster m
+        LEFT JOIN UserMonster um ON um.MonsterId = m.ID
+    """
     let FilterMonsters = """
         SELECT ID, Name FROM Monster
         WHERE Type = @mtype AND SubType = @msubtype
@@ -539,7 +539,7 @@ module internal SQL =
         INSERT INTO KeyValueBool(Key, Value) VALUES(@key, @value)
         ON CONFLICT(Key) DO UPDATE SET Value = @value;"
         
-    let AddNewDiscordUser = "INSERT INTO User(DiscordId, Balance) VALUES(@discordId, 0);"
+    let AddNewDiscordUser = "INSERT INTO User(DiscordId) VALUES(@discordId);"
     let UserNameAlreadyExists = "SELECT EXISTS(SELECT 1 FROM CustomUser WHERE Nickname = @name LIMIT 1);"
     let GetCustomUserInfoByNickname = "SELECT ID, Password FROM CustomUser WHERE Nickname = @name;"
     let AddNewCustomUser = """
@@ -547,11 +547,11 @@ module internal SQL =
         SELECT last_insert_rowid();
         """
     let UpdatePassword = "UPDATE CustomUser SET Password = @password WHERE ID = @cId;"
-    let AddCustomUser = "INSERT INTO User(CustomUserId, Balance) VALUES(@customId, 0);"
+    let AddCustomUser = "INSERT INTO User(CustomUserId) VALUES(@customId, 0);"
 
     let PrimaryWalletAlreadyExists = "SELECT EXISTS(SELECT 1 FROM User WHERE PrimaryWallet = @wallet LIMIT 1);"
     let AddNewWeb3User = """
-        INSERT INTO User(PrimaryWallet, Balance) VALUES(@wallet, 0);
+        INSERT INTO User(PrimaryWallet) VALUES(@wallet);
         SELECT last_insert_rowid();
         """
     let RegisterNewWallet = "INSERT INTO Wallet(UserId, Address, IsConfirmed, ConfirmationCode, IsActive) VALUES(@userId, @wallet, 0, @code, 1);"
@@ -627,6 +627,14 @@ module internal SQL =
 			IsActive = 1
     """
 
+    let GetDefeatedChamps = """
+        SELECT Champ.ID, Name, RoundId, Duration, IPFS FROM Champ
+		JOIN Impact i ON i.ChampId = Champ.ID
+        WHERE (RoundId <= @roundId AND 
+				RoundId + Duration >= @roundId) AND
+			IsActive = 1 AND ItemId = 1
+    """
+
     let GetMonstersUnderEffect = """
         SELECT Monster.ID, Name, Type, SubType, RoundId, Duration, Item, Picture FROM Monster
         JOIN MonsterImpact mi ON mi.MonsterId = Monster.ID
@@ -636,14 +644,17 @@ module internal SQL =
 	        IsActive = 1
     """
 
-    let UpdateIpfsByChampId = "UPDATE Champ SET IPFS = @ipfs WHERE ID = @champId;"
-    let RenameChamp = "UPDATE Champ SET Name = @newName WHERE Name = @oldName"
-    
-    let InsertNewOldNames = """
-        INSERT INTO ChampNamesHistory(ChampId, UserId, Timestamp, Price, OldName, Name)
-        VALUES(@champId, @userId, DATETIME('now'), @price, @oldName, @name);
+    let GetDefeatedMonsters = """
+        SELECT Monster.ID, Name, Type, SubType, RoundId, Duration, Picture FROM Monster
+        JOIN MonsterImpact mi ON mi.MonsterId = Monster.ID
+        WHERE (RoundId <= @roundId AND 
+	        RoundId + Duration >= @roundId) AND
+	        IsActive = 1
     """
 
+    let UpdateIpfsByChampId = "UPDATE Champ SET IPFS = @ipfs WHERE ID = @champId;"
+    let RenameChamp = "UPDATE Champ SET Name = @newName WHERE ID = @champId"
+    
     let GetUserChampsWithStats = """
         SELECT
             Name, AssetId, IPFS, Balance,
@@ -705,25 +716,29 @@ module internal SQL =
     let InsertDeposit = """
         INSERT INTO Deposit(WalletId, TX, Amount) VALUES((SELECT ID FROM Wallet WHERE Address = @wallet LIMIT 1), @tx, @amount)
     """
-    
-    let InsertDonation = """
-        INSERT INTO Donation(Wallet, TX, Amount) VALUES(@wallet, @tx, @amount)
-    """
+  
+    let InsertTx = """
+        INSERT INTO TxHistory(TX, Wallet, Note, Amount, Type, IsValid, IsFinished, Comment)
+        VALUES(@tx, @wallet, @note, @amount, @type, @isValid, @isFinished, @comment);
 
-    let InsertInGameDonation = """
-        INSERT INTO InGameDonation(UserId, Timestamp, Amount) VALUES(@userId, DATETIME('now'), @amount)
-    """
+        SELECT last_insert_rowid();
+    """ 
 
     let GetShopItems = "SELECT Item FROM Shop"
     let GetEffects = "SELECT Item FROM Effect"
 
-    let GetUserBalance = "SELECT Balance FROM User WHERE Id = @userId;"
-    let UpdateUserBalance = "UPDATE User SET Balance = @balance WHERE Id = @userId;"
-
-    let PurchaseItem = """
-        INSERT INTO Purchase(UserId, ItemId, Timestamp, Price, Amount)
-        VALUES(@userId, @itemId, DATETIME('now'), @price, @amount)
+    let GetUserBalance = "SELECT Balance FROM UserBalance WHERE UserId = @userId;"
+    let GetUsersBalanceAndWallet = """
+        SELECT ub.UserId, ub.Balance, w.Address FROM UserBalance ub
+        JOIN Wallet w ON w.UserId = ub.UserId
+        GROUP BY ub.UserId
+        HAVING SUM(ub.Balance) > 0
     """
+    
+    let ResetUserBalance = """UPDATE UserBalance SET Balance = 0 WHERE UserId = @userId"""
+    let SetUserBalance = """UPDATE UserBalance SET Balance = @balance WHERE UserId = @userId"""
+    let ExistsUserWithNonEmptyBalance = "SELECT EXISTS(SELECT 1 FROM UserBalance WHERE Balance > 0 LIMIT 1);"
+    let UserBalanceTableExists = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('UserBalance') LIMIT 1);"
 
     /// Adds amount to current value if record already exists
     let AddToStorage = """
@@ -750,10 +765,6 @@ module internal SQL =
 
     let GetAmountFromStorage = """
         SELECT Amount FROM Storage WHERE UserId = @userId AND ItemId = @itemId LIMIT 1;"        
-    """
-
-    let GetUsersBalance = """
-        SELECT SUM(Balance) FROM User
     """
 
     let GetChampsBalance = """
@@ -986,21 +997,36 @@ module internal SQL =
         LIMIT 10
     """
 
-    let GetTopInGameDonaters = """
-        SELECT DiscordId, CustomUserId, cu.Nickname, SUM(Amount) as Total
-        FROM InGameDonation igd
-        JOIN User u ON u.ID = igd.UserId
-        LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
-        GROUP BY u.ID
-        ORDER BY Total DESC
-        LIMIT 10
+    let GetTopDonaters = """
+    SELECT c.DiscordId, c.CustomUserId, c.Nickname, c.PrimaryWallet, SUM(Amount) as Total
+    FROM (
+         SELECT u.ID, DiscordId, CustomUserId, PrimaryWallet, cu.Nickname, PrimaryWallet, Amount FROM 
+			InGameDonation igd
+         JOIN User u ON u.ID = igd.UserId
+         LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
+        
+         UNION ALL
+
+         SELECT u.ID, u.DiscordId, u.CustomUserId, u.PrimaryWallet, cu.Nickname, th.Wallet, Amount FROM TxHistory th
+         JOIN Wallet w ON w.Address = th.Wallet
+         JOIN User u on u.ID = w.UserId
+         LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
+         WHERE th.IsValid = 1 AND th.IsFinished = 1 AND th.Type = 1
+    ) AS c
+	
+    GROUP BY c.ID
+    ORDER BY Total DESC
+    LIMIT 25
     """
 
-    let GetTopDonaters = """
-        SELECT Wallet, Sum(Amount) as Total FROM Donation
-        GROUP BY Wallet
-        ORDER BY Total DESC
-        LIMIT 10
+    let Get5LatestDonations = """
+         SELECT u.DiscordId, u.CustomUserId, cu.Nickname, u.PrimaryWallet, th.Amount, th.TX FROM TxHistory th
+         JOIN Wallet w ON w.Address = th.Wallet
+         JOIN User u on u.ID = w.UserId
+         LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
+         WHERE th.IsValid = 1 AND th.IsFinished = 1 AND th.Type = 1
+		 ORDER BY th.ID DESC
+		 LIMIT 5
     """
 
     let InsertRoundRewards = """
@@ -1078,6 +1104,8 @@ module internal SQL =
         WHERE ChampId = @champId;
     """
 
+    let GetChampXp = "SELECT Xp FROM ChampStat WHERE ChampId = @champId"
+
     let AddMonsterXp = """
         UPDATE Monster SET 
             Xp = Xp + @xp
@@ -1113,6 +1141,40 @@ module internal SQL =
         SELECT last_insert_rowid();
     """
 
+    let AddUserGenRequestRefund = """
+        INSERT INTO UserGenRequestRefunds(UserId, RequestId, IsFinished)
+        VALUES(@userId, @requestId, 0);
+    """
+
+    let FinishUserGenRequestRefund = """
+        UPDATE UserGenRequestRefunds SET 
+            IsFinished = 1
+        WHERE ID = @id
+    """
+
+    let ReOpenUserGenRequestRefund = """
+        UPDATE UserGenRequestRefunds SET 
+            IsFinished = 0
+        WHERE ID = @id AND OutTx IS NULL
+    """
+
+    let SetOutputTxForUserGenRequestRefund = """
+        UPDATE UserGenRequestRefunds SET 
+            OutTx = @tx
+        WHERE ID = @id
+    """
+
+    let GetPendingRefunds = """
+        SELECT r.ID, t.Amount, t.Wallet FROM UserGenRequestRefunds r
+        JOIN GenRequestTx g ON g.RequestId = r.RequestId
+        JOIN TxHistory t ON t.ID = g.TxId
+        WHERE r.IsFinished = 0 AND r.OutTx IS NULL
+    """
+
+    let AddGenRequestTx = """
+        INSERT INTO GenRequestTx(RequestId, TxId) VALUES(@requestId, @txId);
+    """
+
     let UpdateGenRequest = """
         UPDATE UserGenMonsterRequest SET 
             Status = @status,
@@ -1132,6 +1194,14 @@ module internal SQL =
     
     let IsMonsterNameExists = """
         SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name);
+    """
+    
+    let IsChampNameExists = """
+        SELECT EXISTS(SELECT 1 FROM Champ WHERE Name = @name);
+    """
+
+    let GetChampsNames = """
+        SELECT Name From Champ
     """
 
     let IsMonsterDescriptionExists = """
@@ -1242,3 +1312,23 @@ module internal SQL =
     let SaveNonce = "INSERT OR REPLACE INTO Web3Nonces (Wallet, Nonce, ExpiresAt) VALUES (@wallet, @nonce, @expiresAt)"
     let GetNonceByWallet = "SELECT Nonce, ExpiresAt FROM Web3Nonces WHERE Wallet = @wallet"
     let DeleteNonce = "DELETE FROM Web3Nonces WHERE Wallet = @wallet"
+
+    let GetPendingTxRefunds = """
+        SELECT ID, Wallet, Amount FROM TxHistory
+        WHERE IsFinished = 0
+    """
+
+    let ClosePendingTxRefund = """
+        UPDATE TxHistory SET IsFinished = 1
+        WHERE ID = @id AND IsFinished = 0
+    """
+
+    let ReopenPendingTxRefund = """
+        UPDATE TxHistory SET IsFinished = 0
+        WHERE ID = @id
+    """
+
+    let AddTxRevertHistory = """
+        INSERT INTO TxRevertHistory(TxId, OutTx)
+        VALUES(@txId, @outTx)
+    """

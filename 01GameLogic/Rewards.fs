@@ -10,12 +10,10 @@ type Balances = {
     Reserve: decimal
     DAO: decimal
     Staking: decimal
-    Users: decimal
     Champs: decimal
-    Locked: decimal
 } with
     member t.Total =
-        t.Rewards + t.Burn + t.Dev + t.Reserve + t.DAO + t.Staking + t.Users + t.Champs + t.Locked
+        t.Rewards + t.Burn + t.Dev + t.Reserve + t.DAO + t.Staking + t.Champs
 
 let [<Literal>] Window = 90
 

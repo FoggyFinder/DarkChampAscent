@@ -2,6 +2,10 @@
 
 open System.Data
 open GameLogic.Monsters
+open System
+
+let eps = 0.001M
+let isCloseEnough (x:decimal) (y:decimal) = Math.Abs(x - y) < eps
 
 let ofList (xs:Result<_,_> list) =
     if xs |> List.exists(fun r -> r.IsError) then

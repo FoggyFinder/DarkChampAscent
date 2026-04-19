@@ -134,16 +134,6 @@ let getShop () =
         return parseResult decodeShopDTO json
     }
 
-let buyItem (item: ShopItem) =
-    async {
-        let p = Pattern.ShopBuyItem
-        let! json =
-            formBody [ "shopitem", string item ]
-            |> Some
-            |> fetchJson p.Str p.Method
-        return parseUnit json
-    }
-
 let getStorage () =
     async {
         let p = Pattern.Storage
@@ -182,14 +172,11 @@ let getChampsEffects () =
         return parseList decodeChampUnderEffect json
     }
 
-let renameChamp (oldName: string) (newName: string) (champId: uint64) =
+let getDefeatedChamps () =
     async {
-        let p = Pattern.ChampsRename
-        let! json =
-            formBody [ "oldname", oldName; "newname", newName; "chmpId", string champId ]
-            |> Some
-            |> fetchJson p.Str p.Method
-        return parseUnit json
+        let p = Pattern.ChampsDefeated
+        let! json = fetchJson p.Str p.Method None
+        return parseList decodeChampUnderEffect json
     }
 
 let levelUp (champId: uint64) (characteristic: Characteristic) =
@@ -223,9 +210,9 @@ let getMonster (id: uint64) =
         return parseResult decodeMonsterDTO json
     }
 
-let getMonstersEffects () =
+let getDefeatedMonsters () =
     async {
-        let p = Pattern.MonstersUnderEffects
+        let p = Pattern.MonstersDefeated
         let! json = fetchJson p.Str p.Method None
         return parseList decodeMonsterUnderEffect json
     }
@@ -240,31 +227,11 @@ let renameMonster (monsterId: uint64) (newName: string) =
         return parseUnit json
     }
 
-let createMonster (mtype: MonsterType) (msubtype: MonsterSubType) =
-    async {
-        let p = Pattern.MonstersCreate
-        let! json =
-            formBody [ "mtype", (int mtype).ToString(); "msubtype", (int msubtype).ToString() ]
-            |> Some
-            |> fetchJson p.Str p.Method
-        return parseString json
-    }
-
 let getMyRequests () =
     async {
         let p = Pattern.Requests
         let! json = fetchJson p.Str p.Method None
         return parseList decodeGenRequest json
-    }
-
-let donate (amount: decimal) =
-    async {
-        let p = Pattern.Donate
-        let! json =
-            formBody [ "amount", string amount ]
-            |> Some
-            |> fetchJson p.Str p.Method
-        return parseUnit json
     }
 
 let getTopChamps () =
@@ -286,14 +253,7 @@ let getTopDonaters () =
     async {
         let p = Pattern.LeaderboardDonaters
         let! json = fetchJson p.Str p.Method None
-        return parseDonaterList json
-    }
-
-let getTopUnknownDonaters () =
-    async {
-        let p = Pattern.LeaderboardUnknownDonaters
-        let! json = fetchJson p.Str p.Method None
-        return parseList decodeDonation json
+        return parseTopDonaters json
     }
 
 let getHome () =
@@ -313,15 +273,30 @@ let getStats () =
 open Fable.SimpleJson
 let serializeTx (tx: Tx) =
     match tx with
-    | Tx.Deposit amount ->
+    | Tx.Donate (wallet, amount) ->
         JObject (Map.ofList [
-            "Case", JString "Deposit"
-            "Fields", JArray [ JNumber (float amount) ]
+            "Case", JString "Donate"
+            "Fields", JArray [ JString wallet; JNumber (float amount) ]
         ])
     | Tx.Confirm (wallet, code) ->
         JObject (Map.ofList [
             "Case", JString "Confirm"
             "Fields", JArray [ JString wallet; JString code ]
+        ])
+    | Tx.BuyItem (wallet, item, amount) ->
+        JObject (Map.ofList [
+            "Case", JString "BuyItem"
+            "Fields", JArray [ JString wallet; JNumber (float (int item)); JNumber (float amount) ]
+        ])
+    | Tx.RenameChamp (wallet, champid, newName) ->
+        JObject (Map.ofList [
+            "Case", JString "RenameChamp"
+            "Fields", JArray [ JString wallet; JNumber (float champid); JString newName ]
+        ])
+    | Tx.CreateCustomMonster (wallet, mtype, msubtype) ->
+        JObject (Map.ofList [
+            "Case", JString "CreateCustomMonster"
+            "Fields", JArray [ JString wallet; JNumber (float (int mtype)); JNumber (float (int msubtype)) ]
         ])
     |> SimpleJson.toString
 
@@ -337,11 +312,12 @@ let createTx (tx: Tx) =
         return parseString json
     }
 
-let submitTx (signedTxnB64: string) =
+let submitTx (tx:Tx) (signedTxnB64: string) =
     async {
         let p = Pattern.SubmitTx
         let! json =
             formBody [
+                "tx", serializeTx tx
                 "signedTxnB64", signedTxnB64
             ]
             |> Some

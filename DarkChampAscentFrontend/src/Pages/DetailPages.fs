@@ -9,6 +9,8 @@ open GameLogic.Champs
 open GameLogic.Shop
 open System
 open GameLogic.Monsters
+open DarkChampAscent.Api
+open UseWallet
 
 let private columnsFromStat (stat: Stat) =
     [
@@ -29,6 +31,7 @@ let ChampDetailPage (champId: uint64) =
     let msg, setMsg       = React.useState<string option> None
     let selChar, setSelChar = React.useState Characteristic.Health
     let characteristics   = AllEnums.Characteristics
+    let wallet = useWallet ()
 
     let load () =
         async {
@@ -42,7 +45,7 @@ let ChampDetailPage (champId: uint64) =
 
     deferred data (fun d ->
         let c = d.ChampInfo
-        let isOwner = d.Balance.IsSome
+        let isOwner = d.BelongsToAUser
         let lvl = Levels.getLvlByXp c.XP
 
         let bs = c.BoostStat |> Option.defaultValue Stat.Zero
@@ -63,22 +66,35 @@ let ChampDetailPage (champId: uint64) =
                                 prop.dangerouslySetInnerHTML $"Premium feature - {Shop.RenamePrice} {WebEmoji.USDC} (~ {amount} DarkCoins {WebEmoji.DarkCoin})"
                             ]
                             Html.input [ prop.type' "text"; prop.value newName; prop.onChange setNewName ]
-                            Html.button [
-                                prop.className "btn btn-secondary btn-sm"
-                                prop.disabled (newName = c.Name || newName = "")
-                                prop.onClick (fun _ ->
-                                    let msg = sprintf $"Confirm renaming '{c.Name}' to '{newName}'?"
-                                    if Browser.Dom.window.confirm (msg) then
+                            match wallet.activeAddress with
+                            | Some awallet ->
+                                Html.button [
+                                    prop.className "btn btn-secondary btn-sm"
+                                    prop.disabled (newName = c.Name || newName = "")
+                                    prop.onClick (fun _ ->
                                         async {
-                                            let! r = Api.renameChamp c.Name newName c.ID
+                                            "" |> Some |> setMsg
+                                            let tx = Tx.RenameChamp (awallet, c.ID, newName) 
+                                            let! r = Api.createTx tx
                                             match r with
-                                            | Ok ()   -> setMsg (Some "Renamed!"); load ()
-                                            | Error e -> setMsg (Some ("Error: " + e))
+                                            | Ok txnb64 ->
+                                                let! sr =
+                                                    UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                        (fun () -> "Processing request..." |> Some |> setMsg)
+                                                match sr with
+                                                | Ok m -> m
+                                                | Error err -> $"Error: {err}"
+                                                |> Some |> setMsg 
+                                            | Error err ->
+                                                setMsg (Some err)
                                         } |> Async.StartImmediate)
-                                prop.text "Rename"
-                            ]
+                                    prop.text "Rename"
+                                ]
+                            | None ->
+                                Html.p [ prop.className "notice"; prop.text "Connect confirmed wallet on 'Account' page to rename" ]
                         ]
                     ]
+                    
                 else
                     Html.h2 [ prop.text c.Name ]
 

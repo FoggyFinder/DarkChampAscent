@@ -97,12 +97,11 @@ type Wallet(wallet:string, isConfirmed:bool, code: string, isActive:bool) =
     member _.Code = code
     member _.IsActive = isActive
 
-type UserAccount(user:Account, wallets:Wallet list, balance: decimal, champs:int, monsters:int, requests:int) =
+type UserAccount(user:Account, wallets:Wallet list, champs:int, monsters:int, requests:int) =
     member _.User = user
     member _.Wallets = wallets
     member _.Champs = champs
     member _.Monsters = monsters
-    member _.Balance = balance
     member _.Requests = requests
 
 type ChampShortInfo(cid:uint64, name:string, ipfs:string, xp:uint64) =
@@ -134,24 +133,32 @@ type MonsterShortInfo(mid:uint64, name:string, mtype:MonsterType, msubtype:Monst
     member x.WithMonsterImg(img:MonsterImg) =
         MonsterShortInfo(x.ID, x.Name, x.MType, x.MSubType, img, x.XP)
 
-type Stats(players:uint64 option, confirmedPlayers:uint64 option,
+type GameStats(players:uint64 option, confirmedPlayers:uint64 option,
     champs:uint64 option, customMonsters:uint64 option,
-    battles: uint64 option, rounds: uint64 option,
-    rewards: decimal option, burnt: decimal option,
-    dao: decimal option, reserve: decimal option,
-    devs: decimal option, staking: decimal option) =
+    battles: uint64 option, rounds: uint64 option) =
     member _.Players = players
     member _.ConfirmedPlayers = confirmedPlayers
     member _.Champs = champs
     member _.CustomMonsters = customMonsters
     member _.Battles = battles
     member _.Rounds = rounds
-    member _.Rewards = rewards
+
+type WalletValue(wallet:string, value:decimal) =
+    member _.Wallet = wallet
+    member _.Value = value
+
+type TStats(burnt: WalletValue option, dao: WalletValue option, reserve: WalletValue option,
+    devs: WalletValue option, staking: WalletValue option) =
     member _.Burnt = burnt
     member _.Dao = dao
     member _.Reserve = reserve
     member _.Devs = devs
     member _.Staking = staking
+
+type Stats(gameStats:GameStats, tStats:TStats, rewards: decimal option) =
+    member _.GameStats = gameStats
+    member _.Rewards = rewards
+    member _.TStats = tStats
 
 [<RequireQualifiedAccess>]
 type Donater =
@@ -162,6 +169,24 @@ type Donater =
 type Donation(donater:Donater, amount:decimal) =
     member _.Donater = donater
     member _.Amount = amount
+
+type LatestDonation(donater:Donater, amount:decimal, tx:string) =
+    member _.Donater = donater
+    member _.Amount = amount
+    member _.Tx = tx
+
+type DonationDTO(donater:string, amount:decimal) =
+    member _.Donater = donater
+    member _.Amount = amount
+
+type LatestDonationDTO(donater:string, amount:decimal, tx:string) =
+    member _.Donater = donater
+    member _.Amount = amount
+    member _.Tx = tx
+
+type TopDonatersDTO(topDonaters:DonationDTO list, latestDonaters:LatestDonationDTO list) =
+    member _.Top = topDonaters
+    member _.Latest = latestDonaters
 
 type GenStatus =
     | RequstCreated = 0 // coins charged from user's balance and added to locked amount

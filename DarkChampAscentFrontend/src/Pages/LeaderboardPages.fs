@@ -10,8 +10,7 @@ let LeaderboardGeneralPage () =
     let sections = [
         Page.TopChamps,          "Champs",            WebEmoji.Champs
         Page.TopMonsters,        "Monsters",          WebEmoji.Monsters
-        Page.TopDonaters,        "Donaters (players)", WebEmoji.TopDonaters
-        Page.TopUnknownDonaters, "Donaters (wallets)", WebEmoji.TopUnknownDonaters
+        Page.TopDonaters,        "Donaters", WebEmoji.TopDonaters
     ]
     Html.div [
         prop.className "leaderboard"
@@ -90,7 +89,7 @@ let LeaderboardMonstersPage () =
 
 [<ReactComponent>]
 let LeaderboardDonatersPage () =
-    let data, setData = React.useState<Deferred<{| name: string; amount: decimal |} list>> Loading
+    let data, setData = React.useState<Deferred<TopDonatersDTO>> Loading
     React.useEffect((fun () ->
         async {
             let! r = Api.getTopDonaters ()
@@ -100,56 +99,57 @@ let LeaderboardDonatersPage () =
         } |> Async.StartImmediate), [||])
     deferred data (fun donaters ->
         Html.div [
-            prop.className "leaderboard"
+            prop.className "leaderboard donaters-layout"
             prop.children [
-                Html.div [
-                    prop.className "wallet-table"
+
+                Html.section [
+                    prop.className "block donaters-top"
                     prop.children [
+                        Html.h2 [ prop.text $"{WebEmoji.Leaderboard} All time top" ]
                         Html.table [
-                            Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Name"]; Html.th [prop.text "DarkCoins"] ] ]
+                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.text "DarkCoins" ] ] ]
                             Html.tbody [
-                                for (i, d) in donaters |> List.indexed ->
+                                for (i, d) in donaters.Top |> List.indexed ->
                                     Html.tr [
-                                        Html.td [prop.text (string (i+1))]
-                                        Html.td [prop.text d.name]
-                                        Html.td [prop.dangerouslySetInnerHTML $"{d.amount} {WebEmoji.DarkCoin}"]
+                                        Html.td [ prop.text (string (i + 1)) ]
+                                        Html.td [ prop.text d.Donater ]
+                                        Html.td [ prop.dangerouslySetInnerHTML $"{d.Amount} {WebEmoji.DarkCoin}" ]
                                     ]
                             ]
                         ]
                     ]
                 ]
-            ]
-        ])
 
-[<ReactComponent>]
-let LeaderboardUnknownDonatersPage () =
-    let data, setData = React.useState<Deferred<Donation list>> Loading
-    React.useEffect((fun () ->
-        async {
-            let! r = Api.getTopUnknownDonaters ()
-            match r with
-            | Ok d  -> setData (Loaded d)
-            | Error e -> setData (Failed e)
-        } |> Async.StartImmediate), [||])
-    deferred data (fun donaters ->
-        Html.div [
-            prop.className "leaderboard"
-            prop.children [
-                Html.div [
-                    prop.className "wallet-table"
+                Html.section [
+                    prop.className "block donaters-recent"
                     prop.children [
+                        Html.h2 [ prop.text $"{WebEmoji.TopDonaters} Recent" ]
                         Html.table [
-                            Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Wallet"]; Html.th [prop.text "DarkCoins"] ] ]
+                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.className "col-tx"; prop.text "Tx" ]; Html.th [ prop.text "DarkCoins" ] ] ]
                             Html.tbody [
-                                for (i, d) in donaters |> List.indexed ->
-                                    let dStr =
-                                        match d.Donater with
-                                        | Donater.Unknown wallet -> wallet
-                                        | _ -> ""
+                                for (i, d) in donaters.Latest |> List.indexed ->
                                     Html.tr [
-                                        Html.td [prop.text (string (i+1))]
-                                        Html.td [prop.text dStr]
-                                        Html.td [prop.dangerouslySetInnerHTML $"{d.Amount} {WebEmoji.DarkCoin}"]
+                                        Html.td [
+                                            Html.a [
+                                                prop.href $"https://explorer.perawallet.app/tx/{d.Tx}"
+                                                prop.target "_blank"
+                                                prop.title d.Tx
+                                                prop.text (string (i + 1))
+                                            ]
+                                        ]
+                                        Html.td [ prop.text d.Donater ]
+                                        Html.td [
+                                            prop.className "col-tx"
+                                            prop.children [
+                                                Html.a [
+                                                    prop.href $"https://explorer.perawallet.app/tx/{d.Tx}"
+                                                    prop.target "_blank"
+                                                    prop.title d.Tx
+                                                    prop.text (d.Tx.[..5] + "…" + d.Tx.[d.Tx.Length-4..])
+                                                ]
+                                            ]
+                                        ]
+                                        Html.td [ prop.dangerouslySetInnerHTML $"{d.Amount} {WebEmoji.DarkCoin}" ]
                                     ]
                             ]
                         ]

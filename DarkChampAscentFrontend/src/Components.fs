@@ -12,12 +12,12 @@ type private Tab =
 
 let private tabOf (page: Page) =
     match page with
-    | Page.Battle | Page.Shop | Page.MonstersEffects                             -> Some Tab.Battle
+    | Page.Battle | Page.Shop | Page.DefeatedMonsters | Page.DefeatedChamps      -> Some Tab.Battle
     | Page.Account | Page.MyChamps | Page.MyChampsEffects
     | Page.MyMonsters | Page.MyRequests | Page.Storage | Page.Login              -> Some Tab.AccountOrLogin
     | Page.TopChamps | Page.TopMonsters | Page.TopDonaters
-    | Page.TopUnknownDonaters | Page.TopGeneral                                  -> Some Tab.Leaderboard
-    | Page.FAQ | Page.Stats | Page.Traits | Page.Tokenomics                      -> Some Tab.About
+    | Page.TopGeneral                                  -> Some Tab.Leaderboard
+    | Page.Stats | Page.Traits | Page.Tokenomics                      -> Some Tab.About
     | _                                                                          -> None
 
 [<ReactComponent>]
@@ -68,36 +68,35 @@ let NavBar (isLoggedIn: bool) (currentPage: Page) =
         | Some Tab.Battle ->
             SubBar [
                 Page.Battle, "Battle", WebEmoji.Battle
+                Page.DefeatedChamps, "Defeated Champs", WebEmoji.Champs
+                Page.DefeatedMonsters, "Defeated Monsters", WebEmoji.Monsters
                 Page.Shop,   "Shop",   WebEmoji.Shop
-                Page.MonstersEffects, "Monsters under effects", WebEmoji.MonstersUnderEffects
             ] currentPage |> Some
 
         | Some Tab.AccountOrLogin ->
             if isLoggedIn then
                 SubBar [
-                    Page.Account,         "Account",              WebEmoji.Account
-                    Page.MyChamps,        "Champs",               WebEmoji.Champs
+                    Page.Account, "Account", WebEmoji.Account
+                    Page.MyChamps, "Champs", WebEmoji.Champs
                     Page.MyChampsEffects, "Champs under effects", WebEmoji.Champs
-                    Page.MyMonsters,      "Monsters",             WebEmoji.Monsters
-                    Page.MyRequests,      "Requests",             WebEmoji.MyRequests
-                    Page.Storage,         "Storage",              WebEmoji.MyStorage
+                    Page.MyMonsters, "Monsters", WebEmoji.Monsters
+                    Page.MyRequests, "Requests", WebEmoji.MyRequests
+                    Page.Storage, "Storage", WebEmoji.MyStorage
                 ] currentPage |> Some
             else None
 
         | Some Tab.Leaderboard ->
             SubBar [
-                Page.TopChamps,          "Champs",              WebEmoji.Champs
-                Page.TopMonsters,        "Monsters",            WebEmoji.Monsters
-                Page.TopDonaters,        "Donaters (players)",  WebEmoji.TopDonaters
-                Page.TopUnknownDonaters, "Donaters (wallets)",  WebEmoji.TopUnknownDonaters
+                Page.TopChamps, "Champs", WebEmoji.Champs
+                Page.TopMonsters, "Monsters", WebEmoji.Monsters
+                Page.TopDonaters, "Donaters",  WebEmoji.TopDonaters
             ] currentPage |> Some
 
         | Some Tab.About ->
             SubBar [
-                Page.FAQ,    "FAQ",    WebEmoji.FAQ
-                Page.Stats,  "Stats",  WebEmoji.Stats
+                Page.Stats, "Stats", WebEmoji.Stats
                 Page.Traits, "Traits", WebEmoji.About
-                Page.Tokenomics, "Tokenomics", WebEmoji.Stats
+                Page.Tokenomics, "Tokenomics", WebEmoji.Tokenomics
             ] currentPage |> Some
 
         | None -> None
@@ -125,7 +124,7 @@ let NavBar (isLoggedIn: bool) (currentPage: Page) =
                             Html.a [
                                 prop.href Links.Discord
                                 prop.className "logo-bar-link"
-                                prop.target "_blank"
+                                prop.target.blank
                                 prop.rel "noopener noreferrer"
                                 prop.children [
                                     Html.span [ prop.text WebEmoji.Discord ]
@@ -135,7 +134,7 @@ let NavBar (isLoggedIn: bool) (currentPage: Page) =
                             Html.a [
                                 prop.href Links.Github
                                 prop.className "logo-bar-link"
-                                prop.target "_blank"
+                                prop.target.blank
                                 prop.rel "noopener noreferrer"
                                 prop.children [
                                     Html.span [ prop.text WebEmoji.SourceCode ]
@@ -156,7 +155,7 @@ let NavBar (isLoggedIn: bool) (currentPage: Page) =
                      then tabLink Tab.AccountOrLogin "Account" WebEmoji.Account    Page.Account.Route
                      else tabLink Tab.AccountOrLogin "Log in"  WebEmoji.LogIn      Page.Login.Route)
                     tabLink Tab.Leaderboard     "Leaderboard" WebEmoji.Leaderboard Page.TopChamps.Route
-                    tabLink Tab.About           "About"       WebEmoji.About       Page.FAQ.Route
+                    tabLink Tab.About           "About"       WebEmoji.About       Page.Stats.Route
                 ]
             ]
 
@@ -371,30 +370,29 @@ let WalletAddress (addr: string) =
         ]
     ]
 
-let howToDepositBlock () =
-    Html.div [
-        prop.className "deposit-info"
-        prop.children [
-            Html.span [
-                prop.dangerouslySetInnerHTML $"To deposit DarkCoins {WebEmoji.DarkCoin} send tokens to "
-            ]
-            WalletAddress KnownWallets.DarkChampAscent
-            Html.text $" ({KnownWallets.DarkChampAscentNFD}). "
-            Html.br []
-            Html.text "Within 5-7 minutes your balance should be updated."
-        ]
-    ]
-
-let statRow (WebEmoji: string) (label: string) (value: string) =
+let fullStatRow (WebEmoji: string) (label: string) (value: string) (link:string option) =
     Html.tr [
+        Html.td [ Html.span [ prop.text WebEmoji ] ]
         Html.td [
             Html.div [
                 prop.className "label-wrap"
-                prop.children [ Html.text $"{WebEmoji} {label}" ]
+                prop.children [
+                    match link with
+                    | Some l ->
+                        Html.a [ 
+                            prop.href l
+                            prop.target.blank
+                            prop.text label
+                        ]
+                    | None -> Html.text label
+                ]
             ]
         ]
         Html.td [ Html.text value ]
     ]
+
+let statRow (WebEmoji: string) (label: string) (value: string) =
+    fullStatRow WebEmoji label value None
 
 let useSSE (url: string) (onMessage: string -> unit) =
     React.useEffect((fun () ->

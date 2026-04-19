@@ -376,7 +376,6 @@ module WebEmoji =
     let [<Literal>] MonstersUnderEffects = "✨"
 
     let [<Literal>] TopDonaters = "💝"
-    let [<Literal>] TopUnknownDonaters = "💳"
 
     let [<Literal>] FAQ = "❓"
     let [<Literal>] SourceCode = "🔗"
@@ -388,6 +387,7 @@ module WebEmoji =
     let [<Literal>] GameAccountOptions = "🎮"
     let [<Literal>] About = "ℹ️"
     let [<Literal>] Stats = "📊"
+    let [<Literal>] Tokenomics = "🏦"
     let [<Literal>] CheckMark = "✔️"
     let [<Literal>] CrossMark = "❌"
     let [<Literal>] DarkCoin = """<img class="inline-coin" src="/DC.png" alt="DarkCoin" />"""

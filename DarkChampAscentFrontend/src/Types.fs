@@ -25,16 +25,15 @@ type Page =
     | MyChampsEffects
     | MyMonsters
     | MyRequests
-    | MonstersEffects
+    | DefeatedChamps
+    | DefeatedMonsters
     | ChampDetail of uint64
     | MonsterDetail of uint64
     | TopGeneral
     | TopChamps
     | TopMonsters
     | TopDonaters
-    | TopUnknownDonaters
     | Traits
-    | FAQ
     | Stats
     | NotFound
     | Tokenomics
@@ -50,16 +49,15 @@ type Page =
         | MyChampsEffects    -> "#/mychampsundereffects"
         | MyMonsters         -> "#/mymonsters"
         | MyRequests         -> "#/myrequests"
-        | MonstersEffects    -> "#/monstersundereffects"
+        | DefeatedMonsters    -> "#/monstersdefeated"
+        | DefeatedChamps    -> "#/champsdefeated"
         | ChampDetail id     -> $"#/champ/{id}"
         | MonsterDetail id   -> $"#/monster/{id}"
         | TopGeneral         -> "#/top"
         | TopChamps          -> "#/top/champs"
         | TopMonsters        -> "#/top/monsters"
         | TopDonaters        -> "#/top/donaters"
-        | TopUnknownDonaters -> "#/top/donaters/unknown"
         | Traits             -> "#/traits"
-        | FAQ                -> "#/faq"
         | Stats              -> "#/stats"
         | NotFound           -> "#/notfound"
         | Tokenomics -> "#/tokenomics"

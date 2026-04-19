@@ -7,11 +7,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Compile Include="Utils.fs" />
-		<Compile Include="Components.fs" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<ProjectReference Include="..\20DTO\20DTO.fsproj" />
 	</ItemGroup>
 	

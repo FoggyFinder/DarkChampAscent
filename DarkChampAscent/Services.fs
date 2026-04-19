@@ -11,7 +11,6 @@ open GameLogic.Battle
 open GameLogic.Champs
 open NetCord.Rest
 open NetCord.Gateway
-open DiscordBot
 open Microsoft.Extensions.Options
 open Blockchain
 open GameLogic.Monsters
@@ -20,6 +19,48 @@ open NetCord
 open System.IO
 open DiscordBot.Components
 open Utils
+open Helpers
+
+// TODO: remove once all user's balance are returned
+type RemoveBalanceService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfiguration>) =
+    inherit BackgroundService()
+    
+    let keys = chainOpt.Value.GameWalletKeys
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+            let mutable userWithBalanceExists = db.UserWithNonEmptyBalanceExists()
+            Log.Information($"UserWithBalanceExists: {userWithBalanceExists}")
+            if userWithBalanceExists |> not then
+                db.DropBalanceColumn() |> ignore
+            while userWithBalanceExists && cancellationToken.IsCancellationRequested |> not do
+                try
+                    for (userId, balance, wallet) in db.GetUsersBalanceAndWallet() do
+                        Log.Information($"Processing...{userId}: send {balance} to {wallet}")
+                        if db.ResetUserBalance userId then
+                            Log.Information($"Sending {balance} to {wallet}")
+                            let amount = Blockchain.toLong (balance, Algo6Decimals)
+                            Log.Information($"Exact amount = {amount}")
+                            let! r =
+                                Blockchain.sendTx(
+                                    keys, wallet, amount,
+                                    Blockchain.DarkCoinAssetId,
+                                    $"DarkChampAscent: in-game balance is removed, direct deposits not supported anymore"
+                                )
+                            Log.Information($"Status = {r}")
+                            if r.IsError then
+                                Log.Information($"Reverting...{userId} balance to {balance}")
+                                db.SetUserBalance(userId, balance) |> ignore
+                    userWithBalanceExists <- db.UserWithNonEmptyBalanceExists()
+                    if userWithBalanceExists |> not then
+                        db.DropBalanceColumn() |> ignore
+                    else
+                        do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
+                with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
+                    Log.Error(exn, "RemoveBalanceService")
+        }
 
 type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguration>) =
     inherit BackgroundService()
@@ -56,56 +97,6 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
                     Log.Error(exn, "BackupService")
         }
 
-// TODO: remove, confirm only from web-app
-type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
-    inherit BackgroundService()
-
-    override _.ExecuteAsync(cancellationToken) =
-        task {
-            while cancellationToken.IsCancellationRequested |> not do
-                do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
-                try
-                    let unconfirmedWalletExists = db.UnConfirmedWalletExists()
-                    if unconfirmedWalletExists then
-                        let dt = DateTime.UtcNow
-                        let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
-                        let confirmations =
-                            Blockchain.getNotesForWallet(options.Value.GameWallet, lpd)
-                            |> Seq.choose(fun (wallet, barr) ->
-                                try
-                                    Some(wallet, System.Text.Encoding.UTF8.GetString barr)
-                                with _ -> None)
-                            |> Seq.toArray
-                        let! isOk =
-                            match confirmations.Length with
-                            | 0 -> task { return true }
-                            | _ ->
-                                task {
-                                    let mutable noErrors = true
-                                    for (wallet, code) in confirmations do
-                                        if db.WalletIsConfirmed(wallet) then ()
-                                        elif db.ConfirmWallet(wallet, code) then
-                                            match db.FindDiscordIdByWallet wallet with
-                                            | Some discordId ->
-                                                DUtils.addDiscordRole client (uint64 discordId)
-                                            | None -> ()
-                                            match db.FindUserIdByWallet wallet with
-                                            | Some userId ->
-                                                noErrors <- noErrors && CommonHelpers.updateChampsForAUser (db, uint64 userId, [wallet]) |> Result.isOk
-                                            | None -> ()
-                                        else ()
-                                    return noErrors
-                            }
-                        if isOk then
-                            db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
-                        do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
-                    else
-                        do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
-                with exn ->
-                    do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
-                    Log.Error(exn, "confirmationTracker2")
-        }
-
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
     inherit BackgroundService()
 
@@ -125,19 +116,18 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                     if isPriceUpToDate |> not then
                         match External.API.getDarkCoinPrice() with
                         | Some price ->
-                            if db.SetNumKey(Db.DbKeysNum.DarkCoinPrice, price) then
-                                db.SetDateTimeKey(Db.DbKeys.LastTimePriceIsUpdated, now) |> ignore
+                            if db.UpdateDCPrice price then
                                 let mp = MessageProperties(Content = $"In-game DarkCoin price was updated to {price}")
                                 do! DUtils.sendMsgToLogChannel gclient mp
                         | None ->
                             Log.Error("UpdatePriceService: Vestige didn't return price")
-                    do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(1, 3)), cancellationToken)
                 with exn ->
                     do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
                     Log.Error(exn, "UpdatePriceService")
         }
 
-type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
+type TxTrackerService(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
     override _.ExecuteAsync(cancellationToken) =
@@ -147,33 +137,17 @@ type DepositService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<C
                 try
                     let dt = DateTime.UtcNow
                     let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
-                    let deposits = Blockchain.getDarkCoinDepositForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
-                    let statuses =
-                        deposits
-                        |> Array.map(fun (txid, sender, value) -> {|
-                                        Info = (txid, sender, value)
-                                        Status = db.ProcessDeposit(sender, txid, value)
-                                    |})
-                    if statuses |> Array.forall(fun s -> s.Status <> ProcessDepositStatus.Error) then
+                    let txs = Blockchain.getDarkCoinTxForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
+                    // delay before processing so give time to handle tx properly if it was created from the app
+                    do! Task.Delay(TimeSpan.FromMinutes(45.0), cancellationToken)
+                    
+                    let statuses = txs |> Array.map(fun ptx -> db.ProcessParsedRawTx ptx)
+                    if statuses |> Array.forall id then
                         db.SetDateTimeKey(DbKeys.LastProcessedDeposit, dt) |> ignore
                     
-                    for ar in statuses do
-                        match ar.Status with
-                        | ProcessDepositStatus.Donation ->
-                            let (tx, sender, value) = ar.Info
-                            let uri = $"https://allo.info/tx/{tx}"
-                            let card = donationCard value sender (Some uri)
-                            let newDonationMessage =
-                                MessageProperties()
-                                    .WithComponents([ card ])
-                                    .WithFlags(MessageFlags.IsComponentsV2)
-                            
-                            do! DUtils.sendMsgToLogChannel gclient newDonationMessage
-                        | _ -> ()                  
                 with exn ->
-                    Log.Error(exn, "DepositService")
-
-                do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
+                    Log.Error(exn, "TxTrackerService")
+                    do! Task.Delay(TimeSpan.FromMinutes(30.0), cancellationToken)
         }
 
 type TrackChampCfgService(db:SqliteStorage) =
@@ -213,12 +187,12 @@ type TrackChampCfgService(db:SqliteStorage) =
         }
 
 open Types
+open DarkChampAscent.Account
 type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
     inherit BackgroundService()
 
     let wallets = options.Value.Wallet
     let keys = options.Value.Chain.GameWalletKeys
-    let toLong (d:decimal) = uint64 (d * Algo6Decimals)
 
     let roundParticipants = Signal<RoundParticipantChamp list>([])
     let roundStatus = Signal<RoundInfoDTO>(RoundInfoDTO(RoundStatus.Processing, None, 0UL))
@@ -237,7 +211,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         | _ -> battleStatus.Set None
 
     let balanceCorrectness() =
-        // sum of burn / dev / rewards / reserve / user balances / champs balances
+        // sum of burn / dev / rewards / reserve / champs balances
         // must be <= wallet holdings
         let b = db.GetBalances()
         match b with
@@ -245,7 +219,6 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             match Blockchain.getDarkCoinBalance(options.Value.Wallet.GameWallet) with
             | Ok walletBalance ->
                 if Math.Round(bal.Total, 6) <= walletBalance then
-                    db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, true) |> ignore
                     Log.Information($"Balance check is passed: {bal.Total} <= {walletBalance}")
                     Ok(())
                 else
@@ -263,14 +236,13 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             Log.Information("No rewards")
             Ok(())
         | Error err ->
-            db.SetBoolKey(Db.DbKeysBool.BalanceCheckIsPassed, false) |> ignore
             let err = $"Unable to read balance: {err}"
             Log.Error(err)
             Error("Unable to read balance")
 
     let finalizeBattle(battleId:uint64) = task {
         let send (wallet:string) (d:decimal) =
-            let uv = toLong d
+            let uv = Blockchain.toLong (d, Algo6Decimals)
             async {
                 let! r =
                     Blockchain.sendTx(
@@ -335,9 +307,16 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         match balanceCorrectness() with
         | Ok () ->
             // start new round
-            let monsterIdR = db.GetRandomMonsterId()
-            match monsterIdR with
-            | Ok monsterId ->
+            match db.GetAliveMonsters() with
+            | Ok [] ->
+                Log.Error($"StartBattleError - no alive monsters")
+                do! Task.Delay(TimeSpan.FromHours(1.0))
+            | Ok monsters ->
+                let uMonsters, _ = monsters |> List.partition snd
+                let monsterId, _ =
+                    if uMonsters.IsEmpty then monsters
+                    else uMonsters
+                    |> List.randomChoice
                 let dt = DateTime.UtcNow
                 let sbr = db.StartBattle(monsterId)
                 match sbr with
@@ -354,10 +333,14 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                     TextDisplayProperties($" {Emoj.Coin} Rewards: {ar.BattleRewards} {Emoj.Coin}")
                                 ])
-                            let monsterCard = MonstersComponent.monsterComponent monster
+                            
+                            let name = "image.png"
+                            let uri = $"attachment://{name}"
+                            let monsterCard = MonstersComponent.monsterComponent monster "Info" uri
                         
                             MessageProperties()
                                 .WithComponents([battleCard; monsterCard])
+                                .WithAttachments([MonstersComponent.monsterAttachnment name monster.Picture])
                                 .WithFlags(MessageFlags.IsComponentsV2)
                                                 
                         do! DUtils.createAndSendMsgToChannel Channels.BattleChannel gclient createMP true
@@ -375,7 +358,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | Error err ->
                     Log.Error($"StartBattleError: {err}")
                     do! Task.Delay(TimeSpan.FromMinutes(5.0))
-            | Error _ -> ()   
+            | Error _ ->
+                do! Task.Delay(TimeSpan.FromHours(1))
         | Error err ->
             let mp = MessageProperties(Content = $"Unable to start new battle - {err}")
             do! DUtils.sendMsgToLogChannel gclient mp
@@ -484,7 +468,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
     member _.RoundStatus:IReadOnlySignal<RoundInfoDTO> = roundStatus
     member _.BattleStatus:IReadOnlySignal<BattleInfoDTO option> = battleStatus
 
-    member _.JoinRound(rar:RoundActionRecord) =
+    member _.JoinRound(userId:UserId, rar:RoundActionRecord) =
         let t () =
             task {
                 let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue ("", "")
@@ -504,7 +488,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         if roundParticipants.Value |> List.exists (fun rp -> rp.ID = rar.ChampId) then
             Error "Already joined"
         else
-            match db.PerformAction rar with
+            match db.PerformAction (userId, rar) with
             | Ok () ->
                 match db.GetChampNameIPFSById(rar.ChampId) with
                 | Some (name, ipfs) ->
@@ -574,6 +558,118 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     Log.Error(exn, "BattleService")
         }
 
+type RefundFailedGenService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfiguration>, walletOpt: IOptions<Conf.WalletConfiguration>) =
+    inherit BackgroundService()
+    
+    let keys = chainOpt.Value.GameWalletKeys
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                try
+                    for ar in db.GetFailedGen() do
+                        Log.Information($"Processing {ar.GenRequestRefundId}")
+                        match Blockchain.getDarkCoinBalance(walletOpt.Value.GameWallet), db.GetBalances() with
+                        | Ok walletBalance, Ok dbBalances ->
+                            if walletBalance + 5000M > dbBalances.Total + ar.Amount then
+                                if db.CloseFailedGen ar.GenRequestRefundId then
+                                    Log.Information($"Sending {ar.Amount} to {ar.Sender}")
+                                    let amount = Blockchain.toLong (ar.Amount, Algo6Decimals)
+                                    Log.Information($"Exact amount = {amount}")
+                                    let! r =
+                                        Blockchain.sendTx(
+                                            keys, ar.Sender, amount,
+                                            Blockchain.DarkCoinAssetId,
+                                            $"Gen failed, please try again later"
+                                        )
+
+                                    match r with
+                                    | TxStatus.Error err -> Log.Error($"Unable to send = {err}")
+                                    | _ -> ()
+
+                                    let! _ =
+                                        Helpers.retry (fun () ->
+                                            match r with
+                                            | TxStatus.Error _ ->
+                                                db.ReopenFailedGen ar.GenRequestRefundId
+                                            | TxStatus.Confirmed(tx, _)
+                                            | TxStatus.Unconfirmed tx ->
+                                                db.SetOutputTxForUserGenRequestRefund(ar.GenRequestRefundId, tx)
+                                            ) 5 (TimeSpan.FromMinutes(1.))
+                                    ()
+
+                                do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
+                            else
+                                let err = $"Balance doesn't match {dbBalances.Total} >= {walletBalance}"
+                                Log.Error(err)
+                                do! Task.Delay(TimeSpan.FromHours(24.), cancellationToken)  
+                        | _ ->
+                            Log.Error("Unable to either read balance from chain or db")
+                            do! Task.Delay(TimeSpan.FromMinutes(15.), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
+
+                with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
+                    Log.Error(exn, "RefundFailedGenService")
+        }
+
+// TODO: handle valid tx differently?
+type RefundInvalidTxService(db: SqliteStorage, chainOpt: IOptions<Conf.ChainConfiguration>, walletOpt: IOptions<Conf.WalletConfiguration>) =
+    inherit BackgroundService()
+
+    let keys = chainOpt.Value.GameWalletKeys
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+            while not cancellationToken.IsCancellationRequested do
+                try
+                    for tx in db.GetPendingTxRefunds() do
+                        Log.Information($"Processing invalid tx refund {tx.TxId}")
+                        match Blockchain.getDarkCoinBalance(walletOpt.Value.GameWallet), db.GetBalances() with
+                        | Ok walletBalance, Ok dbBalances ->
+                            if walletBalance + 5000M > dbBalances.Total + tx.Amount then
+                                if db.ClosePendingTxRefund tx.TxId then
+                                    let amount = Blockchain.toLong(tx.Amount, Algo6Decimals)
+                                    Log.Information($"Sending {tx.Amount} (exact: {amount}) to {tx.Wallet}")
+                                    let! r =
+                                        Blockchain.sendTx(
+                                            keys, tx.Wallet, amount,
+                                            Blockchain.DarkCoinAssetId,
+                                            ""
+                                        )
+
+                                    match r with
+                                    | TxStatus.Error err -> Log.Error($"Refund for tx {tx.TxId} failed: {err}")
+                                    | _ -> ()
+                                        
+                                    let! _ =
+                                        Helpers.retry (fun () ->
+                                            match r with
+                                            | TxStatus.Error _ ->
+                                                db.ReopenPendingTxRefund tx.TxId
+                                            | TxStatus.Confirmed(outTx, _)
+                                            | TxStatus.Unconfirmed outTx ->
+                                                db.AddTxRevertHistory(tx.TxId, outTx)
+                                            ) 5 (TimeSpan.FromMinutes(1.))
+                                    ()
+
+                                do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)
+                            else
+                                let err = $"Balance doesn't match {dbBalances.Total} >= {walletBalance}"
+                                Log.Error(err)
+                                do! Task.Delay(TimeSpan.FromHours(24.), cancellationToken) 
+                        | _ ->
+                            Log.Error("Unable to either read balance from chain or db")
+                            do! Task.Delay(TimeSpan.FromMinutes(15.), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromHours(Random.Shared.Next(4, 12)), cancellationToken)
+
+                with exn ->
+                    Log.Error(exn, "RefundInvalidTxService")
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
+        }
+
 open Gen
 open GenAIPG
 open System.Collections.Immutable
@@ -613,7 +709,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                     Log.Error($"GEN Err [TextReqCreated] : {err}")
                                     GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextReqReceived id ->
                             let! res = aipgGen.GetGeneratedTextAsync id
@@ -642,7 +738,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                 | None ->
                                     GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore
                             do! Task.Delay(TimeSpan.FromSeconds(5.0), cancellationToken)
                         | GenPayload.TextPayloadReceived tp ->
                             let subType = match req.MSubType with | MonsterSubType.None -> "" | _ -> $"({req.MSubType})"
@@ -657,7 +753,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                     Log.Error($"GEN Err [TextPayloadReceived] : {err}")
                                     GenFailure.Repeat(req.Payload)
                                     |> GenPayload.Failure
-                            db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                            db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore
                             do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
                         | GenPayload.ImgReqReceived (id, tp) ->
                             // fetch img and save locally
@@ -687,13 +783,15 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                                 MType = monsterRecord.Monster.MType
                                                 MSubType = monsterRecord.Monster.MSubType
                                            }
-                                           let monsterCard = MonstersComponent.monsterCreatedComponent minfo
+
                                            let name = "image.png"
                                            let uri = $"attachment://{name}"
+                                           let monsterCard = MonstersComponent.monsterComponent minfo $"is {Format.createMsg monster.MType}!" uri
+                        
                                            let createMP() =
                                               MessageProperties()
+                                                .WithComponents([monsterCard])
                                                 .WithAttachments([MonstersComponent.monsterAttachnment name mi])
-                                                .WithComponents([monsterCard uri])
                                                 .WithFlags(MessageFlags.IsComponentsV2)
                                            
                                            do! DUtils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false
@@ -702,19 +800,19 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                             Log.Error(ex, "CreateCustomMonster msg")
                                     else
                                         let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
-                                        db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore                                        
+                                        db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore                                        
                                 | None ->
                                     let newPayload = GenFailure.Final("Invalid monster") |> GenPayload.Failure
-                                    db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                                    db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore
                             | Error err ->
                                 Log.Error($"GEN Err [ImgReqReceived] : {err}")
                                 let newPayload = GenFailure.Repeat(req.Payload) |> GenPayload.Failure
-                                db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) |> ignore
+                                db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore
                         | GenPayload.Failure genFailure ->
                             match genFailure with
                             | GenFailure.Final _ ->
                                 Log.Error($"Invalid case")
-                                db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
+                                db.UpdateGenRequest(req.ID, req.Payload, req.UserId) |> ignore
                             | GenFailure.Repeat prevPayload ->
                                 if errors.ContainsKey req.ID |> not then
                                     errors <- errors.Add(req.ID, 0)
@@ -742,11 +840,11 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                     |> GenPayload.Failure
                                     |> Some
                                 |> Option.iter(fun newPayload ->
-                                    if db.UpdateGenRequest(req.ID, newPayload, req.UserId, req.Cost) then
+                                    if db.UpdateGenRequest(req.ID, newPayload, req.UserId) then
                                         errors <- errors.SetItem(req.ID, count + 1))
                         | GenPayload.Success ->
                             Log.Error($"GenPayload is Success but status is unfinished: {req.ID}")
-                            db.UpdateGenRequest(req.ID, req.Payload, req.UserId, req.Cost) |> ignore
+                            db.UpdateGenRequest(req.ID, req.Payload, req.UserId) |> ignore
                     with exn ->
                         Log.Error(exn, "GenService")
                         do! Task.Delay(TimeSpan.FromMinutes(1.), cancellationToken)

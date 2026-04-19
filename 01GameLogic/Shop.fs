@@ -45,8 +45,8 @@ type RoundBoost = {
 [<RequireQualifiedAccess>]
 module Shop =
     // TODO: add [<Literal>] back once it's fixed: https://github.com/dotnet/fsharp/issues/18956
-    let RenamePrice = 5M
-    let GenMonsterPrice = 1M
+    let RenamePrice = 1M
+    let GenMonsterPrice = 2M
 
     let getPrice =
         function
