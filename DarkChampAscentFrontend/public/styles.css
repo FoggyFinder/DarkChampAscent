@@ -2730,7 +2730,18 @@ main.monsters-under-effects {
     align-items: center;
     justify-content: center;
 }
-
+@media (max-width: 520px) {
+    td.wallet-action-row {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+    
+    td.wallet-action-row .notice {
+        white-space: normal;
+        overflow: visible;
+        width: 100%;
+    }
+}
 .wallet-action-row .btn-web3 {
     flex: 1;
 }
@@ -3139,4 +3150,29 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     border-radius: var(--radius-sm);
     object-fit: cover;
     flex-shrink: 0;
+}
+
+.donaters-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-5);
+    align-items: start;
+}
+
+@media (max-width: 720px) {
+    .donaters-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .donaters-recent .col-tx {
+        display: none;
+    }
+}
+.donaters-top h2,
+.donaters-recent h2 {
+    text-align: left;
+    font-size: var(--font-size-lg);
+    margin-block-end: var(--space-3);
 }

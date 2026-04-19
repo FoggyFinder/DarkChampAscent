@@ -21,7 +21,6 @@ let AccountPage (onLogout: unit -> unit) =
     let data, setData           = React.useState<Deferred<AccountDTO>> Loading
     let newWallet, setNewWallet = React.useState ""
     let donateAmt, setDonateAmt = React.useState "1000"
-    let depositAmt, setDepositAmt = React.useState "10000"
     let msg, setMsg             = React.useState<string option> None
     
     let wallet = useWallet ()
@@ -38,92 +37,57 @@ let AccountPage (onLogout: unit -> unit) =
     deferred data (fun account ->
         let acc = account.Account
         let isNewWallet = newWallet = ""
-        let usdc =
-            account.Price
-            |> Option.map (fun p -> sprintf "~%s %s" (string (Math.Round(p * acc.Balance, 6))) WebEmoji.USDC)
-            |> Option.defaultValue ""
         Html.div [
             prop.className "acc-dashboard"
             prop.children [
-                match msg with
-                | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
-                | None -> Html.none
                 Html.section [
                     prop.className "block user-section"
                     prop.children [
                         Html.div [
                             prop.children [
                                 Html.p [ prop.className "account-nickname"; prop.text acc.User.Nickname ]
-                                Html.p [ prop.className "account-balance"; prop.dangerouslySetInnerHTML (sprintf "Balance: %s %s  %s" (string acc.Balance) WebEmoji.DarkCoin usdc) ]
                             ]
                         ]
-                        if acc.User.IsWeb3 |> not then
-                            howToDepositBlock ()
-                        else
-                            Html.p [ prop.className "notice"; prop.text "There is no withdrawal, so be careful and send only amount you're willing to spend or donate." ]
-                            Html.div [
-                                prop.className "deposit-row"
-                                prop.children [
-                                    Html.input [ prop.type' "number"; prop.value depositAmt; prop.onChange setDepositAmt; prop.className "form-control" ]
-                                    Html.button [
-                                        prop.className "btn btn-primary"
-                                        prop.onClick (fun _ ->
-                                            match Decimal.TryParse depositAmt with
-                                            | true, v ->
-                                                async {
-                                                    let! r = Tx.Deposit v |> Api.createTx
-                                                    match r with
-                                                    | Ok txnb64 ->
-                                                        try
-                                                            let txnBytes : byte[] = txnb64 |> System.Convert.FromBase64String
-                                                            let! signedTxns =
-                                                                wallet.signTransactions [| box txnBytes |]
-                                                                |> Async.AwaitPromise
-                                                            let signedTxnB64 = System.Convert.ToBase64String(signedTxns.[0])
-                                                            let! result = Api.submitTx signedTxnB64
-                                                            match result with
-                                                            | Ok str -> setMsg (Some str)
-                                                            | Error e  -> setMsg (Some e)
-                                                        with ex ->
-                                                            setMsg (Some $"Signing cancelled: {ex.Message}")
-                                                    | Error err ->
-                                                        setMsg (Some err)
-
-                                                } |> Async.StartImmediate
-                                            | _ -> ())
-                                        prop.text "Deposit"
-                                    ]
-                                ]
-                            ]
                         Html.div [
                             prop.className "donate-row"
                             prop.children [
                                 Html.input [ prop.type' "number"; prop.value donateAmt; prop.onChange setDonateAmt; prop.className "form-control" ]
-                                Html.button [
-                                    prop.className "btn btn-primary"
-                                    prop.onClick (fun _ ->
-                                        match Decimal.TryParse donateAmt with
-                                        | true, v when Browser.Dom.window.confirm (sprintf "Donate %s?" (string v)) ->
-                                            async {
-                                                let! r = Api.donate v
-                                                match r with
-                                                | Ok ()   ->
-                                                    let! r = Api.getAccount ()
+                                match wallet.activeAddress with
+                                | Some awallet ->
+                                    Html.button [
+                                        prop.className "btn btn-primary"
+                                        prop.onClick (fun _ ->
+                                            match Decimal.TryParse donateAmt with
+                                            | true, v ->
+                                                async {
+                                                    "" |> Some |> setMsg
+                                                    let tx = Tx.Donate (awallet, v) 
+                                                    let! r = Api.createTx tx
                                                     match r with
-                                                    | Ok d  -> setData (Loaded d)
-                                                    | Error e -> setData (Failed e)
-                                                    setMsg (Some "Thank you!")
-                                                | Error e -> setMsg (Some ("Error: " + e))
-                                            } |> Async.StartImmediate
-                                        | _ -> ())
-                                    prop.text "Donate"
-                                ]
+                                                    | Ok txnb64 ->
+                                                        let! sr =
+                                                            UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                                (fun () -> "Processing request..." |> Some |> setMsg)
+                                                        match sr with
+                                                        | Ok m -> m
+                                                        | Error err -> err
+                                                        |> Some |> setMsg 
+                                                    | Error err ->
+                                                        setMsg (Some err)
+                                                } |> Async.StartImmediate
+                                            | _ -> ())
+                                        prop.text "Donate"
+                                    ]
+                                | None ->
+                                    Html.p [ prop.className "notice"; prop.text "Connect confirmed wallet on 'Account' page to donate some DarkCoins to rewards pool" ]
                             ]
                         ]
+                        
                         Html.button [
                             prop.className "btn btn-secondary"
                             prop.onClick (fun _ -> 
-                                async { 
+                                async {
+                                    "" |> Some |> setMsg
                                     let! _ = Api.logout ()
                                     if acc.User.IsWeb3 then
                                         try
@@ -163,10 +127,16 @@ let AccountPage (onLogout: unit -> unit) =
                         ]
                     ]
                 ]
+
+                
                 if acc.User.IsWeb3 |> not then
                     Html.section [
                         prop.className "block wallets-section"
                         prop.children [
+                            match msg with
+                            | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
+                            | None -> Html.none
+
                             if acc.Wallets.IsEmpty then
                                 Html.p [ prop.text "No wallets registered yet." ]
                             else
@@ -180,8 +150,16 @@ let AccountPage (onLogout: unit -> unit) =
                                     ]
                                     Html.tbody [
                                         for w in acc.Wallets do
+                                            let isConnected = wallet.activeAddress = Some w.Wallet
                                             Html.tr [
-                                                Html.td [ prop.text w.Wallet ]
+                                                Html.td [
+                                                    Html.div [
+                                                        prop.className "wallet-address-wrap"
+                                                        prop.children [
+                                                            Html.span [ prop.className "wallet-address"; prop.text w.Wallet ]
+                                                        ]
+                                                    ]
+                                                ]
                                                 Html.td [
                                                     Html.div [
                                                         prop.className (if w.IsConfirmed then "yes" else "no")
@@ -189,19 +167,24 @@ let AccountPage (onLogout: unit -> unit) =
                                                     ]
                                                 ]
                                             ]
-                                            if not w.IsConfirmed then
-                                                Html.tr [
-                                                    Html.td [
-                                                        prop.colSpan 2
-                                                        prop.className "wallet-action-row"
-                                                        prop.children [
+                                            Html.tr [
+                                                Html.td [
+                                                    prop.colSpan 2
+                                                    prop.className "wallet-action-row"
+                                                    prop.children [
+                                                        // Action row — show for unconfirmed OR confirmed but want to switch to this one
+                                                        match wallet.activeAddress with
+                                                        | _ when not w.IsConfirmed || (w.IsConfirmed && not isConnected) ->
+                                                
                                                             match wallet.activeAddress with
                                                             | Some addr when addr = w.Wallet ->
+                                                                // Connected and matches — can confirm if needed
                                                                 Html.button [
                                                                     prop.className "btn btn-primary btn-sm"
                                                                     prop.text "Confirm wallet"
                                                                     prop.onClick (fun _ ->
                                                                         async {
+                                                                            "" |> Some |> setMsg
                                                                             let! r = Api.createTx (Tx.Confirm(w.Wallet, w.Code))
                                                                             match r with
                                                                             | Error e -> setMsg (Some ("Error: " + e))
@@ -229,32 +212,59 @@ let AccountPage (onLogout: unit -> unit) =
                                                                     prop.className "btn btn-secondary btn-sm"
                                                                     prop.text "Disconnect"
                                                                     prop.onClick (fun _ ->
+                                                                        "" |> Some |> setMsg
                                                                         match wallet.activeWallet with
                                                                         | Some aw -> aw.disconnect() |> Async.AwaitPromise |> Async.StartImmediate
                                                                         | None -> ())
                                                                 ]
                                                             | Some addr ->
-                                                                Html.span [ prop.className "notice"; prop.text $"Connected wallet doesn't match. Current: {shortAddr addr}. Connect wallet {shortAddr w.Wallet} in your wallet app to confirm." ]
-                                                                Html.button [
-                                                                    prop.className "btn btn-secondary btn-sm"
-                                                                    prop.text "Disconnect"
-                                                                    prop.onClick (fun _ ->
-                                                                        match wallet.activeWallet with
-                                                                        | Some aw -> aw.disconnect() |> Async.AwaitPromise |> Async.StartImmediate
-                                                                        | None -> ())
-                                                                ]
+                                                                if w.IsConfirmed then
+                                                                    Html.span [ prop.className "notice"; prop.text $"Connected: {shortAddr addr}" ]
+                                                                    Html.button [
+                                                                        prop.className "btn btn-secondary btn-sm"
+                                                                        prop.text $"Switch to {shortAddr w.Wallet}"
+                                                                        prop.onClick (fun _ ->
+                                                                            "" |> Some |> setMsg
+                                                                            match wallet.activeWallet with
+                                                                            | Some aw -> aw.disconnect() |> Async.AwaitPromise |> Async.StartImmediate
+                                                                            | None -> ())
+                                                                    ]
+                                                                else
+                                                                    Html.span [ prop.className "notice"; prop.text $"Connected wallet doesn't match. Current: {shortAddr addr}. Connect {shortAddr w.Wallet} to confirm." ]
+                                                                    Html.button [
+                                                                        prop.className "btn btn-secondary btn-sm"
+                                                                        prop.text "Disconnect"
+                                                                        prop.onClick (fun _ ->
+                                                                            "" |> Some |> setMsg
+                                                                            match wallet.activeWallet with
+                                                                            | Some aw -> aw.disconnect() |> Async.AwaitPromise |> Async.StartImmediate
+                                                                            | None -> ())
+                                                                    ]
                                                             | None ->
-                                                                Html.span [ prop.text "Connect your wallet to confirm:" ]
+                                                                Html.span [ prop.text (if w.IsConfirmed then $"Connect to use {shortAddr w.Wallet} for signing:" else "Connect your wallet to confirm:") ]
                                                                 for aw in wallet.wallets do
                                                                     Html.button [
                                                                         prop.className "btn btn-secondary btn-sm"
                                                                         prop.text $"Connect {aw.id}"
-                                                                        prop.onClick (fun _ -> aw.connect() |> Async.AwaitPromise |> Async.StartImmediate)
+                                                                        prop.onClick (fun _ ->
+                                                                            "" |> Some |> setMsg
+                                                                            aw.connect() |> Async.AwaitPromise |> Async.StartImmediate)
                                                                     ]
+                                                        | _ ->
+                                                            Html.button [
+                                                                prop.className "btn btn-secondary btn-sm"
+                                                                prop.text "Disconnect"
+                                                                prop.onClick (fun _ ->
+                                                                    match wallet.activeWallet with
+                                                                    | Some aw ->
+                                                                        "" |> Some |> setMsg
+                                                                        aw.disconnect() |> Async.AwaitPromise |> Async.StartImmediate
+                                                                    | None -> ())
+                                                            ]
                                                         ]
                                                     ]
-                                                ]                                        
-                                                    
+                                                ]
+                                                                                                                      
                                     ]
                                 ]
 
@@ -271,6 +281,7 @@ let AccountPage (onLogout: unit -> unit) =
                                         prop.disabled isNewWallet
                                         prop.onClick (fun _ ->
                                             async {
+                                                "" |> Some |> setMsg
                                                 let! r = Api.registerWallet newWallet
                                                 match r with
                                                 | Ok ()   -> setMsg (Some "Wallet registered!"); setNewWallet ""
@@ -407,7 +418,7 @@ let MyChampsPage () =
                 if champs.IsEmpty then
                     Html.p [
                         Html.text "No champs found. Buy one "
-                        Html.a [ prop.href Links.DarkChampCollection; prop.target "_blank"; prop.text "here" ]
+                        Html.a [ prop.href Links.DarkChampCollection; prop.target.blank; prop.text "here" ]
                         Html.text " then click Rescan."
                     ]
                 else
@@ -471,6 +482,8 @@ let MyMonstersPage () =
     let selType, setSelType       = React.useState MonsterType.Zombie
     let selSubType, setSelSubType = React.useState MonsterSubType.None
     let msg, setMsg               = React.useState<string option> None
+    
+    let wallet = useWallet ()
 
     React.useEffect((fun () ->
         async {
@@ -484,50 +497,56 @@ let MyMonstersPage () =
         Html.div [
             prop.className "my-monsters"
             prop.children [
-                match d.UserBalance with
-                | Some b -> Html.p [ prop.dangerouslySetInnerHTML (sprintf "Balance: %s %s" (string b) WebEmoji.DarkCoin) ]
-                | None -> Html.none
                 match msg with
                 | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
                 | None -> Html.none
 
-                if d.UserBalance.IsSome then
-                    let amount = Math.Round(Shop.GenMonsterPrice / d.Price, 6)
-                    let canAfford = d.UserBalance |> Option.map (fun b -> b >= amount) |> Option.defaultValue false
-                    Html.div [
-                        prop.className "create-monster"
-                        prop.children [
-                            Html.p [ prop.dangerouslySetInnerHTML (sprintf "Create custom monster: %s %s DarkCoins" (string amount) WebEmoji.DarkCoin) ]
+                let amount = Math.Round(Shop.GenMonsterPrice / d.Price, 6)
+                Html.div [
+                    prop.className "create-monster"
+                    prop.children [
+                        Html.p [ prop.dangerouslySetInnerHTML (sprintf "Create custom monster: %s %s DarkCoins" (string amount) WebEmoji.DarkCoin) ]
                             
-                            CustomSelectInput (DisplayEnum.MonsterType selType)
-                                (fun (s: string) ->
-                                    AllEnums.MonsterTypes
-                                    |> List.tryFind (fun t -> DisplayEnum.MonsterType t = s)
-                                    |> Option.iter setSelType)
-                                [ for t in AllEnums.MonsterTypes -> DisplayEnum.MonsterType t, DisplayEnum.MonsterType t, None ]
+                        CustomSelectInput (DisplayEnum.MonsterType selType)
+                            (fun (s: string) ->
+                                AllEnums.MonsterTypes
+                                |> List.tryFind (fun t -> DisplayEnum.MonsterType t = s)
+                                |> Option.iter setSelType)
+                            [ for t in AllEnums.MonsterTypes -> DisplayEnum.MonsterType t, DisplayEnum.MonsterType t, None ]
                             
-                            CustomSelectInput (DisplayEnum.MonsterSubType selSubType)
-                                (fun (s: string) ->
-                                    AllEnums.MonsterSubTypes
-                                    |> List.tryFind (fun t -> DisplayEnum.MonsterSubType t = s)
-                                    |> Option.iter setSelSubType)
-                                [ for t in AllEnums.MonsterSubTypes -> DisplayEnum.MonsterSubType t, DisplayEnum.MonsterSubType t, None ]
-                            
+                        CustomSelectInput (DisplayEnum.MonsterSubType selSubType)
+                            (fun (s: string) ->
+                                AllEnums.MonsterSubTypes
+                                |> List.tryFind (fun t -> DisplayEnum.MonsterSubType t = s)
+                                |> Option.iter setSelSubType)
+                            [ for t in AllEnums.MonsterSubTypes -> DisplayEnum.MonsterSubType t, DisplayEnum.MonsterSubType t, None ]
+                        match wallet.activeAddress with
+                        | Some awallet ->
                             Html.button [
-                                prop.className "btn btn-primary"; prop.disabled (not canAfford)
+                                prop.className "btn btn-primary"
                                 prop.onClick (fun _ ->
-                                    let msg = sprintf $"Confirm creation of {Display.monsterClass(selType, selSubType)}?"
-                                    if Browser.Dom.window.confirm (msg) then
-                                        async {
-                                            let! r = Api.createMonster selType selSubType
-                                            match r with
-                                            | Ok r   -> setMsg (Some r)
-                                            | Error e -> setMsg (Some ("Error: " + e))
-                                        } |> Async.StartImmediate)
+                                    async {
+                                        "" |> Some |> setMsg
+                                        let tx = Tx.CreateCustomMonster (awallet, selType, selSubType) 
+                                        let! r = Api.createTx tx
+                                        match r with
+                                        | Ok txnb64 ->
+                                            let! sr =
+                                                UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                    (fun () -> "Processing request..." |> Some |> setMsg)
+                                            match sr with
+                                            | Ok m -> m
+                                            | Error err -> $"Error: {err}"
+                                            |> Some |> setMsg 
+                                        | Error err ->
+                                            setMsg (Some err)
+                                    } |> Async.StartImmediate)
                                 prop.text "Create monster"
                             ]
-                        ]
+                        | None ->
+                            Html.p [ prop.className "notice"; prop.text "Connect confirmed wallet on 'Account' page to proceed" ]
                     ]
+                ]
 
                 if d.Monsters.IsEmpty then
                     Html.p [ prop.text "No monsters yet." ]

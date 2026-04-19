@@ -9,6 +9,7 @@ open System
 open Serilog
 open FSharp.Control
 open Db
+open Helpers
 
 type GuildCreateHandler(db:SqliteStorage) =
     interface IGuildCreateGatewayHandler with

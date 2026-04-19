@@ -24,3 +24,18 @@ type IUseWalletResult =
 
 [<Import("useWallet", "@txnlab/use-wallet-react")>]
 let useWallet () : IUseWalletResult = jsNative
+
+let signTx (submitTx:string -> Async<Result<string, string>>) (wallet:IUseWalletResult) (txnb64:string) (beforeSubmit:unit -> unit)=
+    async {
+        try
+            let txnBytes : byte[] = txnb64 |> System.Convert.FromBase64String
+            let! signedTxns =
+                wallet.signTransactions [| box txnBytes |]
+                |> Async.AwaitPromise
+            let signedTxnB64 = System.Convert.ToBase64String(signedTxns.[0])
+            beforeSubmit()
+            let! result = submitTx signedTxnB64
+            return result
+        with ex ->
+            return Error $"Signing cancelled: {ex.Message}"
+    }

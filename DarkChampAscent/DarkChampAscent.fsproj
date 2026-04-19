@@ -17,17 +17,17 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Compile Include="Utils.fs" />
+		<Compile Include="DiscordComponents.fs" />
 		<Compile Include="Services.fs" />
 		<Compile Include="DiscordBot\Commands.fs" />
 		<Compile Include="DiscordBot\GatewayHandlers.fs" />
 		<Compile Include="DiscordBot\Interactions.fs" />
-		<Compile Include="Utils.fs" />
 		<Compile Include="Program.fs" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\2DataLayer\2DataLayer.fsproj" />
-	  <ProjectReference Include="..\3Discord\3Discord.fsproj" />
 	</ItemGroup>
 
 	<ItemGroup>

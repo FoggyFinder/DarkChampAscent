@@ -77,65 +77,6 @@ let TraitsPage () =
     ]
 
 [<ReactComponent>]
-let FAQPage () =
-    let qas = [
-        "Can I send Algo or other ASAs except DarkCoin?",
-            "Only DarkCoin is supported. Any Algo sent will be treated as a donation — so double-check before sending!"
-        "How can I deposit tokens?",
-            sprintf "Send DarkCoins to %s (%s) from any confirmed wallet. Your balance usually updates within 5–7 minutes." KnownWallets.DarkChampAscent KnownWallets.DarkChampAscentNFD
-        "I want to withdraw tokens",
-            "Withdrawals aren't supported — this isn't an exchange. Once deposited, coins are meant to be spent or donated in-game."
-        "Are my coins safe?",
-            "The bot uses a hot wallet, so only deposit what you're comfortable spending. As always: not your keys, not your coins."
-        "How can I help without NFT or DarkCoins?",
-            "You can contribute a PR on GitHub, share feedback, or just be active in the Discord community — it all helps!"
-    ]
-    let qasWithLink = [
-        yield! qas |> List.map (fun (q, a) ->
-            q, Html.p [ prop.text a ])
-        yield
-            "Still have questions?",
-            Html.p [
-                Html.text "Feel free to ask in the #chat channel on "
-                Html.a [ prop.href Links.Discord; prop.target "_blank"; prop.text "DarkCoin Discord" ]
-                Html.text " — we're happy to help!"
-            ]
-    ]
-    let openItem, setOpenItem = React.useState<int option> None
-
-    Html.div [
-        prop.className "faq"
-        prop.children [
-            for (i, (q, answerEl)) in qasWithLink |> List.indexed do
-                let isOpen = openItem = Some i
-                let toggle () = setOpenItem (if isOpen then None else Some i)
-                Html.div [
-                    prop.key i
-                    prop.className (if isOpen then "open" else "")
-                    prop.children [
-                        Html.div [
-                            prop.className "question"
-                            prop.tabIndex 0
-                            prop.role "button"
-                            prop.ariaExpanded isOpen
-                            prop.onClick (fun _ -> toggle ())
-                            prop.onKeyDown (fun e ->
-                                if e.key = "Enter" || e.key = " " then
-                                    e.preventDefault()
-                                    toggle ())
-                            prop.children [ Html.p [ prop.text q ] ]
-                        ]
-                        Html.div [
-                            prop.className "answer"
-                            prop.ariaHidden (not isOpen)
-                            prop.children [ Html.div [ answerEl ] ]
-                        ]
-                    ]
-                ]
-        ]
-    ]
-
-[<ReactComponent>]
 let StatsPage () =
     let data, setData = React.useState<Deferred<Stats>> Loading
     React.useEffect((fun () ->
@@ -149,21 +90,30 @@ let StatsPage () =
         match v with
         | Some x -> statRow WebEmoji label (string x)
         | None -> Html.none
+    let optTRow label WebEmoji (v: WalletValue option) =
+        let link (w:string) =
+            $"https://explorer.perawallet.app/transactions/?transaction_list_address={w}&transaction_list_sender={KnownWallets.DarkChampAscent}"
+            // $"https://allo.info/account/{w}/txns?sender={KnownWallets.DarkChampAscent}"
+            |> Some
+        match v with
+        | Some x -> fullStatRow WebEmoji label (string x.Value) (link x.Wallet)
+        | None -> Html.none
     deferred data (fun s ->
         Html.div [
             prop.className "stats"
             prop.children [
                 Html.h2 [ prop.text $"{WebEmoji.Stats} Statistics {WebEmoji.Stats}" ]
+                let gs = s.GameStats
                 Html.table [
                     prop.className "stats-table"
                     prop.children [
                         Html.tbody [
-                            optRow "Players registered" WebEmoji.Account s.Players
-                            optRow "Confirmed players" WebEmoji.CheckMark s.ConfirmedPlayers
-                            optRow "Champions" WebEmoji.Champs s.Champs
-                            optRow "Custom monsters" WebEmoji.Monsters s.CustomMonsters
-                            optRow "Battles" WebEmoji.Battle s.Battles
-                            optRow "Rounds" WebEmoji.Rounds s.Rounds
+                            optRow "Players registered" WebEmoji.Account gs.Players
+                            optRow "Confirmed players" WebEmoji.CheckMark gs.ConfirmedPlayers
+                            optRow "Champions" WebEmoji.Champs gs.Champs
+                            optRow "Custom monsters" WebEmoji.Monsters gs.CustomMonsters
+                            optRow "Battles" WebEmoji.Battle gs.Battles
+                            optRow "Rounds" WebEmoji.Rounds gs.Rounds
                         ]
                     ]
                 ]
@@ -173,11 +123,11 @@ let StatsPage () =
                     prop.children [
                         Html.tbody [
                             optRow "Players earned" "🤖" s.Rewards
-                            optRow "DAO" WebEmoji.DAO s.Dao
-                            optRow "Devs" WebEmoji.Dev s.Devs
-                            optRow "Reserve" WebEmoji.Reserve s.Reserve
-                            optRow "Burnt" WebEmoji.Fire s.Burnt
-                            optRow "Staking" WebEmoji.Staking s.Staking
+                            optTRow "DAO" WebEmoji.DAO s.TStats.Dao
+                            optTRow "Devs" WebEmoji.Dev s.TStats.Devs
+                            optTRow "Reserve" WebEmoji.Reserve s.TStats.Reserve
+                            optTRow "Burnt" WebEmoji.Fire s.TStats.Burnt
+                            optTRow "Staking" WebEmoji.Staking s.TStats.Staking
                         ]
                     ]
                 ]
@@ -251,7 +201,7 @@ let HomePage () =
                         
                         Html.p [
                             Html.text "To play, hold at least one NFT from"
-                            Html.a [prop.href Links.DarkChampCollection; prop.target "_blank"; prop.text "Dark Coin Champions"]
+                            Html.a [prop.href Links.DarkChampCollection; prop.target.blank; prop.text "Dark Coin Champions"]
                             Html.text " collection."
                         ]
 

@@ -7,11 +7,14 @@ open DTO
 open Display
 open GameLogic.Shop
 open System
+open UseWallet
+open DarkChampAscent.Api
 
 [<ReactComponent>]
 let ShopPage () =
     let data, setData = React.useState<Deferred<ShopDTO>> Loading
     let msg, setMsg   = React.useState<string option> None
+    let wallet = useWallet ()
 
     React.useEffect((fun () ->
         async {
@@ -25,9 +28,6 @@ let ShopPage () =
         Html.div [
             prop.className "shop"
             prop.children [
-                match d.Balance with
-                | Some b -> Html.p [ prop.dangerouslySetInnerHTML (sprintf "Balance: %s %s" (string b) WebEmoji.DarkCoin) ]
-                | None -> Html.none
                 match msg with
                 | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
                 | None -> Html.none
@@ -36,13 +36,11 @@ let ShopPage () =
                         Html.tr [
                             Html.th [prop.text "#"]; Html.th [prop.text "Kind"]; Html.th [prop.text "Price"]
                             Html.th [prop.text "Duration"]; Html.th [prop.text "Effect"]; Html.th [prop.text "Target"]
-                            if d.Balance.IsSome then Html.th [prop.text ""]
                         ]
                     ]
                     Html.tbody [
                         for (i, item) in d.Items |> List.indexed ->
                             let sir = Display.ShopItemRow(item, d.Price)
-                            let canAfford = d.Balance |> Option.map (fun b -> b >= sir.Price) |> Option.defaultValue false
                             let dStr = if sir.Duration = Int32.MaxValue then "" else string sir.Duration
                             let vStr =
                                 let v = Shop.getValue item
@@ -56,39 +54,46 @@ let ShopPage () =
                                 Html.td [prop.text dStr]
                                 Html.td [prop.text vStr]
                                 Html.td [prop.text $"{DisplayEnum.ShopItemTarget target}"]
-                                if d.Balance.IsSome then
-                                    Html.td [
+                                
+                                Html.td [
+                                    match wallet.activeAddress with
+                                    | Some awallet ->
                                         Html.button [
-                                            prop.className "btn btn-primary btn-sm"; prop.disabled (not canAfford)
+                                            prop.className "btn btn-primary btn-sm"
                                             prop.onClick (fun _ ->
                                                 async {
-                                                    let! r = Api.buyItem item
+                                                    "" |> Some |> setMsg
+                                                    let tx = Tx.BuyItem (awallet, item, 1ul)
+                                                    let! r = Api.createTx tx
                                                     match r with
-                                                    | Ok ()   -> setMsg (Some "Purchased!")
-                                                    | Error e -> setMsg (Some ("Error: " + e))
+                                                    | Ok txnb64 ->
+                                                        let! sr =
+                                                            UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                                (fun () -> "Processing request..." |> Some |> setMsg)
+                                                        match sr with
+                                                        | Ok m -> m
+                                                        | Error err -> $"Error: {err}"
+                                                        |> Some |> setMsg 
+                                                    | Error err ->
+                                                        setMsg (Some err)
                                                 } |> Async.StartImmediate)
                                             prop.text "Buy"
                                         ]
-                                    ]
+                                    | None ->
+                                        Html.p [ prop.className "notice"; prop.text "Connect wallet on 'Account' page to buy" ]
+                                ]
                             ]
                     ]
                 ]
-                if d.Balance.IsSome then
-                    let p = Page.Storage
-                    Html.p [
-                        Html.text "Check your "
-                        Html.a [ prop.href p.Route; prop.onClick (Nav.navTo p.Route); prop.text "storage" ]
-                        Html.text "."
-                    ]
             ]
         ])
 
 [<ReactComponent>]
-let MonstersEffectsPage () =
+let DefeatedMonstersPage () =
     let data, setData = React.useState<Deferred<MonsterUnderEffect list>> Loading
     React.useEffect((fun () ->
         async {
-            let! r = Api.getMonstersEffects ()
+            let! r = Api.getDefeatedMonsters ()
             match r with
             | Ok d  -> setData (Loaded d)
             | Error e -> setData (Failed e)
@@ -98,7 +103,7 @@ let MonstersEffectsPage () =
             prop.className "monsters-under-effects"
             prop.children [
                 if monsters.IsEmpty then
-                    Html.p [ prop.text "No monsters under effects." ]
+                    Html.p [ prop.text "No monsters defeated." ]
                 else
                     Html.table [
                         Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Effect"]; Html.th [prop.text "Rounds"] ] ]
@@ -112,6 +117,38 @@ let MonstersEffectsPage () =
                                     Html.td [monsterLink (uint64 m.ID) m.Name]
                                     Html.td [prop.text $"{DisplayEnum.Effect m.Effect}"]
                                     Html.td [prop.text $"{m.RoundsLeft} {WebEmoji.Rounds}"]
+                                ]
+                        ]
+                    ]
+            ]
+        ])
+
+[<ReactComponent>]
+let DefeatedChampsPage () =
+    let data, setData = React.useState<Deferred<ChampUnderEffect list>> Loading
+    React.useEffect((fun () ->
+        async {
+            let! r = Api.getDefeatedChamps ()
+            match r with
+            | Ok d  -> setData (Loaded d)
+            | Error e -> setData (Failed e)
+        } |> Async.StartImmediate), [||])
+    deferred data (fun champs ->
+        Html.div [
+            prop.className "champs-under-effects"
+            prop.children [
+                if champs.IsEmpty then
+                    Html.p [ prop.text "No champs defeated." ]
+                else
+                    Html.table [
+                        Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Rounds"] ] ]
+                        Html.tbody [
+                            for (i, c) in champs |> List.sortByDescending (fun c -> c.RoundsLeft) |> List.indexed ->
+                                Html.tr [
+                                    Html.td [prop.text (string (i+1))]
+                                    Html.td [ipfsImg c.IPFS "picSmall"]
+                                    Html.td [champLink (uint64 c.ID) c.Name]
+                                    Html.td [prop.text $"{c.RoundsLeft} {WebEmoji.Rounds}"]
                                 ]
                         ]
                     ]

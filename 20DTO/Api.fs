@@ -1,9 +1,60 @@
 namespace DarkChampAscent.Api
 
+open GameLogic.Shop
+open GameLogic.Monsters
+open System
+
 [<RequireQualifiedAccess>]
 type Tx =
-    | Deposit of amount:decimal
+    | Donate of wallet:string * amount:decimal
     | Confirm of wallet:string * code:string
+
+    | BuyItem of wallet:string * item:ShopItem * amount:uint
+    | RenameChamp of wallet:string * champid:uint64 * newName:string
+    | CreateCustomMonster of wallet:string * mtype:MonsterType * msubtype:MonsterSubType
+    member x.Wallet =
+        match x with
+        | Donate (wallet, _)
+        | Confirm (wallet, _)
+        | BuyItem (wallet, _, _)
+        | RenameChamp (wallet, _, _)
+        | CreateCustomMonster (wallet, _, _) -> wallet
+    member x.Note =
+        match x with
+        | Donate (_, amount) -> $"donate:{amount}"
+        | Confirm (_, code) -> $"confirm:{code}"
+        | BuyItem (_, item, amount) -> $"buyItem:{int item}:{amount}"
+        | RenameChamp (_, champid, newName) -> $"rename:{champid}:{newName}"
+        | CreateCustomMonster (_, mtype, msubtype) -> $"create:{int mtype}:{int msubtype}"
+    static member TryParse (wallet:string) (str:string) =
+        try
+            if(String.IsNullOrWhiteSpace(str)) then None
+            else
+                let fields = str.Split(":") |> Array.map(fun s -> s.Trim())
+                match fields with
+                | [| "donate"; amountStr |] ->
+                    match Decimal.TryParse amountStr with
+                    | true, amount -> Tx.Donate(wallet, amount) |> Some
+                    | _ -> None
+                | [| "confirm"; code |] ->
+                    Tx.Confirm(wallet, code) |> Some
+                | [| "buyItem"; itemS; amountStr |] ->
+                    match Int32.TryParse itemS, UInt32.TryParse amountStr with
+                    | (true, item), (true, amount) -> 
+                        Tx.BuyItem(wallet, enum<ShopItem> item, amount) |> Some
+                    | _ -> None
+                | [| "rename"; cIdS; name |] ->
+                    match UInt64.TryParse cIdS with
+                    | true, cId -> Tx.RenameChamp(wallet, cId, name) |> Some
+                    | _ -> None
+                | [| "create"; mtypeS; msubtypeS |] ->
+                    match Int32.TryParse mtypeS, Int32.TryParse msubtypeS with
+                    | (true, mtype), (true, msubtype) -> 
+                        Tx.CreateCustomMonster(wallet, enum<MonsterType> mtype, enum<MonsterSubType> msubtype) |> Some
+                    | _ -> None
+                | _ -> None
+        with _ -> None
+
 
 [<RequireQualifiedAccess>]
 type Method =
@@ -31,30 +82,27 @@ type Pattern =
    | BattleStatusInfo
 
    | Shop
-   | ShopBuyItem
    | Storage
    | StorageUseItem
 
    | Champs
    | ChampsUnderEffects
-   | ChampsRename
+   | ChampsDefeated
    | ChampsLevelUp
    | ChampsRescan
    | ChampsDetail of id:uint64 option
+   | ChampsNames
 
    | Monsters
-   | MonstersUnderEffects
+   | MonstersDefeated
    | MonstersRename
-   | MonstersCreate
    | MonstersDetail of id:uint64 option
 
    | Requests
-   | Donate
 
    | LeaderboardChamps
    | LeaderboardMonsters
    | LeaderboardDonaters
-   | LeaderboardUnknownDonaters
    
    | Home
    | Stats
@@ -84,35 +132,34 @@ type Pattern =
        | Pattern.BattleStatusInfo -> "/api/battle/statusinfo"
 
        | Pattern.Shop -> "/api/shop"
-       | Pattern.ShopBuyItem -> "/api/shop/buy"
        | Pattern.Storage -> "/api/storage"
        | Pattern.StorageUseItem -> "/api/storage/use"
 
        | Pattern.Champs -> "/api/champs/my"
+       | Pattern.ChampsDefeated -> "/api/champs/defeated"
        | Pattern.ChampsUnderEffects -> "/api/champs/effects"
-       | Pattern.ChampsRename -> "/api/champs/rename"
        | Pattern.ChampsLevelUp -> "/api/champs/levelup"
        | Pattern.ChampsRescan -> "/api/champs/rescan"
        | Pattern.ChampsDetail ido ->
             match ido with
             | Some id -> $"/api/champs/{id}"
             | None -> "/api/champs/{id:long}"
+       | Pattern.ChampsNames ->
+            "/api/champs/names"
+
        | Pattern.Monsters -> "/api/monsters/my"
-       | Pattern.MonstersUnderEffects -> "/api/monsters/effects"
+       | Pattern.MonstersDefeated -> "/api/monsters/defeated"
        | Pattern.MonstersRename -> "/api/monsters/rename"
-       | Pattern.MonstersCreate -> "/api/monsters/create"
        | Pattern.MonstersDetail ido ->
             match ido with
             | Some id -> $"/api/monsters/{id}"
             | None -> "/api/monsters/{id:long}"
 
        | Pattern.Requests -> "/api/requests/my"
-       | Pattern.Donate -> "/api/donate"
 
        | Pattern.LeaderboardChamps -> "/api/leaderboard/champs"
        | Pattern.LeaderboardMonsters -> "/api/leaderboard/monsters"
        | Pattern.LeaderboardDonaters -> "/api/leaderboard/donaters"
-       | Pattern.LeaderboardUnknownDonaters -> "/api/leaderboard/unknown-donaters"
 
        | Pattern.Home -> "/api/home"
        | Pattern.Stats -> "/api/stats"
@@ -134,16 +181,17 @@ type Pattern =
        | Pattern.Storage
        | Pattern.Champs
        | Pattern.ChampsUnderEffects
-       | Pattern.ChampsDetail _
+       | Pattern.ChampsDefeated
+       | Pattern.ChampsDetail _ 
+       | Pattern.ChampsNames
        | Pattern.Monsters
-       | Pattern.MonstersUnderEffects
+       | Pattern.MonstersDefeated
        | Pattern.MonstersDetail _
        | Pattern.Requests
 
        | Pattern.LeaderboardChamps
        | Pattern.LeaderboardMonsters
        | Pattern.LeaderboardDonaters
-       | Pattern.LeaderboardUnknownDonaters
 
        | Pattern.Home
        | Pattern.Stats
@@ -156,14 +204,10 @@ type Pattern =
        | Pattern.AuthLogout
        | Pattern.AccountNewWallet
        | Pattern.BattleJoin
-       | Pattern.ShopBuyItem
        | Pattern.StorageUseItem
-       | Pattern.ChampsRename
        | Pattern.ChampsLevelUp
        | Pattern.ChampsRescan
        | Pattern.MonstersRename
-       | Pattern.MonstersCreate
-       | Pattern.Donate
        | Pattern.CreateTx
        | Pattern.SubmitTx
        | Pattern.VerifyTx

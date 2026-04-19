@@ -309,11 +309,10 @@ let accountHandler : HttpHandler =
                     | Account.Custom _ 
                     | Account.Web3 _ -> ()
                     match db.GetUserWallets dId, db.GetUserChampsCount dId,
-                          db.GetUserMonstersCount dId, db.GetUserRequestsCount dId,
-                          db.GetUserBalance dId with
-                    | Ok wallets, Some champs, Some monsters, Some requests, Some balance ->
+                          db.GetUserMonstersCount dId, db.GetUserRequestsCount dId with
+                    | Ok wallets, Some champs, Some monsters, Some requests ->
                         let dcPrice = db.GetNumKey Db.DbKeysNum.DarkCoinPrice
-                        let dto = AccountDTO(UserAccount(a, wallets, balance, int champs, int monsters, int requests), dcPrice)
+                        let dto = AccountDTO(UserAccount(a, wallets, int champs, int monsters, int requests), dcPrice)
                         apiOk dto
                     | _ -> apiError "Can't fetch user data, please try again later" 500
                 | None -> apiUnauthorized
@@ -345,6 +344,9 @@ let registerNewWalletHandler : HttpHandler =
 
 open System.Threading.Tasks
 open Services
+open Conf
+open Algorand.Utils
+open Algorand.Algod.Model.Transactions
 
 [<RequireQualifiedAccess>]
 module SSEHelper =
@@ -422,9 +424,10 @@ let battleHandler : HttpHandler =
 let joinBattleHandler : HttpHandler =
     fun ctx ->
         task {
-            let! result  = ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme)
+            let! ao = authenticate ctx
             let bs = ctx.Plug<BattleService>()
-            if result.Succeeded then
+            match ao with
+            | Some a ->
                 let champIdO =
                     match ctx.Request.Form.TryGetValue "champ" with
                     | true, s -> match UInt64.TryParse s with true, v -> Ok v | _ -> Error "Invalid champ field value"
@@ -436,48 +439,24 @@ let joinBattleHandler : HttpHandler =
 
                 let response =
                     match champIdO, moveO with
-                    | Ok champId, Ok move ->
-                        { ChampId = champId; Move = move } |> bs.JoinRound
+                    | Ok champId, Ok move -> bs.JoinRound(a.ID, { ChampId = champId; Move = move } )
                     | Error err1, Error err2 -> Error(err1 + Environment.NewLine + err2)
                     | Error err, _ | _, Error err -> Error err
                 return! apiResult response ctx
-            else
+            | None ->
                 return! apiUnauthorized ctx
         }
 
 let shopHandler : HttpHandler =
     fun ctx ->
         task {
-            let! ao = authenticate ctx
             let db = ctx.Plug<SqliteStorage>()
             let response =
                 match db.GetShopItems(), db.GetNumKey Db.DbKeysNum.DarkCoinPrice with
                 | Some items, Some price ->
-                    let userBalance = ao |> Option.bind (fun u -> db.GetUserBalance u.ID)
-                    ShopDTO(items, price, userBalance)
+                    ShopDTO(items, price)
                     |> apiOk 
                 | _ -> apiError "Shop unavailable" 500
-            return! response ctx
-        }
-
-let buyItemHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let! ao = authenticate ctx
-            let db  = ctx.Plug<SqliteStorage>()
-            let response =
-                match ao with
-                | Some user ->
-                    match ctx.Request.Form.TryGetValue "shopitem" with
-                    | true, s ->
-                        match Enum.TryParse<ShopItem> s with
-                        | true, v ->
-                            match db.BuyItem(user.ID, v, 1) with
-                            | Ok _    -> apiOk ()
-                            | Error e -> apiError (string e) 400
-                        | _ -> apiBadRequest "Invalid shop item"
-                    | _ -> apiBadRequest "Missing shopitem field"
-                | None -> apiUnauthorized
             return! response ctx
         }
 
@@ -542,40 +521,24 @@ let champHandler : HttpHandler =
             let route    = Request.getRoute ctx
             let champId  = route.GetInt64 "id"
             let db       = ctx.Plug<SqliteStorage>()
-            let userBalance =
+            let belongsToAUser =
                 ao |> Option.bind (fun u ->
                     let uId = u.ID
-                    db.ChampBelongsToAUser(uint64 champId, uId)
-                    |> Option.bind (fun b -> if b then db.GetUserBalance uId else None))
+                    db.ChampBelongsToAUser(uint64 champId, uId))
+                |> Option.defaultValue false
             let response =
                 match db.GetChampInfoById champId, db.GetNumKey Db.DbKeysNum.DarkCoinPrice with
                 | Some champ, Some price ->
-                    ChampDTO(champ, userBalance, price) |> apiOk
+                    ChampDTO(champ, belongsToAUser, price) |> apiOk
                 | _ -> apiNotFound
             return! response ctx
         }
 
-let renameChampHandler : HttpHandler =
+let champsNamesHandler : HttpHandler =
     fun ctx ->
         task {
-            let! ao = authenticate ctx
-            let db  = ctx.Plug<SqliteStorage>()
-            let response =
-                match ao with
-                | Some user ->
-                    let oldNameO = ctx.Request.Form.tryGetFormValue "oldname" |> Option.map string
-                    let newNameO = ctx.Request.Form.tryGetFormValue "newname" |> Option.map string
-                    let chmpIdO  =
-                        ctx.Request.Form.tryGetFormValue "chmpId"
-                        |> Option.bind (fun s -> match UInt64.TryParse s with true, v -> Some v | _ -> None)
-                    match oldNameO, newNameO, chmpIdO with
-                    | Some oldName, Some newName, Some cId ->
-                        // TODO: use cId instead of oldName lookup
-                        match db.RenameChamp(user.ID, oldName, newName) with
-                        | Ok _ -> apiOk ()
-                        | Error e -> apiError (string e) 400
-                    | _ -> apiBadRequest "Missing fields"
-                | None -> apiUnauthorized
+            let db = ctx.Plug<SqliteStorage>()
+            let response = db.GetChampsNames() |> apiOk
             return! response ctx
         }
 
@@ -598,9 +561,7 @@ let lvlUpHandler : HttpHandler =
                     match cIdR, chr with
                     | Ok cId, Ok ch ->
                         match db.ChampBelongsToAUser(cId, user.ID) with
-                        | Some true ->
-                            if db.LevelUp(cId, ch) then Ok ()
-                            else Error "Level up failed"
+                        | Some true -> db.LevelUp(cId, ch)
                         | _ -> Error "Not your champ"
                     | Error err1, Error err2 -> Error(err1 + Environment.NewLine + err2)
                     | Error err, _ | _, Error err -> Error err
@@ -623,6 +584,20 @@ let champsUnderEffectsHandler : HttpHandler =
                         | Error e   -> apiError (string e) 500
                     | None -> apiError "No round found" 404
                 | None -> apiUnauthorized
+            return! response ctx
+        }
+
+let champsDefeatedHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let response =
+                let db = ctx.Plug<SqliteStorage>()
+                match db.GetLastRoundId() with
+                | Some roundId ->
+                    match db.GetDefeatedChamps roundId with
+                    | Ok champs -> apiOk champs
+                    | Error e   -> apiError (string e) 500
+                | None -> apiError "No round found" 404
             return! response ctx
         }
 
@@ -653,11 +628,10 @@ let myMonstersHandler : HttpHandler =
                     let db = ctx.Plug<SqliteStorage>()
                     match db.GetUserMonsters user.ID, db.GetNumKey Db.DbKeysNum.DarkCoinPrice with
                     | Ok monsters, Some dcPrice ->
-                        let userBalance = db.GetUserBalance user.ID
                         let monsters' =
                             monsters
                             |> List.map(fun m -> m.WithMonsterImg (FileUtils.mapToLocalImg m.Pic))
-                        UserMonstersDTO(monsters', dcPrice, userBalance) |> apiOk
+                        UserMonstersDTO(monsters', dcPrice) |> apiOk
                     | _ -> apiError "Could not fetch monsters" 500
                 | None -> apiUnauthorized
             return! response ctx
@@ -706,46 +680,20 @@ let renameMonstrHandler : HttpHandler =
             return! response ctx
         }
 
-let monstersUnderEffectsHandler : HttpHandler =
+let monstersDefeatedHandler : HttpHandler =
     fun ctx ->
         task {
             let db  = ctx.Plug<SqliteStorage>()
             let response =
                 match db.GetLastRoundId() with
                 | Some roundId ->
-                    match db.GetMonstersUnderEffect roundId with
+                    match db.GetDefeatedMonsters roundId with
                     | Ok monsters ->
                         monsters
                         |> List.map(fun m -> m.WithMonsterImg(FileUtils.mapToLocalImg m.Pic))
                         |> apiOk
                     | Error e -> apiError (string e) 500
                 | _ -> apiError "No round" 404
-            return! response ctx
-        }
-
-let createMonsterHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let! ao = authenticate ctx
-            let db  = ctx.Plug<SqliteStorage>()
-            let response =
-                match ao with
-                | Some user ->
-                    let mtypeO =
-                        ctx.Request.Form.tryGetFormValue "mtype"
-                        |> Option.map (fun s -> Parser.enumFromIntAsStr<MonsterType>(s.ToString()))
-                        |> Option.defaultValue (Error("Missing mtype"))
-                    let msubtypeO =
-                        ctx.Request.Form.tryGetFormValue "msubtype"
-                        |> Option.map (fun s -> Parser.enumFromIntAsStr<MonsterSubType>(s.ToString()))
-                        |> Option.defaultValue (Error("Missing msubtype"))
-                    match mtypeO, msubtypeO with
-                    | Ok mtype, Ok msubtype ->
-                        db.CreateGenRequest(user.ID, mtype, msubtype)
-                    | Error err1, Error err2 -> Error(err1 + Environment.NewLine + err2)
-                    | Error err, _ | _, Error err -> Error err
-                    |> apiResult
-                | None -> apiUnauthorized
             return! response ctx
         }
 
@@ -758,36 +706,6 @@ let myRequestsHandler : HttpHandler =
                 | Some user ->
                     let db = ctx.Plug<SqliteStorage>()
                     db.GetPendingUserRequests user.ID |> apiResult
-                | None -> apiUnauthorized
-            return! response ctx
-        }
-
-let donateHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let! ao = authenticate ctx
-            let db  = ctx.Plug<SqliteStorage>()
-            let response =
-                match ao with
-                | Some user ->
-                    match ctx.Request.Form.tryGetFormValue "amount" with
-                    | Some s ->
-                        match Decimal.TryParse s with
-                        | true, v ->
-                            match db.Donate(user.ID, v) with
-                            | Ok _ ->
-                                let client = ctx.Plug<GatewayClient>()
-                                let card   = DiscordBot.Components.donationCard v user.Nickname None
-                                let msg    =
-                                    MessageProperties()
-                                        .WithComponents([ card ])
-                                        .WithFlags(MessageFlags.IsComponentsV2)
-                                        .WithAllowedMentions(AllowedMentionsProperties.None)
-                                DUtils.sendMsgToLogChannel client msg |> ignore
-                                apiOk ()
-                            | Error e -> apiError e 400
-                        | _ -> apiBadRequest "Invalid amount"
-                    | _ -> apiBadRequest "Missing amount"
                 | None -> apiUnauthorized
             return! response ctx
         }
@@ -822,19 +740,30 @@ module LeaderboardHandlers =
                 let db     = ctx.Plug<SqliteStorage>()
                 let client = ctx.Plug<RestClient>()
                 let! response =
-                    match db.GetTopInGameDonaters() with
-                    | Ok xs ->
+                    match db.GetTopDonaters(), db.GetLatestDonations() with
+                    | Ok xs, Ok latest ->
                         task {
                             let newIds =
-                                xs |> List.choose (fun d ->
-                                    match d.Donater with
-                                    | Donater.Discord dId ->
-                                        let id' = uint64 dId
-                                        if names.ContainsKey id' then None else Some id'
-                                    | _ -> None)
+                                let xs1 = 
+                                    xs |> List.choose (fun d ->
+                                        match d.Donater with
+                                        | Donater.Discord dId ->
+                                            let id' = uint64 dId
+                                            if names.ContainsKey id' then None else Some id'
+                                        | _ -> None)
+                                    |> Set.ofList
+                                let xs2 = 
+                                    latest |> List.choose (fun d ->
+                                        match d.Donater with
+                                        | Donater.Discord dId ->
+                                            let id' = uint64 dId
+                                            if names.ContainsKey id' then None else Some id'
+                                        | _ -> None)
+                                    |> Set.ofList
+                                xs1 |> Set.union xs2
                             let! us = Task.WhenAll([ for dId in newIds -> task { return! client.GetUserAsync dId } ])
                             us |> Array.iter (fun u -> names.TryAdd(u.Id, u.GlobalName) |> ignore)
-                            let rows =
+                            let leaderboard =
                                 xs |> List.map (fun d ->
                                     let name =
                                         match d.Donater with
@@ -844,23 +773,27 @@ module LeaderboardHandlers =
                                             | _ -> string dId
                                         | Donater.Unknown wallet  -> wallet
                                         | Donater.Custom (_, n)   -> n
-                                    {| name = name; amount = d.Amount |})
-                            return apiOk rows
+                                    DonationDTO(name, d.Amount))
+                            let latest' =
+                                latest |> List.map (fun d ->
+                                    let name =
+                                        match d.Donater with
+                                        | Donater.Discord dId ->
+                                            match names.TryGetValue(uint64 dId) with
+                                            | true, n -> n
+                                            | _ -> string dId
+                                        | Donater.Unknown wallet  -> wallet
+                                        | Donater.Custom (_, n)   -> n
+                                    LatestDonationDTO(name, d.Amount, d.Tx))
+                            return apiOk (TopDonatersDTO(leaderboard, latest'))
                         }
                     | _ -> task { return apiError "Could not fetch donaters" 500 }
                 return! response ctx
             }
 
-    let unknownDonatersHandler : HttpHandler =
-        fun ctx ->
-            task {
-                let db = ctx.Plug<SqliteStorage>()
-                let response = db.GetTopDonaters()
-                return! apiResult response ctx
-            }
-
 module TxHandlers =
     open DarkChampAscent.Api
+
     let createTxHandler : HttpHandler =
         fun ctx ->
             task {
@@ -879,24 +812,48 @@ module TxHandlers =
                             | None -> Error "missing tx field"
                         match txR with
                         | Ok tx ->
-                            match user with
-                            | Account.Web3 web3 ->
+                            let db = ctx.Plug<SqliteStorage>()
+                            let isValid = db.IsTxValid(user.ID, tx)
+                            match isValid with
+                            | Ok () ->
                                 match tx with
-                                | Tx.Deposit amount ->
-                                    let! tx = BlockchainUtils.createDepositTx web3.Wallet amount
-                                    return Ok tx
-                                | Tx.Confirm _ -> return Error "Not supported"
-                            | _ ->
-                                match tx with
-                                | Tx.Deposit _ -> return Error "Not supported"
-                                | Tx.Confirm (wallet, code) ->
-                                    let! txnB64 = Blockchain.getTxB64(wallet, $"confirm:{code}")
-                                    return Ok txnB64
+                                // special case
+                                | Tx.Confirm (wallet, code) -> 
+                                    if user.IsWeb3 then
+                                        return Error "Not supported"
+                                    else
+                                        let! txnB64 = Blockchain.getTxB64(wallet, $"confirm:{code}")
+                                        return Ok txnB64
+                                | _ ->
+                                    let amountO =
+                                        match tx with
+                                        | Tx.Donate (_, amount) -> Some amount
+                                        | Tx.Confirm (_, _) -> None
+                                        | Tx.BuyItem (_, item, amount) ->
+                                            db.GetNumKey Db.DbKeysNum.DarkCoinPrice
+                                            |> Option.map(fun dcPrice ->
+                                                let price = Math.Round(Shop.getPrice item / dcPrice, 6)
+                                                Math.Round(decimal amount * price, 6))
+                                        | Tx.RenameChamp (_, _, _) ->
+                                            db.GetNumKey Db.DbKeysNum.DarkCoinPrice
+                                            |> Option.map(fun dcPrice -> Math.Round(Shop.RenamePrice / dcPrice, 6))
+                                        | Tx.CreateCustomMonster (_, _, _) ->
+                                            db.GetNumKey Db.DbKeysNum.DarkCoinPrice
+                                            |> Option.map(fun dcPrice -> Math.Round(Shop.GenMonsterPrice / dcPrice, 6))
+                                    match amountO with
+                                    | Some amount ->
+                                        let wallet = builder.Configuration.GetSection("Configuration:Wallet").Get<WalletConfiguration>()
+                                        let! tx = BlockchainUtils.createTx tx.Wallet wallet.GameWallet amount tx.Note
+                                        return Ok tx
+                                    | None ->
+                                        return Error ("Unexpected error, try again later")
+                            | Error err -> return Error err
                         | Error err -> return Error err
                     }
                     return! apiResult res ctx
                 | None -> return! apiUnauthorized  ctx
             }
+
     open Blockchain
     let submitTxHandler : HttpHandler =
         fun ctx ->
@@ -905,17 +862,93 @@ module TxHandlers =
                 match ao with
                 | Some user -> 
                     let! res = task {
-                        match user with
-                        | Account.Web3 _ ->
+                        let txR =
+                            match ctx.Request.Form.tryGetFormValue "tx" with
+                            | Some s ->
+                                try
+                                    let tx = JsonSerializer.Deserialize<Tx>(s.ToString(), opt)
+                                    Ok tx
+                                with ex ->
+                                    Error (ex.ToString())
+                            | None -> Error "missing tx field"
+                        let db = ctx.Plug<SqliteStorage>()
+                        match txR with
+                        | Ok tx ->
                             match ctx.Request.Form.tryGetFormValue "signedTxnB64" with
                             | Some s ->
-                                let! txstatus = Blockchain.sendTX64 (s.ToString())
-                                match txstatus with
-                                | TxStatus.Confirmed(tx, _) -> return Ok tx
-                                | TxStatus.Unconfirmed tx -> return Ok tx
-                                | TxStatus.Error err -> return Error (err.ToString())
+                                let txnB64 = s.ToString()
+                                let signedTxnBytes = Convert.FromBase64String(txnB64)
+                                let signedTx = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
+                                let amount =
+                                    match signedTx.Tx with
+                                    | :? AssetTransferTransaction as att ->
+                                        decimal att.AssetAmount / Algo6Decimals
+                                    | _ ->
+                                        Log.Information($"{signedTx.Tx.GetType()}")
+                                        0M
+                                let isValid =
+                                    match tx with
+                                    | Tx.Confirm _ -> Ok (())
+                                    | _ ->
+                                        db.IsTxValid(user.ID, tx, amount)
+                                match isValid with
+                                | Ok () ->
+                                    let! txstatus = Blockchain.sendTX64 txnB64
+                                    
+                                    match txstatus with
+                                    | TxStatus.Confirmed(txId, _) ->
+                                        
+                                        let ptx =
+                                            ParsedTx(txId, signedTx.Tx.Sender.EncodeAsString(), amount, 
+                                                System.Text.Encoding.UTF8.GetString signedTx.Tx.Note, Some tx)
+                                        let! b =
+                                            Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
+                                                5 (TimeSpan.FromSeconds(5.))
+                                        if b then
+                                            match tx with
+                                            | Tx.Confirm _ 
+                                            | Tx.CreateCustomMonster _
+                                            | Tx.RenameChamp _
+                                            | Tx.BuyItem _ -> ()
+                                            | Tx.Donate (_, _) ->
+                                                let sender =
+                                                    match user with
+                                                    | Account.Discord du -> DUtils.mention du.DiscordId
+                                                    | Account.Custom cu -> cu.Nickname
+                                                    | Account.Web3 w3 ->
+                                                        match db.FindDiscordIdByWallet w3.Wallet with
+                                                        | Some dId -> DUtils.mention (uint64 dId)
+                                                        | None -> w3.Wallet
+                                                let sendMsg() = task {
+                                                    let uri = $"https://allo.info/tx/{txId}"
+                                                    let card = Components.donationCard amount sender (Some uri)
+                                                    let newDonationMessage =
+                                                            MessageProperties()
+                                                                .WithComponents([ card ])
+                                                                .WithFlags(MessageFlags.IsComponentsV2)
+                                                                .WithAllowedMentions(AllowedMentionsProperties.None)
+                                                    let gclient = ctx.Plug<GatewayClient>()
+                                                    do! DUtils.sendMsgToLogChannel gclient newDonationMessage
+                                                }
+                                                sendMsg() |> ignore
+
+                                            let msg =
+                                                match tx with
+                                                | Tx.Confirm _ -> "Done!"
+                                                | Tx.CreateCustomMonster _ ->
+                                                    "Request created. We use external AIPG API so don't have full control over it. Processing may take up to 5-10 minutes. You can track progress on 'My Requests' page."
+                                                | Tx.RenameChamp _ -> "Done!"
+                                                | Tx.BuyItem _ -> "Done! You can check 'Storage' to see all available items"
+                                                | Tx.Donate (_, _) -> "Thank you!"
+                                            return Ok $"{msg} TxId: {txId}"
+                                        else
+                                            return Error $"Tx ({txId}) was confirmed but unexpected error occured while processing"
+                                    | TxStatus.Unconfirmed tx -> return Error ($"Sorry, tx {tx} was recorded but not confirmed in time. Please try again later. Current one will be refunded within 24 hrs.")
+                                    | TxStatus.Error err -> return Error (err.ToString())
+                                | Error err ->
+                                    return Error err
                             | None -> return Error "Missing tx"
-                        | _ -> return Error "Web3 users only"
+                        | Error err -> return Error err
                     }
                     return! apiResult res ctx
                 | None -> return! apiUnauthorized ctx
@@ -971,9 +1004,24 @@ let statsHandler : HttpHandler =
     fun ctx ->
         task {
             let db = ctx.Plug<SqliteStorage>()
+            let wallet = builder.Configuration.GetSection("Configuration:Wallet").Get<WalletConfiguration>()
+            
             let response =
                 match db.GetStats() with
-                | Some s -> apiOk s
+                | Some (gs, pw, rewards) -> 
+                    let ts =
+                        TStats(
+                            rewards.TryFind WalletType.Burn |> Option.map(fun v ->
+                                WalletValue(wallet.BurnWallet, v)),
+                            rewards.TryFind WalletType.DAO |> Option.map(fun v ->
+                                WalletValue(wallet.DAOWallet, v)),
+                            rewards.TryFind WalletType.Reserve |> Option.map(fun v ->
+                                WalletValue(wallet.ReserveWallet, v)),
+                            rewards.TryFind WalletType.Dev |> Option.map(fun v ->
+                                WalletValue(wallet.DevsWallet, v)),
+                            rewards.TryFind WalletType.Staking |> Option.map(fun v ->
+                                WalletValue(wallet.StakingWallet, v)))
+                    Stats(gs, ts, pw) |> apiOk
                 | _ -> apiError "Could not fetch stats" 500
             return! response ctx
         }
@@ -1015,7 +1063,6 @@ let dAuth (options: OAuthOptions) =
     options.Events <- OAuthEvents(OnTicketReceived = onTicketReceived)
 
 open NetCord.Hosting.Gateway
-open Conf
 open Microsoft.Extensions.Hosting
 open NetCord.Hosting.Services.ApplicationCommands
 open NetCord.Hosting.Services.ComponentInteractions
@@ -1033,8 +1080,9 @@ builder.Services
     .AddApplicationCommands()
     .AddGatewayHandlers(typeof<DiscordBot.GuildCreateHandler>.Assembly)
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
-    .AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
-    .AddComponentInteractions<ModalInteraction, ModalInteractionContext>() |> ignore
+    //.AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
+    //.AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
+    |> ignore
 
 builder.Services.AddDistributedMemoryCache() |> ignore
 builder.Services.AddSession(fun opt ->
@@ -1045,7 +1093,7 @@ builder.Services.AddSession(fun opt ->
 // CORS – allow Fable dev server and production origin
 
 let frontendOrigin =
-    match Environment.GetEnvironmentVariable("frontendorigin") with
+    match Environment.GetEnvironmentVariable "frontendorigin" with
     | null -> "http://localhost:5173"
     | str -> str
 
@@ -1063,14 +1111,16 @@ builder.Services.AddCors(fun options ->
 builder
     .Services
         .AddSingleton<SqliteStorage>()
-        .AddHostedService<ConfirmationService>()
         .AddHostedService<UpdatePriceService>()
-        .AddHostedService<DepositService>()
+        .AddSingleton<TxTrackerService>()
         .AddHostedService<TrackChampCfgService>()
         .AddSingleton<BattleService>()
         .AddHostedService(fun sp -> sp.GetRequiredService<BattleService>())
         .AddHostedService<BackupService>()
         .AddHostedService<GenService>()
+        .AddHostedService<RemoveBalanceService>()
+        .AddHostedService<RefundInvalidTxService>()
+        .AddHostedService<RefundFailedGenService>()
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme          <- CookieAuthenticationDefaults.AuthenticationScheme
@@ -1124,31 +1174,27 @@ let endpoints =
         Pattern.BattleStatusInfo, battleInfoHandler
 
         Pattern.Shop, shopHandler
-        Pattern.ShopBuyItem, buyItemHandler
         Pattern.Storage, storageHandler
         Pattern.StorageUseItem, useItemHandler
 
         Pattern.Champs, myChampsHandler
         Pattern.ChampsUnderEffects, champsUnderEffectsHandler
-        Pattern.ChampsRename, renameChampHandler
+        Pattern.ChampsDefeated, champsDefeatedHandler
         Pattern.ChampsLevelUp, lvlUpHandler
         Pattern.ChampsRescan, rescanHandler
         Pattern.ChampsDetail None, champHandler
+        Pattern.ChampsNames, champsNamesHandler
 
         Pattern.Monsters, myMonstersHandler
-        Pattern.MonstersUnderEffects, monstersUnderEffectsHandler
+        Pattern.MonstersDefeated, monstersDefeatedHandler
         Pattern.MonstersRename, renameMonstrHandler
-        Pattern.MonstersCreate, createMonsterHandler
         Pattern.MonstersDetail None, monstrHandler
 
         Pattern.Requests, myRequestsHandler
 
-        Pattern.Donate, donateHandler
-
         Pattern.LeaderboardChamps, LeaderboardHandlers.champsHandler
         Pattern.LeaderboardMonsters, LeaderboardHandlers.monstersHandler
         Pattern.LeaderboardDonaters, LeaderboardHandlers.donatersHandler
-        Pattern.LeaderboardUnknownDonaters, LeaderboardHandlers.unknownDonatersHandler
 
         Pattern.Home, homeHandler
         Pattern.Stats, statsHandler
@@ -1167,28 +1213,9 @@ let host = wapp
 host
     .AddApplicationCommandModule(typeof<WalletModule>)
     .AddApplicationCommandModule(typeof<UserModule>)
-    .AddApplicationCommandModule(typeof<ChampsModule>)
-    .AddApplicationCommandModule(typeof<MonsterModule>)
     .AddApplicationCommandModule(typeof<BattleModule>)
-    .AddApplicationCommandModule(typeof<TopModule>)
     .AddApplicationCommandModule(typeof<GeneralModule>)
-    .AddApplicationCommandModule(typeof<CustomModule>)
-    
-    .AddComponentInteraction<StringMenuInteractionContext>("rename", Func<_,_,_,_>(Interactions.renameItem)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("donate", Func<_,_,_,_>(Interactions.donate)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("use", Func<_,_,_,_>(Interactions.useItem)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("useselect", Func<_,_,_,_>(Interactions.useSelectItem)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("buy", Func<_,_,_,_>(Interactions.buyItem)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("confrename", Func<_,_,_,_,_>(Interactions.confirmRename)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("select", Func<_,_,_>(Interactions.select)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("mselect", Func<_,_,_>(Interactions.mselect)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("cmselect", Func<_,_,_>(Interactions.cmselect)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
-host.AddComponentInteraction<StringMenuInteractionContext>("lvlup", Func<_,_,_,_>(Interactions.lvlup)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("lvlupbtn", Func<_,_,_>(Interactions.lvlupbtn)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("mcreate", Func<_,_,_,_,_>(Interactions.mcreate)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("cmrename", Func<_,_,_,_>(Interactions.cmrename)) |> ignore
-host.AddComponentInteraction<ModalInteractionContext>("cmrenamemodal", Func<_,_,_,_>(Interactions.cmrenamemodal)) |> ignore
+    .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
 
 wapp.UseForwardedHeaders(
     ForwardedHeadersOptions(

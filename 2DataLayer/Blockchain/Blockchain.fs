@@ -6,6 +6,7 @@ open Algorand.Indexer
 open Newtonsoft.Json.Linq
 open GameLogic.Champs
 open Algorand.Algod
+open DarkChampAscent.Api
 
 // https://algonode.io/api/#free-as-in--algorand-api-access
 let ALGOD_API_ADDR = "https://mainnet-idx.algonode.cloud"
@@ -24,6 +25,13 @@ let [<Literal>] DarkChampAscentNFD = "darkchampascent.algo"
 
 let [<Literal>] DarkCoinAssetId = 1088771340UL
 let [<Literal>] Algo6Decimals = 1000000M
+
+type ParsedTx(id:string, sender:string, d:decimal, note:string, tx:Tx option) =
+    member _.TxId = id
+    member _.Tx = tx
+    member _.Amount = d
+    member _.Sender = sender
+    member _.Note = note
 
 let getApplAccountTransactions(applId:uint64, afterTimeOpt:DateTime option) =
     let afterTimeStr = afterTimeOpt |> Option.map(fun dt -> dt.ToString("yyyy-MM-dd")) |> Option.defaultValue ""
@@ -191,20 +199,14 @@ let getAssetTxsForAddress(wallet:string, assetId: Nullable<uint64>, afterTimeOpt
         }
     getTransactions null Seq.empty |> Async.RunSynchronously
 
-/// returns (id, sender, amount)
-let getDarkCoinDepositForWallet(wallet:string, afterTimeOpt:DateTime option) =
+let getDarkCoinTxForWallet(wallet:string, afterTimeOpt:DateTime option) =
     getAssetTxsForAddress(wallet, Nullable(DarkCoinAssetId), afterTimeOpt)
     |> Seq.choose(fun tx ->
         if tx.AssetTransferTransaction <> null && tx.AssetTransferTransaction.Receiver = wallet && tx.AssetTransferTransaction.Amount > 0UL then
-            Some(tx.Id, tx.Sender, decimal tx.AssetTransferTransaction.Amount / Algo6Decimals)
-        else None)
-
-/// returns (wallet, note)
-let getNotesForWallet(wallet:string, afterTimeOpt:DateTime option) =
-    getAssetTxsForAddress(wallet, Nullable(), afterTimeOpt)
-    |> Seq.choose(fun tx ->
-        if tx.PaymentTransaction <> null && tx.PaymentTransaction.Amount = 0UL then
-            Some(tx.Sender, tx.Note)
+            let note = System.Text.Encoding.UTF8.GetString tx.Note
+            ParsedTx(tx.Id, tx.Sender, decimal tx.AssetTransferTransaction.Amount / Algo6Decimals,
+                note, Tx.TryParse tx.Sender note)
+            |> Some
         else None)
 
 open Algorand.Algod.Model

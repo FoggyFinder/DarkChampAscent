@@ -31,7 +31,8 @@ let private parseHash () : Page =
     | [ "mychampsundereffects" ]       -> Page.MyChampsEffects
     | [ "mymonsters" ]                 -> Page.MyMonsters
     | [ "myrequests" ]                 -> Page.MyRequests
-    | [ "monstersundereffects" ]       -> Page.MonstersEffects
+    | [ "monstersdefeated" ]       -> Page.DefeatedMonsters
+    | [ "champsdefeated" ]       -> Page.DefeatedChamps
     | [ "champ"; id ]                  ->
         match System.UInt64.TryParse id with true, v -> Page.ChampDetail v | _ -> Page.NotFound
     | [ "monster"; id ]                ->
@@ -40,9 +41,7 @@ let private parseHash () : Page =
     | [ "top"; "champs" ]              -> Page.TopChamps
     | [ "top"; "monsters" ]            -> Page.TopMonsters
     | [ "top"; "donaters" ]            -> Page.TopDonaters
-    | [ "top"; "donaters"; "unknown" ] -> Page.TopUnknownDonaters
     | [ "traits" ]                     -> Page.Traits
-    | [ "faq" ]                        -> Page.FAQ
     | [ "stats" ]                      -> Page.Stats
     | [ "tokenomics" ]                 -> Page.Tokenomics
     | _                                -> Page.NotFound
@@ -90,20 +89,18 @@ let App () =
         | Page.MyChampsEffects    -> if isLoggedIn then ChampsEffectsPage () else LoginPage onLogin
         | Page.MyMonsters         -> if isLoggedIn then MyMonstersPage () else LoginPage onLogin
         | Page.MyRequests         -> if isLoggedIn then MyRequestsPage () else LoginPage onLogin
-        | Page.MonstersEffects    -> MonstersEffectsPage ()
+        | Page.DefeatedMonsters    -> DefeatedMonstersPage ()
+        | Page.DefeatedChamps    -> DefeatedChampsPage ()
         | Page.ChampDetail id     -> ChampDetailPage id
         | Page.MonsterDetail id   -> MonsterDetailPage id
         | Page.TopGeneral         -> LeaderboardGeneralPage ()
         | Page.TopChamps          -> LeaderboardChampsPage ()
         | Page.TopMonsters        -> LeaderboardMonstersPage ()
         | Page.TopDonaters        -> LeaderboardDonatersPage ()
-        | Page.TopUnknownDonaters -> LeaderboardUnknownDonatersPage ()
         | Page.Traits             -> TraitsPage ()
-        | Page.FAQ                -> FAQPage ()
         | Page.Stats              -> StatsPage ()
         | Page.Tokenomics         -> TokenomicsPage ()
         | Page.NotFound           -> Html.div [ prop.text "404 - Page not found" ]
-        
 
     if not authChecked then spinner ()
     else Layout currentPage.Title isLoggedIn currentPage pageContent
