@@ -3159,13 +3159,13 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     align-items: start;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1000px) {
     .donaters-layout {
         grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1000px) {
     .donaters-recent .col-tx {
         display: none;
     }
@@ -3175,4 +3175,201 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     text-align: left;
     font-size: var(--font-size-lg);
     margin-block-end: var(--space-3);
+}
+
+@media (max-width: 600px) {
+    .donaters-top table,
+    .donaters-recent table {
+        table-layout: auto;
+        width: 100%;
+    }
+
+    /* # + Name stay on same row, name takes all space */
+    .donaters-top td:nth-child(1),
+    .donaters-recent td:nth-child(1),
+    .donaters-top th:nth-child(1),
+    .donaters-recent th:nth-child(1) {
+        width: 2rem;
+        text-align: center;
+        padding-inline: var(--space-1);
+        white-space: nowrap;
+    }
+
+    .donaters-top td:nth-child(2),
+    .donaters-recent td:nth-child(2),
+    .donaters-top th:nth-child(2),
+    .donaters-recent th:nth-child(2) {
+        text-align: left;
+        padding-inline: var(--space-2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* DarkCoins — drop to its own row via block */
+    .donaters-top td:last-child,
+    .donaters-recent td:last-child {
+        display: block;
+        text-align: right;
+        padding: 0 var(--space-2) var(--space-2);
+        font-size: var(--font-size-sm);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        color: var(--color-text-muted);
+    }
+
+    /* Header for DarkCoins — just hide it since value is on its own row */
+    .donaters-top th:last-child,
+    .donaters-recent th:last-child {
+        display: table-cell;
+        text-align: right;
+        padding-inline: var(--space-2);
+        white-space: nowrap;
+        font-size: var(--font-size-xs);
+    }
+}
+
+/* ============================================================
+   STATS PAGE — Final mobile fix
+   ============================================================ */
+@media (max-width: 600px) {
+    .stats table,
+    .stats .stats-table {
+        display: table;
+        table-layout: fixed;
+        width: 100%;
+        border: none;
+        background: transparent;
+    }
+
+    .stats table tbody { display: table-row-group; }
+    .stats table tr    { display: table-row; background: transparent; }
+    .stats table td    { display: table-cell; vertical-align: middle; }
+
+    /* icon */
+    .stats table td:nth-child(1) {
+        width: 2rem;
+        text-align: center;
+        padding: var(--space-2) var(--space-1);
+        white-space: nowrap;
+    }
+
+    /* label */
+    .stats table td:nth-child(2) {
+        padding: var(--space-2) var(--space-2);
+        text-align: left;
+        font-size: var(--font-size-sm);
+        color: var(--color-text-muted);
+    }
+
+    /* value — now max "1086.93K" = 8 chars, fits easily */
+    .stats table td:nth-child(3) {
+        width: 5.5rem;
+        text-align: right;
+        padding: var(--space-2) var(--space-2);
+        font-size: var(--font-size-sm);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        color: var(--color-text);
+    }
+}
+
+.monster-leaderboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    max-inline-size: var(--max-width);
+}
+
+.monster-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    position: relative;
+    transition: background var(--transition-fast);
+}
+
+.monster-card:hover {
+    background: var(--color-primary-alpha-06);
+    border-color: var(--color-primary-alpha-12);
+}
+
+.monster-card-rank {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border-radius: var(--radius-sm);
+    padding: 1px var(--space-1);
+    line-height: 1.4;
+    z-index: 1;
+}
+
+.monster-card-img {
+    inline-size: 192px;
+    block-size: 192px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    flex-shrink: 0;
+}
+
+.monster-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.monster-card-info a {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--color-primary-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.monster-card-class {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+}
+
+.monster-card-xp {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+    .monster-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .monster-card-img {
+        inline-size: 192px;
+        block-size: 192px;
+    }
+
+    .monster-card-info {
+        align-items: center;
+    }
+
+    .monster-card-info a {
+        white-space: normal;
+        text-align: center;
+    }
 }

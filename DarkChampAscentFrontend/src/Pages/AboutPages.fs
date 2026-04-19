@@ -96,7 +96,7 @@ let StatsPage () =
             // $"https://allo.info/account/{w}/txns?sender={KnownWallets.DarkChampAscent}"
             |> Some
         match v with
-        | Some x -> fullStatRow WebEmoji label (string x.Value) (link x.Wallet)
+        | Some x -> fullStatRow WebEmoji label (Utils.formatValue x.Value) (link x.Wallet)
         | None -> Html.none
     deferred data (fun s ->
         Html.div [

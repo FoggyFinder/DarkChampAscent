@@ -26,6 +26,28 @@ let LeaderboardGeneralPage () =
         ]
     ]
 
+let champCard (i: int) (c: ChampShortInfo) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [
+                prop.className "monster-card-rank"
+                prop.text (string (i + 1))
+            ]
+            ipfsImg c.IPFS "monster-card-img"
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    champLink c.ID c.Name
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{c.XP} XP"
+                    ]
+                ]
+            ]
+        ]
+    ]
+
 [<ReactComponent>]
 let LeaderboardChampsPage () =
     let data, setData = React.useState<Deferred<ChampShortInfo list>> Loading
@@ -38,22 +60,42 @@ let LeaderboardChampsPage () =
         } |> Async.StartImmediate), [||])
     deferred data (fun champs ->
         Html.div [
-            prop.className "leaderboard"
+            prop.className "leaderboard monster-leaderboard"
             prop.children [
-                Html.table [
-                    Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "XP"] ] ]
-                    Html.tbody [
-                        for (i, c) in champs |> List.indexed ->
-                            Html.tr [
-                                Html.td [prop.text (string (i+1))]
-                                Html.td [ipfsImg c.IPFS "picSmall"]
-                                Html.td [champLink c.ID c.Name]
-                                Html.td [prop.text (string c.XP)]
-                            ]
+                for (i, c) in champs |> List.indexed ->
+                    champCard i c
+            ]
+        ])
+
+let monsterCard (i: int) (m: MonsterShortInfo) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [
+                prop.className "monster-card-rank"
+                prop.text (string (i + 1))
+            ]
+            Html.img [ 
+                prop.className "monster-card-img"
+                Utils.srcMonsterImg m.Pic
+                prop.alt ""
+            ]
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    monsterLink m.ID m.Name
+                    Html.span [
+                        prop.className "monster-card-class muted"
+                        prop.text (Display.monsterClass (m.MType, m.MSubType))
+                    ]
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{m.XP} XP"
                     ]
                 ]
             ]
-        ])
+        ]
+    ]
 
 [<ReactComponent>]
 let LeaderboardMonstersPage () =
@@ -67,23 +109,10 @@ let LeaderboardMonstersPage () =
         } |> Async.StartImmediate), [||])
     deferred data (fun monsters ->
         Html.div [
-            prop.className "leaderboard"
+            prop.className "leaderboard monster-leaderboard"
             prop.children [
-                Html.table [
-                    Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Class"]; Html.th [prop.text "XP"] ] ]
-                    Html.tbody [
-                        for (i, m) in monsters |> List.indexed ->
-                            Html.tr [
-                                Html.td [prop.text (string (i+1))]
-                                Html.td [ 
-                                    Html.img [ prop.className "picSmall"; Utils.srcMonsterImg m.Pic; prop.alt "" ]
-                                ]
-                                Html.td [monsterLink m.ID m.Name]
-                                Html.td [prop.text (Display.monsterClass (m.MType, m.MSubType)) ]
-                                Html.td [prop.text (string m.XP)]
-                            ]
-                    ]
-                ]
+                for (i, m) in monsters |> List.indexed ->
+                    monsterCard i m
             ]
         ])
 
@@ -107,7 +136,7 @@ let LeaderboardDonatersPage () =
                     prop.children [
                         Html.h2 [ prop.text $"{WebEmoji.Leaderboard} All time top" ]
                         Html.table [
-                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.text "DarkCoins" ] ] ]
+                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.dangerouslySetInnerHTML $"{WebEmoji.DarkCoin}" ] ] ]
                             Html.tbody [
                                 for (i, d) in donaters.Top |> List.indexed ->
                                     Html.tr [
@@ -125,7 +154,7 @@ let LeaderboardDonatersPage () =
                     prop.children [
                         Html.h2 [ prop.text $"{WebEmoji.TopDonaters} Recent" ]
                         Html.table [
-                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.className "col-tx"; prop.text "Tx" ]; Html.th [ prop.text "DarkCoins" ] ] ]
+                            Html.thead [ Html.tr [ Html.th [ prop.text "#" ]; Html.th [ prop.text "Name" ]; Html.th [ prop.className "col-tx"; prop.text "Tx" ]; Html.th [ prop.dangerouslySetInnerHTML $"{WebEmoji.DarkCoin}" ] ] ]
                             Html.tbody [
                                 for (i, d) in donaters.Latest |> List.indexed ->
                                     Html.tr [

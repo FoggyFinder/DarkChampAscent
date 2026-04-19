@@ -88,6 +88,44 @@ let ShopPage () =
             ]
         ])
 
+let defeatedMonsterCard (i: int) (m: MonsterUnderEffect) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [ prop.className "monster-card-rank"; prop.text (string (i + 1)) ]
+            Html.img [ prop.className "monster-card-img"; Utils.srcMonsterImg m.Pic; prop.alt "" ]
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    monsterLink (uint64 m.ID) m.Name
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{m.RoundsLeft} {WebEmoji.Rounds} rounds left"
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+let defeatedChampCard (i: int) (c: ChampUnderEffect) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [ prop.className "monster-card-rank"; prop.text (string (i + 1)) ]
+            ipfsImg c.IPFS "monster-card-img"
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    champLink (uint64 c.ID) c.Name
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{c.RoundsLeft} {WebEmoji.Rounds} rounds left"
+                    ]
+                ]
+            ]
+        ]
+    ]
+
 [<ReactComponent>]
 let DefeatedMonstersPage () =
     let data, setData = React.useState<Deferred<MonsterUnderEffect list>> Loading
@@ -103,21 +141,13 @@ let DefeatedMonstersPage () =
             prop.className "monsters-under-effects"
             prop.children [
                 if monsters.IsEmpty then
-                    Html.p [ prop.text "No monsters defeated." ]
+                    Html.p [ prop.className "muted"; prop.text "No monsters defeated." ]
                 else
-                    Html.table [
-                        Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Effect"]; Html.th [prop.text "Rounds"] ] ]
-                        Html.tbody [
+                    Html.div [
+                        prop.className "monster-leaderboard"
+                        prop.children [
                             for (i, m) in monsters |> List.sortByDescending (fun m -> m.RoundsLeft) |> List.indexed ->
-                                Html.tr [
-                                    Html.td [prop.text (string (i+1))]
-                                    Html.td [ 
-                                      Html.img [ prop.className "picSmall"; Utils.srcMonsterImg m.Pic; prop.alt "" ] 
-                                    ]
-                                    Html.td [monsterLink (uint64 m.ID) m.Name]
-                                    Html.td [prop.text $"{DisplayEnum.Effect m.Effect}"]
-                                    Html.td [prop.text $"{m.RoundsLeft} {WebEmoji.Rounds}"]
-                                ]
+                                defeatedMonsterCard i m
                         ]
                     ]
             ]
@@ -138,18 +168,13 @@ let DefeatedChampsPage () =
             prop.className "champs-under-effects"
             prop.children [
                 if champs.IsEmpty then
-                    Html.p [ prop.text "No champs defeated." ]
+                    Html.p [ prop.className "muted"; prop.text "No champs defeated." ]
                 else
-                    Html.table [
-                        Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Rounds"] ] ]
-                        Html.tbody [
+                    Html.div [
+                        prop.className "monster-leaderboard"
+                        prop.children [
                             for (i, c) in champs |> List.sortByDescending (fun c -> c.RoundsLeft) |> List.indexed ->
-                                Html.tr [
-                                    Html.td [prop.text (string (i+1))]
-                                    Html.td [ipfsImg c.IPFS "picSmall"]
-                                    Html.td [champLink (uint64 c.ID) c.Name]
-                                    Html.td [prop.text $"{c.RoundsLeft} {WebEmoji.Rounds}"]
-                                ]
+                                defeatedChampCard i c
                         ]
                     ]
             ]

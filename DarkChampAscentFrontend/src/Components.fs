@@ -370,7 +370,7 @@ let WalletAddress (addr: string) =
         ]
     ]
 
-let fullStatRow (WebEmoji: string) (label: string) (value: string) (link:string option) =
+let fullStatRow (WebEmoji: string) (label: string) (value: string) (link: string option) =
     Html.tr [
         Html.td [ Html.span [ prop.text WebEmoji ] ]
         Html.td [
@@ -378,17 +378,15 @@ let fullStatRow (WebEmoji: string) (label: string) (value: string) (link:string 
                 prop.className "label-wrap"
                 prop.children [
                     match link with
-                    | Some l ->
-                        Html.a [ 
-                            prop.href l
-                            prop.target.blank
-                            prop.text label
-                        ]
+                    | Some l -> Html.a [ prop.href l; prop.target.blank; prop.text label ]
                     | None -> Html.text label
                 ]
             ]
         ]
-        Html.td [ Html.text value ]
+        Html.td [
+            prop.className "stat-value"
+            prop.text value
+        ]
     ]
 
 let statRow (WebEmoji: string) (label: string) (value: string) =
@@ -437,3 +435,9 @@ module Utils =
     let srcMonsterImg (mimg:MonsterImg)=
         match mimg with
         | MonsterImg.File f -> prop.src (Api.baseUrl + "/" + f)
+
+    let formatValue (d:decimal) =
+        match d with
+        | _ when abs d >= 1_000_000.0M -> sprintf "%.2fM" (d / 1_000_000.0M)
+        | _ when abs d >= 1_000.0M     -> sprintf "%.2fK" (d / 1_000.0M)
+        | _                            -> sprintf "%.4f" d

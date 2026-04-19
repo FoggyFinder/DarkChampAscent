@@ -382,6 +382,52 @@ let StoragePage () =
             ]
         ])
 
+let myChampCard (i: int) (c: ChampShortInfo) (balance: decimal) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [ prop.className "monster-card-rank"; prop.text (string (i + 1)) ]
+            ipfsImg c.IPFS "monster-card-img"
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    champLink c.ID c.Name
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{c.XP} XP"
+                    ]
+                    Html.span [
+                        prop.className "muted"
+                        prop.dangerouslySetInnerHTML $"{balance} {WebEmoji.DarkCoin}"
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+let champEffectCard (i: int) (c: ChampUnderEffect) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [ prop.className "monster-card-rank"; prop.text (string (i + 1)) ]
+            ipfsImg c.IPFS "monster-card-img"
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    champLink (uint64 c.ID) c.Name
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{DisplayEnum.Effect c.Effect}"
+                    ]
+                    Html.span [
+                        prop.className "muted"
+                        prop.text $"{c.RoundsLeft} {WebEmoji.Rounds} rounds left"
+                    ]
+                ]
+            ]
+        ]
+    ]
+
 [<ReactComponent>]
 let MyChampsPage () =
     let data, setData = React.useState<Deferred<(ChampShortInfo * decimal) list>> Loading
@@ -422,22 +468,11 @@ let MyChampsPage () =
                         Html.text " then click Rescan."
                     ]
                 else
-                    Html.table [
-                        Html.thead [
-                            Html.tr [
-                                Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]
-                                Html.th [prop.text "XP"]; Html.th [prop.text "Balance"]
-                            ]
-                        ]
-                        Html.tbody [
+                    Html.div [
+                        prop.className "monster-leaderboard"
+                        prop.children [
                             for (i, (c, balance)) in champs |> List.indexed ->
-                                Html.tr [
-                                    Html.td [prop.text (string (i+1))]
-                                    Html.td [ipfsImg c.IPFS "picSmall"]
-                                    Html.td [champLink c.ID c.Name]
-                                    Html.td [prop.text (string c.XP)]
-                                    Html.td [prop.dangerouslySetInnerHTML (sprintf "%s %s" (string balance) WebEmoji.DarkCoin)]
-                                ]
+                                myChampCard i c balance
                         ]
                     ]
             ]
@@ -458,23 +493,40 @@ let ChampsEffectsPage () =
             prop.className "champs-under-effects"
             prop.children [
                 if champs.IsEmpty then
-                    Html.p [ prop.text "No champs under effects." ]
+                    Html.p [ prop.className "muted"; prop.text "No champs under effects." ]
                 else
-                    Html.table [
-                        Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Effect"]; Html.th [prop.text "Rounds"] ] ]
-                        Html.tbody [
+                    Html.div [
+                        prop.className "monster-leaderboard"
+                        prop.children [
                             for (i, c) in champs |> List.sortByDescending (fun c -> c.RoundsLeft) |> List.indexed ->
-                                Html.tr [
-                                    Html.td [prop.text (string (i+1))]
-                                    Html.td [ipfsImg c.IPFS "picSmall"]
-                                    Html.td [champLink (uint64 c.ID) c.Name]
-                                    Html.td [prop.text $"{DisplayEnum.Effect c.Effect}"]
-                                    Html.td [prop.text $"{c.RoundsLeft} {WebEmoji.Rounds}"]
-                                ]
+                                champEffectCard i c
                         ]
                     ]
             ]
         ])
+
+let myMonsterCard (i: int) (m: MonsterShortInfo) =
+    Html.div [
+        prop.className "monster-card"
+        prop.children [
+            Html.div [ prop.className "monster-card-rank"; prop.text (string (i + 1)) ]
+            Html.img [ prop.className "monster-card-img"; Utils.srcMonsterImg m.Pic; prop.alt "" ]
+            Html.div [
+                prop.className "monster-card-info"
+                prop.children [
+                    monsterLink m.ID m.Name
+                    Html.span [
+                        prop.className "monster-card-class muted"
+                        prop.text (Display.monsterClass (m.MType, m.MSubType))
+                    ]
+                    Html.span [
+                        prop.className "monster-card-xp"
+                        prop.text $"{m.XP} XP"
+                    ]
+                ]
+            ]
+        ]
+    ]
 
 [<ReactComponent>]
 let MyMonstersPage () =
@@ -551,17 +603,11 @@ let MyMonstersPage () =
                 if d.Monsters.IsEmpty then
                     Html.p [ prop.text "No monsters yet." ]
                 else
-                    Html.table [
-                        Html.thead [ Html.tr [ Html.th [prop.text "#"]; Html.th [prop.text "Pic"]; Html.th [prop.text "Name"]; Html.th [prop.text "Class"]; Html.th [prop.text "XP"] ] ]
-                        Html.tbody [
+                    Html.div [
+                        prop.className "monster-leaderboard"
+                        prop.children [
                             for (i, m) in d.Monsters |> List.indexed ->
-                                Html.tr [
-                                    Html.td [prop.text (string (i+1))]
-                                    Html.td [ Html.img [ prop.className "picSmall"; Utils.srcMonsterImg m.Pic; prop.alt "" ] ]
-                                    Html.td [monsterLink m.ID m.Name]
-                                    Html.td [prop.text (Display.monsterClass (m.MType, m.MSubType))]
-                                    Html.td [prop.text (string m.XP)]
-                                ]
+                                myMonsterCard i m
                         ]
                     ]
             ]
