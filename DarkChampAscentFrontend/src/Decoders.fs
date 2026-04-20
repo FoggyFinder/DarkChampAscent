@@ -249,13 +249,6 @@ let decodeUserAccount (m: Map<string, Json>) : UserAccount option =
         Some (UserAccount(user, wallets, asInt champs, asInt monsters, asInt requests))
     | _ -> None
 
-let decodeChampFullInfo (m: Map<string, Json>) : ChampFullInfo option =
-    match reqNum "ID" m, reqNum "Assetid" m, reqStr "Name" m,
-          reqStr "IPFS" m, reqNum "Balance" m with
-    | Some id, Some aid, Some name, Some ipfs, Some bal ->
-        Some (ChampFullInfo(asUInt64 id, asUInt64 aid, name, ipfs, asDecimal bal))
-    | _ -> None
-
 let decodeMonsterInfo (m: Map<string, Json>) : MonsterInfo option =
     match reqNum "XP" m, reqStr "Name" m, reqStr "Description" m,
           field "Picture" m |> Option.bind decodeMonsterImg,
@@ -355,6 +348,13 @@ let decodeShopDTO (m: Map<string, Json>) : ShopDTO option =
         Some (ShopDTO(items, asDecimal price))
     | _ -> None
 
+let decodeChampInfoWithStat (m: Map<string, Json>) =
+    let stat = (field "Stat" m) |> Option.bind asObj |> Option.bind decodeStat
+    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, stat with
+    | Some id, Some name, Some ipfs, Some stat ->
+        Some (ChampInfoWithStat(uint64 id, name, ipfs, stat))
+    | _ -> None
+
 let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
     let storage =
         reqArr "Storage" m
@@ -364,7 +364,7 @@ let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
             | _ -> None)
     let champs =
         reqArr "Champs" m
-        |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampFullInfo)
+        |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
     Some (UserStorageDTO(storage, champs))
 
 let decodeChampDTO (m: Map<string, Json>) : ChampDTO option =
@@ -513,12 +513,6 @@ let private decodeRoundParticipantChamp (j: Json) =
         | _ -> None
     | _ -> None
 
-let decodeChampInfoWithStat (m: Map<string, Json>) =
-    let stat = (field "Stat" m) |> Option.bind asObj |> Option.bind decodeStat
-    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, stat with
-    | Some id, Some name, Some ipfs, Some stat ->
-        Some (ChampInfoWithStat(uint64 id, name, ipfs, stat))
-    | _ -> None
 
 let decodeActiveChamps (raw: string) =
     parseResultRaw (function

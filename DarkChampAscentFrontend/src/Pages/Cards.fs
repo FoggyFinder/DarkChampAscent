@@ -113,7 +113,7 @@ let defeatedChampCard (i: int) (c: ChampUnderEffect) =
     ]
 
 
-let storageItemCard (i: int) (item: ShopItem) (amount: int) (champs: ChampFullInfo list) (selected: string) (setSelected: string -> unit) (setMsg: string option -> unit) (reload: unit -> unit) =
+let storageItemCard (i: int) (item: ShopItem) (amount: int) (champs: ChampInfoWithStat list) (selected: string) (setSelected: string -> unit) (setMsg: string option -> unit) (reload: unit -> unit) =
     let sit = Shop.getTarget item
     let vStr = let v = Shop.getValue item in if v <> 0L then $"+{v} {webEmojiFromSITarget sit}" else ""
     let dStr = let dur = Shop.getRoundDuration item in if dur = Int32.MaxValue then "" elif dur = 0 then "" else $"{dur} {WebEmoji.Rounds} rounds"
@@ -143,21 +143,31 @@ let storageItemCard (i: int) (item: ShopItem) (amount: int) (champs: ChampFullIn
                 prop.children [
                     CustomSelectInput
                         selected
-                        setSelected
+                        (fun s -> champs |> List.tryPick (fun rpc -> if (rpc.ID.ToString()) = s then Some (rpc.ID.ToString()) else None) |> Option.defaultValue "" |> setSelected)
                         [ for c in champs -> (string c.ID), c.Name, Some (Links.IPFS + c.IPFS) ]
-                    Html.button [
-                        prop.className "btn btn-sm btn-primary"
-                        prop.onClick (fun _ ->
-                            match UInt64.TryParse selected with
-                            | true, cid ->
-                                async {
-                                    let! r = Api.useItem item cid
-                                    match r with
-                                    | Ok () -> setMsg (Some "Used!"); reload ()
-                                    | Error e -> setMsg (Some ("Error: " + e))
-                                } |> Async.StartImmediate
-                            | _ -> ())
-                        prop.text "Use"
+
+                    match champs |> List.tryPick (fun rpc -> if (rpc.ID.ToString()) = selected then Some rpc else None) with
+                    | Some sChamp -> chTable sChamp.Stat                          
+                    | None -> ()
+
+                    Html.div [
+                        prop.className "storage-use-footer"
+                        prop.children [
+                            Html.button [
+                                prop.className "btn btn-sm btn-primary"
+                                prop.onClick (fun _ ->
+                                    match UInt64.TryParse selected with
+                                    | true, cid ->
+                                        async {
+                                            let! r = Api.useItem item cid
+                                            match r with
+                                            | Ok () -> setMsg (Some "Used!"); reload ()
+                                            | Error e -> setMsg (Some ("Error: " + e))
+                                        } |> Async.StartImmediate
+                                    | _ -> ())
+                                prop.text "Use"
+                            ]
+                        ]
                     ]
                 ]
             ]

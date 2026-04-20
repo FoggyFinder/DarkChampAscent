@@ -110,13 +110,6 @@ type ChampShortInfo(cid:uint64, name:string, ipfs:string, xp:uint64) =
     member _.IPFS = ipfs
     member _.XP = xp
 
-type ChampFullInfo(cid:uint64, assetId:uint64, name:string, ipfs:string, balance:decimal) =
-    member _.ID = cid
-    member _.Assetid = assetId
-    member _.Name = name
-    member _.IPFS = ipfs
-    member _.Balance = balance
-
 type ChampInfoWithStat(cid:uint64, name:string, ipfs:string, stat:Stat) =
     member _.ID = cid
     member _.Name = name

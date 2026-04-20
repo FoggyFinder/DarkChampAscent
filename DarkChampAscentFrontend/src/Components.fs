@@ -237,6 +237,7 @@ let monsterLink (id: uint64) (name: string) =
 
 open Fable.Core.JsInterop
 open GameLogic.Monsters
+open GameLogic.Champs
 
 [<ReactComponent>]
 let CustomSelectInput (value: string) (onChange: string -> unit) (options: (string * string * string option) list) =
@@ -391,6 +392,61 @@ let fullStatRow (WebEmoji: string) (label: string) (value: string) (link: string
 
 let statRow (WebEmoji: string) (label: string) (value: string) =
     fullStatRow WebEmoji label value None
+
+
+let chTable (stat:Stat) =
+    Html.table [
+        Html.tbody [
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Health ]
+                Html.td [ prop.className "stat-name"; prop.text "Health" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Health) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Magic ]
+                Html.td [ prop.className "stat-name"; prop.text "Magic" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Magic) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Attack ]
+                Html.td [ prop.className "stat-name"; prop.text "Attack" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Attack) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.MagicAttack ]
+                Html.td [ prop.className "stat-name"; prop.text "M. Attack" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.MagicAttack) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Shield ]
+                Html.td [ prop.className "stat-name"; prop.text "Defense" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Defense) ]
+
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.MagicShield ]
+                Html.td [ prop.className "stat-name"; prop.text "M. Defense" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.MagicDefense) ]
+            ]
+
+            Html.tr [
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Luck ]
+                Html.td [ prop.className "stat-name"; prop.text "Luck" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Luck) ]
+                
+                Html.td [ prop.className "stat-sep" ]
+
+                Html.td [ prop.className "stat-icon"; prop.text WebEmoji.Accuracy ]
+                Html.td [ prop.className "stat-name"; prop.text "Accuracy" ]
+                Html.td [ prop.className "stat-val";  prop.text (string stat.Accuracy) ]
+            ]
+        ]
+    ]
+
 
 let useSSE (url: string) (onMessage: string -> unit) =
     React.useEffect((fun () ->

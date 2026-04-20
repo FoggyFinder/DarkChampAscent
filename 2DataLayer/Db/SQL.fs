@@ -579,8 +579,12 @@ module internal SQL =
     
 
     let GetUserChamps = """
-        SELECT ChampId, Name, AssetId, IPFS, Balance FROM Champ
-        JOIN UserChamp uc ON uc.ChampId = Champ.ID
+        SELECT
+            c.ID, Name, IPFS,
+            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense
+        FROM Champ c
+        JOIN UserChamp uc ON uc.ChampId = c.ID
+        JOIN ChampStat cs ON cs.ChampId = c.ID
         WHERE UserId = @userId
     """
 

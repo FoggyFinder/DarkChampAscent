@@ -470,7 +470,7 @@ let storageHandler : HttpHandler =
                     let db  = ctx.Plug<SqliteStorage>()
                     let uId = user.ID
                     match db.GetUserStorage uId, db.GetUserChamps uId with
-                    | Some items, Some champs ->
+                    | Some items, Ok champs ->
                         UserStorageDTO(items, champs) |> apiOk
                     | _ -> apiError "Could not fetch storage" 500
                 | None -> apiUnauthorized

@@ -3376,7 +3376,7 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 
 .shop-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
     gap: var(--space-3);
     padding: var(--space-4);
     max-inline-size: var(--max-width);
@@ -3440,19 +3440,46 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 
 .storage-use {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: var(--space-2);
-    flex-wrap: wrap;
-    margin-block-start: var(--space-1);
+    width: 100%;
 }
 
 .storage-use .custom-select {
-    flex: 1 1 auto;
-    min-width: 0;
+    width: 100%;
 }
 
-.storage-use .btn {
-    flex-shrink: 0;
+.storage-use table {
+    width: 100%;
+    border: none;
+    background: transparent;
+    table-layout: auto;        /* let content breathe */
+}
+
+.storage-use table td.stat-name {
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: unset;
+    font-size: var(--font-size-xs);
+    padding-inline-end: var(--space-2);
+}
+
+.storage-use table td.stat-val {
+    font-size: var(--font-size-sm);
+    width: 2.5rem;             /* fixed narrow column for numbers */
+}
+
+.storage-use table td.stat-icon {
+    width: 1.4rem;
+}
+
+.storage-use table td.stat-sep {
+    width: var(--space-4);     /* a bit more breathing room between columns */
+}
+
+.storage-use-footer {
+    display: flex;
+    justify-content: flex-end;
 }
 
 .donation-grid {

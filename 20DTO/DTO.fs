@@ -15,7 +15,7 @@ type ShopDTO(items:ShopItem list, price:decimal) =
     member _.Items = items
     member _.Price = price
 
-type UserStorageDTO(storage:(ShopItem * int) list, champs:ChampFullInfo list) =
+type UserStorageDTO(storage:(ShopItem * int) list, champs:ChampInfoWithStat list) =
     member _.Storage = storage
     member _.Champs = champs
 

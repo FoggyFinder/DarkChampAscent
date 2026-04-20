@@ -1404,23 +1404,80 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 None
         | None -> None
 
-    member _.GetUserChamps(uId: UserId) =
+    member x.GetUserChamps(uId: UserId) =
         match getUserIdByUserId uId with
         | Some userId ->
             try
+                let roundId' = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
                 use conn = new SqliteConnection(cs)
+                // TODO: cache this for fast lookup
+                let lvls =
+                    Db.newCommand SQL.GetLvlsForUserChamps conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 <| int64 userId
+                    ]
+                    |> Db.query(fun r -> {|
+                        ChampId = uint64 <| r.GetInt64(0)
+                        Characteristic = enum<Characteristic> <| r.GetInt32(1)
+                    |})
+                    |> List.groupBy(fun v -> v.ChampId)
+                    |> dict
+                    |> Seq.map(fun kv ->
+                        kv.Key,
+                        kv.Value |> List.countBy(fun l -> l.Characteristic) |> dict |> Levels.statFromCharacteristics)
+                    |> Map.ofSeq
+
+                let boosts =
+                    Db.newCommand SQL.GetBoostsForUserChampsAtRound conn
+                    |> Db.setParams [
+                        "userId", SqlType.Int64 <| int64 userId
+                        "roundId", SqlType.Int64 roundId'
+                    ]
+                    |> Db.query(fun r -> {|
+                        ChampId = uint64 <| r.GetInt64(0)
+                        RoundBoost = {
+                            StartRoundId = r.GetInt64(1)
+                            Boost = enum<ShopItem> <| r.GetInt32(2)
+                            Duration = r.GetInt32(3)
+                        }
+                    |})
+                    |> List.groupBy(fun v -> v.ChampId)
+                    |> List.map(fun (k,v) ->
+                        k, 
+                        v
+                        |> List.map(fun r -> r.RoundBoost)
+                        |> List.fold(fun stat boost ->
+                                Battle.processShopItem stat boost roundId') Stat.Zero)
+                    |> Map.ofList
+
                 Db.newCommand SQL.GetUserChamps conn
                 |> Db.setParams [
                     "userId", SqlType.Int64 userId
                 ]
                 |> Db.query (fun r ->
-                    ChampFullInfo(uint64 <| r.GetInt64(0), uint64 <| r.GetInt64(2),
-                        r.GetString(1), r.GetString(3), Math.Round(r.GetDecimal(4), 6)))
-                |> Some
+                    let cId = uint64 <| r.GetInt64(0)
+                    let bStat =
+                        {
+                            Health = r.GetInt64(3)
+                            Magic = r.GetInt64(4)
+
+                            Accuracy = r.GetInt64(5)
+                            Luck = r.GetInt64(6)
+
+                            Attack = r.GetInt64(7)
+                            MagicAttack = r.GetInt64(8)
+
+                            Defense = r.GetInt64(9)
+                            MagicDefense = r.GetInt64(10)
+                        }
+                    let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
+                    let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), bStat + lStat + bsStat))
+                |> Ok
             with exn ->
-                Log.Error(exn, $"GetUserChamps {uId}")
-                None
-        | None -> None        
+                Log.Error(exn, $"GetActiveUserChamps {uId}")
+                Error("Unexpected error")
+        | None -> Error("Unable to find user")
 
     member _.GetUserChampsInfo(uId: UserId) =
         match getUserIdByUserId uId with
