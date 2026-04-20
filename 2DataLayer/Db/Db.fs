@@ -2093,6 +2093,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Error(exn.Message)
 
     // ToDo: optimize if/when monsters > 100
+    /// last round is included in selection
     member _.GetAliveMonsters() =
         try
             use conn = new SqliteConnection(cs)
@@ -2112,7 +2113,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.query (fun v -> v.GetInt64(0), not <| v.IsDBNull(1))
                 |> Ok
         with exn ->
-            Log.Error(exn, "GetRandomMonster")
+            Log.Error(exn, "GetAliveMonsters")
             Error("Unexpected error")
 
     member _.GetMonsters(mtype:MonsterType, msubtype: MonsterSubType) =

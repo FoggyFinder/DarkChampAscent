@@ -447,7 +447,7 @@ module internal SQL =
         LEFT JOIN UserMonster um ON um.MonsterId = m.ID 
         WHERE m.ID NOT IN (
 	        SELECT MonsterId FROM MonsterDefeats
-	        WHERE RoundId < @roundId AND RoundId + RevivalDuration >= @roundId)      
+	        WHERE RoundId <= @roundId AND RoundId + RevivalDuration >= @roundId)      
     """
     
     let GetMonsters = """
