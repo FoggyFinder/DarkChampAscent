@@ -14,6 +14,7 @@
     <Compile Include="src/Types.fs" />
     <Compile Include="src/Api.fs" />
     <Compile Include="src/Components.fs" />
+    <Compile Include="src/Pages/Cards.fs" />
     <Compile Include="src/Pages/LoginPages.fs" />
     <Compile Include="src/Pages/NonAuthPages.fs" />
     <Compile Include="src/Pages/DetailPages.fs" />

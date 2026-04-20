@@ -39,7 +39,7 @@ module DisplayEnum =
         | ShopItemTarget.Damage -> "Damage"
         | ShopItemTarget.MagicalDamage -> "Magical Damage"
         | ShopItemTarget.Defense -> "Defense"
-        | ShopItemTarget.MagicalDefense -> "MagicalDefense"
+        | ShopItemTarget.MagicalDefense -> "Magical Defense"
         | ShopItemTarget.Revival -> "Revival"
 
     let Effect(effect:Effect) =
@@ -410,6 +410,18 @@ let webEmojiFromChar (ch:Characteristic) =
     | Characteristic.MagicAttack -> WebEmoji.MagicAttack
     | Characteristic.Defense -> WebEmoji.Shield
     | Characteristic.MagicDefense -> WebEmoji.MagicShield
+
+let webEmojiFromSITarget (sit:ShopItemTarget) =
+    match sit with
+    | ShopItemTarget.Life -> WebEmoji.Health
+    | ShopItemTarget.Magic -> WebEmoji.Magic
+    | ShopItemTarget.Luck -> WebEmoji.Luck
+    | ShopItemTarget.Accuracy -> WebEmoji.Accuracy
+    | ShopItemTarget.Damage -> WebEmoji.Attack
+    | ShopItemTarget.MagicalDamage -> WebEmoji.MagicAttack
+    | ShopItemTarget.Defense -> WebEmoji.Shield
+    | ShopItemTarget.MagicalDefense -> WebEmoji.MagicShield
+    | ShopItemTarget.Revival -> ""
 
 let webEmojiFromTrait (tr:Trait) =
     match tr with

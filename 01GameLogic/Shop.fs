@@ -64,7 +64,7 @@ module Shop =
     let getRoundDuration =
         function
         | ShopItem.ElixirOfLife
-        | ShopItem.ElixirOfMagic -> 1
+        | ShopItem.ElixirOfMagic -> System.Int32.MaxValue
         | ShopItem.ElixirOfLuck
         | ShopItem.ElixirOfAccuracy
         | ShopItem.ElixirOfDamage
@@ -109,8 +109,8 @@ module Shop =
 
     let getValue =
         function
-        | ShopItem.ElixirOfLife -> 50L
-        | ShopItem.ElixirOfMagic -> 100L
+        | ShopItem.ElixirOfLife -> 200L
+        | ShopItem.ElixirOfMagic -> 250L
         | ShopItem.ElixirOfLuck -> 3L
         | ShopItem.ElixirOfAccuracy -> 3L
         | ShopItem.ElixirOfDamage -> 2L
