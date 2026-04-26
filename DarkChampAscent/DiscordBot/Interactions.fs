@@ -44,3 +44,44 @@ let actionselect (bs:BattleService) (context:StringMenuInteractionContext) (move
 
     return callback
 }
+
+let sendGroup (bs:BattleService) (context:ButtonInteractionContext) =
+    task {
+        let r = bs.SendGroup(UserId.Discord context.User.Id)
+        let str = match r with | Ok _ -> "Done!" | Error err -> err
+        let m = 
+            InteractionMessageProperties()
+                .WithFlags(Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2))
+                .WithComponents([ TextDisplayProperties(str) ])
+        let callback = InteractionCallback.Message m
+        let! _ = context.Interaction.SendResponseAsync(callback)
+    
+        ()
+    } :> System.Threading.Tasks.Task
+
+let sendAll (bs:BattleService) (context:ButtonInteractionContext) =
+    task {
+        let r = bs.SendAll(UserId.Discord context.User.Id)
+        let str = match r with | Ok _ -> "Done!" | Error err -> err
+        let m = 
+            InteractionMessageProperties()
+                .WithFlags(Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2))
+                .WithComponents([ TextDisplayProperties(str) ])
+        let callback = InteractionCallback.Message m
+        let! _ = context.Interaction.SendResponseAsync(callback)
+    
+        ()
+    } :> System.Threading.Tasks.Task
+
+let register (context:ButtonInteractionContext) =
+    task {
+        let m = 
+            InteractionMessageProperties()
+                .WithFlags(Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2))
+                .WithComponents([ TextDisplayProperties("Not implemented!") ])
+        let callback = InteractionCallback.Message m
+
+        let! _ = context.Interaction.SendResponseAsync(callback)
+    
+        ()
+    } :> System.Threading.Tasks.Task

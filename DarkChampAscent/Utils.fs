@@ -148,6 +148,7 @@ module Channels =
     let [<Literal>] LogChannel = "dark-champs-ascent-logs"
     let [<Literal>] BattleChannel = "dark-champs-ascent-battle"
     let [<Literal>] ChatChannel = "dark-champs-ascent-chat"
+    let [<Literal>] EntryChannel = "dark-champs-ascent-entry"
     let [<Literal>] Category = "Dark Champs Ascent"
 
     let [<Literal>] DarkAscentPlayerRole = "DarkChampAscent Player"
@@ -155,9 +156,7 @@ module Channels =
 
 [<RequireQualifiedAccess>]
 module DUtils =
-    open System
     open NetCord
-    open System.Threading.Tasks
 
     let sendMsgToChannel(channel:string)(client:GatewayClient)(mp:MessageProperties)(pin:bool) = task {
         for guild in client.Cache.Guilds do
@@ -196,18 +195,6 @@ module DUtils =
                 Log.Error($"Can't find channel in guild {guild}")
     }
 
-    let sendMsgToBattleChannel (client:GatewayClient) (mp:MessageProperties) =
-        sendMsgToChannel Channels.BattleChannel client mp false
-    
-    let sendMsgToBattleChannelSilently (client:GatewayClient) (mp:MessageProperties) = task {
-        let flags = mp.Flags
-        mp.Flags <-
-            if flags.HasValue then Nullable(flags.Value ||| MessageFlags.SuppressNotifications)
-            else Nullable(MessageFlags.SuppressNotifications)
-        do! sendMsgToChannel Channels.BattleChannel client mp false
-        mp.Flags <- flags
-    }
-
     let sendMsgToLogChannel (client:GatewayClient) (mp:MessageProperties) = task {
         let flags = mp.Flags
         mp.Flags <-
@@ -241,3 +228,6 @@ module DUtils =
                 | None ->
                     Log.Error($"Unable to find a role to user inside {guild.Value.Name} guild")
             | false, _ -> ()
+
+    let v2ComponentMessage(components:IMessageComponentProperties list) =
+        MessageProperties().WithComponents(components).WithFlags(MessageFlags.IsComponentsV2)

@@ -447,6 +447,32 @@ let joinBattleHandler : HttpHandler =
                 return! apiUnauthorized ctx
         }
 
+let joinGroupBattleHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+            let bs = ctx.Plug<BattleService>()
+            match ao with
+            | Some a ->
+                let response = bs.SendGroup(a.ID)
+                return! apiResult response ctx
+            | None ->
+                return! apiUnauthorized ctx
+        }
+
+let joinAllBattleHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+            let bs = ctx.Plug<BattleService>()
+            match ao with
+            | Some a ->
+                let response = bs.SendAll(a.ID)
+                return! apiResult response ctx
+            | None ->
+                return! apiUnauthorized ctx
+        }
+
 let shopHandler : HttpHandler =
     fun ctx ->
         task {
@@ -1080,7 +1106,7 @@ builder.Services
     .AddApplicationCommands()
     .AddGatewayHandlers(typeof<DiscordBot.GuildCreateHandler>.Assembly)
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
-    //.AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
+    .AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
     //.AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
     |> ignore
 
@@ -1168,6 +1194,8 @@ let endpoints =
 
         Pattern.Battle, battleHandler
         Pattern.BattleJoin, joinBattleHandler
+        Pattern.BattleJoinGroup, joinGroupBattleHandler
+        Pattern.BattleJoinAll, joinAllBattleHandler
         Pattern.BattleParticipants, battleParticipantsHandler
         Pattern.BattleRoundStatusInfo, battleRoundInfoHandler
         Pattern.BattleStatusInfo, battleInfoHandler
@@ -1215,6 +1243,9 @@ host
     .AddApplicationCommandModule(typeof<BattleModule>)
     .AddApplicationCommandModule(typeof<GeneralModule>)
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("sendgroup", Func<_,_,_>(Interactions.sendGroup)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("sendall", Func<_,_,_>(Interactions.sendAll)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_>(Interactions.register)) |> ignore
 
 wapp.UseForwardedHeaders(
     ForwardedHeadersOptions(

@@ -182,24 +182,58 @@ let private JoinSection (dto: ChampInfoWithStat list) (onJoined: unit -> unit) =
                                     [ for m in AllEnums.Moves -> DisplayEnum.Move m, DisplayEnum.Move m, None ]
                                 ]
                         ]
+                        Html.div [ 
+                            prop.children [
+                                Html.button [
+                                    prop.className "btn btn-join"
+                                    prop.disabled joining
+                                    prop.onClick (fun _ ->
+                                        match selChamp |> Option.map (fun rpc -> rpc.ID) with
+                                        | Some cid ->
+                                            setJoining true; setJoinMsg None
+                                            async {
+                                                let! r = Api.joinBattle cid selMove
+                                                match r with
+                                                | Ok () -> onJoined ()
+                                                | Error e -> setJoinMsg (Some ("Error: " + e))
+                                                setJoining false
+                                            } |> Async.StartImmediate
+                                        | None -> setJoinMsg (Some "Error: no champ selected"))
+                                    prop.text (if joining then "Joining..." else "Join round")
+                                ]
 
-                        Html.button [
-                            prop.className "btn btn-join"
-                            prop.disabled joining
-                            prop.onClick (fun _ ->
-                                match selChamp |> Option.map (fun rpc -> rpc.ID) with
-                                | Some cid ->
-                                    setJoining true; setJoinMsg None
-                                    async {
-                                        let! r = Api.joinBattle cid selMove
-                                        match r with
-                                        | Ok () -> onJoined ()
-                                        | Error e -> setJoinMsg (Some ("Error: " + e))
-                                        setJoining false
-                                    } |> Async.StartImmediate
-                                | None -> setJoinMsg (Some "Error: no champ selected"))
-                            prop.text (if joining then "Joining..." else "Join round")
+                                Html.button [
+                                    prop.className "btn btn-join"
+                                    prop.disabled joining
+                                    prop.onClick (fun _ ->
+                                        setJoining true; setJoinMsg None
+                                        async {
+                                            let! r = Api.sendGroup()
+                                            match r with
+                                            | Ok () -> onJoined ()
+                                            | Error e -> setJoinMsg (Some ("Error: " + e))
+                                            setJoining false
+                                        } |> Async.StartImmediate)
+                                    prop.text "Send group"
+                                ]
+
+                                Html.button [
+                                    prop.className "btn btn-join"
+                                    prop.disabled joining
+                                    prop.onClick (fun _ ->
+                                        setJoining true; setJoinMsg None
+                                        async {
+                                            let! r = Api.sendAll()
+                                            match r with
+                                            | Ok () -> onJoined ()
+                                            | Error e -> setJoinMsg (Some ("Error: " + e))
+                                            setJoining false
+                                        } |> Async.StartImmediate)
+                                    prop.text "Send all"
+                                ]
+                            ]
                         ]
+
                         match joinMsg with
                         | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
                         | None -> Html.none
