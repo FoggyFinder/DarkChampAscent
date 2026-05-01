@@ -18,6 +18,19 @@ type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:Mon
     member x.WithMonsterInfo(mi:MonsterInfo) =
         CurrentBattleInfo(x.BattleNum, x.BattleStatus, mi, x.MonsterId)
 
+type CurrentRoundInfo(rounds:int, roundStarted:DateTime, rewards:decimal) =
+    member _.Rounds = rounds
+    member _.RoundStarted = roundStarted
+    member _.Rewards = rewards
+
+type CurrentFullBattleInfo(cbi:CurrentBattleInfo, cri:CurrentRoundInfo) =
+    member _.CurrentBattleInfo = cbi
+    member _.CurrentRoundInfo = cri
+    member x.WithMonsterImg(pic:MonsterImg) =
+        CurrentFullBattleInfo(x.CurrentBattleInfo.WithMonsterImg pic, x.CurrentRoundInfo)
+    member x.WithMonsterInfo(mi:MonsterInfo) =
+        CurrentFullBattleInfo(x.CurrentBattleInfo.WithMonsterInfo mi, x.CurrentRoundInfo)
+
 [<Struct>]
 type RoundParticipantChamp(chId:uint64, name:string, ipfs:string) =
     member _.ID = chId

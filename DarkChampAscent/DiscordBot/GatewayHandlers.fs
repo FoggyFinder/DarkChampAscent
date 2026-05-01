@@ -96,6 +96,8 @@ type GuildCreateHandler(db:SqliteStorage, rclient:RestClient) =
                             ComponentContainerProperties([
                                 TextDisplayProperties($"** DarkChampAscent - quick join to a battle **")
                                 ActionRowProperties([
+                                    ButtonProperties($"pendingrewards", "Pending rewards", ButtonStyle.Secondary)
+                                    ButtonProperties($"info", "Info", ButtonStyle.Success)
                                     ButtonProperties($"register", "Register", ButtonStyle.Danger)
                                 ])
                             ])

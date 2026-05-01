@@ -56,6 +56,55 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
                     Log.Error(exn, "BackupService")
         }
 
+type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
+    inherit BackgroundService()
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            while cancellationToken.IsCancellationRequested |> not do
+                do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+                try
+                    let unconfirmedWalletExists = db.UnConfirmedWalletExists()
+                    if unconfirmedWalletExists then
+                        let dt = DateTime.UtcNow
+                        let lpd = db.GetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked)
+                        let confirmations =
+                            Blockchain.getNotesForWallet(options.Value.GameWallet, lpd)
+                            |> Seq.choose(fun (wallet, barr) ->
+                                try
+                                    Some(wallet, System.Text.Encoding.UTF8.GetString barr)
+                                with _ -> None)
+                            |> Seq.toArray
+                        let! isOk =
+                            match confirmations.Length with
+                            | 0 -> task { return true }
+                            | _ ->
+                                task {
+                                    let mutable noErrors = true
+                                    for (wallet, code) in confirmations do
+                                        if db.WalletIsConfirmed(wallet) then ()
+                                        elif db.ConfirmWallet(wallet, code) then
+                                            match db.FindDiscordIdByWallet wallet with
+                                            | Some discordId ->
+                                                DUtils.addDiscordRole client (uint64 discordId)
+                                            | None -> ()
+                                            match db.FindUserIdByWallet wallet with
+                                            | Some userId ->
+                                                noErrors <- noErrors && CommonHelpers.updateChampsForAUser (db, uint64 userId, [wallet]) |> Result.isOk
+                                            | None -> ()
+                                        else ()
+                                    return noErrors
+                            }
+                        if isOk then
+                            db.SetDateTimeKey(DbKeys.LastTimeConfirmationCodeChecked, dt) |> ignore
+                        do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
+                    else
+                        do! Task.Delay(TimeSpan.FromMinutes(5.0), cancellationToken)
+                with exn ->
+                    do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
+                    Log.Error(exn, "confirmationTracker2")
+        }
+
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
     inherit BackgroundService()
 
@@ -70,7 +119,7 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                         | Some dt ->
                             let th = (now - dt).TotalHours
                             // ToDo: move to conf
-                            th < 12.
+                            th < 3.
                         | None -> false
                     if isPriceUpToDate |> not then
                         match External.API.getDarkCoinPrice() with
@@ -148,10 +197,11 @@ type TrackChampCfgService(db:SqliteStorage) =
 open Types
 open DarkChampAscent.Account
 open System.Collections.Generic
-open System.Threading
+
 type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
     inherit BackgroundService()
-
+    let toUnixSeconds (dt: DateTime) =
+        DateTimeOffset(dt).ToUnixTimeSeconds()
     let wallets = options.Value.Wallet
     let keys = options.Value.Chain.GameWalletKeys
 
@@ -162,7 +212,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
     let updateBattleStatus() = 
         task {
             match db.GetCurrentBattleInfo() with
-            | Ok cbi ->
+            | Ok cfbi ->
+                let cbi = cfbi.CurrentBattleInfo
+                let cri = cfbi.CurrentRoundInfo
                 for guild in gclient.Cache.Guilds do
                     match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = Channels.EntryChannel) with
                     | Some channel ->
@@ -173,16 +225,27 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             let! _ = pinnedMsgs.[0].ModifyAsync(fun options ->
                                 let name = "image.png"
                                 let uri = $"attachment://{name}"
+                                let frontendOrigin =
+                                    match Environment.GetEnvironmentVariable "frontendorigin" with
+                                    | null -> "http://localhost:5173"
+                                    | str -> str
                                 let components =
                                     ComponentContainerProperties([
-                                        TextDisplayProperties($"Battle # {cbi.BattleNum}")
+                                        TextDisplayProperties($"{Emoj.Battle} Battle # {cbi.BattleNum}")
                                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                        // TODO: include rewards into battle info
-                                        // TextDisplayProperties($" {Emoj.Coin} Rewards: {ar.BattleRewards} {Emoj.Coin}")
-                                        yield! MonstersComponent.monsterComponents cbi.Monster "Info" uri
+                                        TextDisplayProperties($"{Emoj.Rounds} Round # {cri.Rounds} / {Constants.RoundsInBattle}")
+                                        TextDisplayProperties($"{Emoj.Trophy} Round Rewards: {cri.Rewards} {Emoj.Coin}")
+                                        TextDisplayProperties($"{Emoj.Rounds} Next round: <t:{toUnixSeconds (cri.RoundStarted + BattleParams.RoundDuration())}:R>")
+                                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                                        yield! MonstersComponent.monsterComponents cbi.Monster "" uri
+                                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                                        TextDisplayProperties($"To send single Champ use `/battle` command or [webApp]({frontendOrigin})")
+                                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                         ActionRowProperties([ 
                                             ButtonProperties($"sendgroup", "Send group", ButtonStyle.Primary)
                                             ButtonProperties($"sendall", "Send all", ButtonStyle.Primary)
+                                            ButtonProperties($"pendingrewards", "Pending rewards", ButtonStyle.Success)
+                                            ButtonProperties($"info", "Info", ButtonStyle.Success)
                                             ButtonProperties($"register", "Register", ButtonStyle.Danger)
                                         ])
                                     ])
@@ -196,7 +259,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 match db.GetBattleHistory(cbi.BattleNum) with
                 | Ok bh ->
                     let bidto = 
-                        BattleInfoDTO(cbi, BattleHistory(bh,
+                        BattleInfoDTO(cfbi, BattleHistory(bh,
                             RoundParticipantMonster(cbi.MonsterId, cbi.Monster.Name, cbi.Monster.Picture)))
                     battleStatus.Set(Some bidto)
                 | _ -> battleStatus.Set None
@@ -393,6 +456,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                 ComponentContainerProperties([
                                     TextDisplayProperties($"** Round is processing, please wait for a few minutes **")
                                     ActionRowProperties([
+                                        ButtonProperties($"pendingrewards", "Pending rewards", ButtonStyle.Success)
+                                        ButtonProperties($"info", "Info", ButtonStyle.Success)
                                         ButtonProperties($"register", "Register", ButtonStyle.Danger)
                                     ])
                                 ])
@@ -493,9 +558,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         | RoundStatus.Started ->
             let cRound = roundStatus.Value.Round
             match db.GetActiveUserChamps(userId, cRound) with
-            | Ok champs ->
-                // TODO: if empty then add (user, round) to a cache
-                // remove everything where round < current one
+            | Ok champs when champs.Length > 0 ->
                 let moves = Dictionary<uint64, RoundActionRecord>()
                 let minMagic = 5
                 champs
@@ -536,9 +599,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
                 let results =
                     moves.Values |> Seq.map(fun rar -> joinRound(userId, rar, false)) |> Seq.toList
-                if results |> List.forall(fun r -> r.IsOk) then Ok ("Done!")
+                if results |> List.forall(fun r -> r.IsOk) then
+                    Ok (moves.Count)
                 else Error("Unexpected error")
-
+            | Ok _ -> Error "No available (alive) champs!"
             | Error err -> Error err
         | RoundStatus.Processing -> Error "Wait for a new round!"
         | RoundStatus.Finished -> Error "Wait for a new round!"
@@ -549,24 +613,25 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             let cRound = roundStatus.Value.Round
             let! r = sendGroup(userId)
             match r with
-            | Ok _ ->
+            | Ok v ->
                 match db.GetActiveUserChamps(userId, cRound) with
                 | Ok champs ->
-                    // TODO: if empty then add (user, round) to a cache
-                    // remove everything where round < current one
-                    let moves =
-                        champs
-                        |> List.map(fun c ->
-                            let move =
-                                if c.Stat.Health > 20 && c.Stat.Magic > 5 then Move.Heal
-                                elif c.Stat.Health > 50 && c.Stat.Magic < 25 then Move.Meditate
-                                else Move.Attack
-                            { Move = move; ChampId = c.ID })
+                    if champs.Length > 0 then
+                        let moves =
+                            champs
+                            |> List.map(fun c ->
+                                let move =
+                                    if c.Stat.Health > 20 && c.Stat.Magic > 5 then Move.Heal
+                                    elif c.Stat.Health > 50 && c.Stat.Magic < 25 then Move.Meditate
+                                    else Move.Attack
+                                { Move = move; ChampId = c.ID })
 
-                    let results =
-                        moves |> List.map(fun rar -> joinRound(userId, rar, false))
-                    if results |> List.forall(fun r -> r.IsOk) then Ok ("Done!")
-                    else Error("Unexpected error")
+                        let results =
+                            moves |> List.map(fun rar -> joinRound(userId, rar, false))
+                        if results |> List.forall(fun r -> r.IsOk) then
+                            Ok (champs.Length + v)
+                        else Error("Unexpected error")
+                    else Ok v
                 | Error err -> Error err
             | Error err -> Error err
         | RoundStatus.Processing -> Error "Wait for a new round!"
@@ -581,14 +646,30 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
     member _.SendGroup(userId:UserId) = 
         try
-            sendGroup(userId) 
+            match sendGroup(userId) with
+            | Ok c ->
+                let mp = 
+                    [ TextDisplayProperties($"{c} champs joined round!") :> IMessageComponentProperties ]
+                    |> DUtils.v2ComponentMessage
+                DUtils.sendMsgToLogChannel gclient mp |> ignore
+                Ok c
+            | Error err ->
+                Error err
         with e ->
             Log.Error(e, e.Message)
             Error e.Message
 
     member _.SendAll(userId:UserId) =
         try
-            sendAll(userId)
+            match sendAll(userId) with
+            | Ok c ->
+                let mp = 
+                    [ TextDisplayProperties($"{c} champs joined round!") :> IMessageComponentProperties ]
+                    |> DUtils.v2ComponentMessage
+                DUtils.sendMsgToLogChannel gclient mp |> ignore
+                Ok c
+            | Error err ->
+                Error err
         with e ->
             Log.Error(e, e.Message)
             Error e.Message   

@@ -595,6 +595,12 @@ module internal SQL =
         WHERE UserId = @userId
     """
 
+    let GetPendingRewards = """
+        SELECT Sum(Balance) FROM Champ
+        JOIN UserChamp uc ON uc.ChampId = Champ.ID
+        WHERE UserId = @userId
+    """
+
     let GetActiveUserChamps = """
         SELECT
             c.ID, Name, IPFS,
@@ -785,7 +791,7 @@ module internal SQL =
     
     let BattleIsActive = "SELECT EXISTS(SELECT 1 FROM Battle WHERE ID = @battleId AND Status = 0)"
     let RoundsInBattle = "SELECT Count(*) FROM Round Where BattleId = @battleId"
-
+    let RoundInfoByBattleId = """SELECT Count(ID), Max(Timestamp), Rewards FROM Round WHERE BattleId = @battleId"""
 
     let MonsterIsDeadAtRound = """
         SELECT EXISTS (

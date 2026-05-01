@@ -231,3 +231,8 @@ module DUtils =
 
     let v2ComponentMessage(components:IMessageComponentProperties list) =
         MessageProperties().WithComponents(components).WithFlags(MessageFlags.IsComponentsV2)
+
+    let interactionMessageFromComponents(components:IMessageComponentProperties list) =
+        InteractionMessageProperties()
+            .WithFlags(Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2))
+            .WithComponents(components)

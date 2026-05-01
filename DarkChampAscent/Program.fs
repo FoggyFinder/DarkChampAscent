@@ -401,7 +401,7 @@ let battleInfoHandler : HttpHandler =
             let s = ctx.Plug<BattleService>()
             let apply =
                 Some(Option.map(fun (bi:BattleInfoDTO) ->
-                    bi.WithMonsterImg (FileUtils.mapToLocalImg bi.CurrentBattleInfo.Monster.Picture)))
+                    bi.WithMonsterImg (FileUtils.mapToLocalImg bi.CurrentBattleInfo.CurrentBattleInfo.Monster.Picture)))
             return! SSEHelper.handler s.BattleStatus apply ctx
         }
 
@@ -1107,7 +1107,7 @@ builder.Services
     .AddGatewayHandlers(typeof<DiscordBot.GuildCreateHandler>.Assembly)
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
     .AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
-    //.AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
+    .AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
     |> ignore
 
 builder.Services.AddDistributedMemoryCache() |> ignore
@@ -1146,6 +1146,7 @@ builder
         .AddHostedService<GenService>()
         .AddHostedService<RefundInvalidTxService>()
         .AddHostedService<RefundFailedGenService>()
+        .AddHostedService<ConfirmationService>()
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme          <- CookieAuthenticationDefaults.AuthenticationScheme
@@ -1245,7 +1246,11 @@ host
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("sendgroup", Func<_,_,_>(Interactions.sendGroup)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("sendall", Func<_,_,_>(Interactions.sendAll)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_>(Interactions.register)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_,_>(Interactions.register)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("pendingrewards", Func<_,_,_>(Interactions.getPendingRewards)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("info", Func<_,_>(Interactions.info)) |> ignore
+host.AddComponentInteraction<ModalInteractionContext>("registerwalletmodal", Func<_,_,_,_>(Interactions.registerWalletModal)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("registerWallet", Func<_,_>(Interactions.registerWallet)) |> ignore
 
 wapp.UseForwardedHeaders(
     ForwardedHeadersOptions(

@@ -131,14 +131,14 @@ let sendGroup () =
     async { 
         let p = Pattern.BattleJoinGroup
         let! json = fetchJson p.Str p.Method None
-        return parseUnit json
+        return parseInt json
     }
 
 let sendAll () =
     async { 
         let p = Pattern.BattleJoinAll
         let! json = fetchJson p.Str p.Method None
-        return parseUnit json
+        return parseInt json
     }
 
 

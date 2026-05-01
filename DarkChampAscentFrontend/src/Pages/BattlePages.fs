@@ -145,7 +145,7 @@ let private JoinSection (dto: ChampInfoWithStat list) (onJoined: unit -> unit) =
             setSelChamp (Some first)
             setSelMove Move.Attack
         | _ -> ()
-    ), [| box dto |])
+    ), [| box dto.Length |])
 
     let champsView =
         match dto with
@@ -182,10 +182,12 @@ let private JoinSection (dto: ChampInfoWithStat list) (onJoined: unit -> unit) =
                                     [ for m in AllEnums.Moves -> DisplayEnum.Move m, DisplayEnum.Move m, None ]
                                 ]
                         ]
-                        Html.div [ 
+                        
+                        Html.div [
+                            prop.className "join-actions"
                             prop.children [
                                 Html.button [
-                                    prop.className "btn btn-join"
+                                    prop.className "btn btn-join btn-join-primary"
                                     prop.disabled joining
                                     prop.onClick (fun _ ->
                                         match selChamp |> Option.map (fun rpc -> rpc.ID) with
@@ -201,35 +203,38 @@ let private JoinSection (dto: ChampInfoWithStat list) (onJoined: unit -> unit) =
                                         | None -> setJoinMsg (Some "Error: no champ selected"))
                                     prop.text (if joining then "Joining..." else "Join round")
                                 ]
-
-                                Html.button [
-                                    prop.className "btn btn-join"
-                                    prop.disabled joining
-                                    prop.onClick (fun _ ->
-                                        setJoining true; setJoinMsg None
-                                        async {
-                                            let! r = Api.sendGroup()
-                                            match r with
-                                            | Ok () -> onJoined ()
-                                            | Error e -> setJoinMsg (Some ("Error: " + e))
-                                            setJoining false
-                                        } |> Async.StartImmediate)
-                                    prop.text "Send group"
-                                ]
-
-                                Html.button [
-                                    prop.className "btn btn-join"
-                                    prop.disabled joining
-                                    prop.onClick (fun _ ->
-                                        setJoining true; setJoinMsg None
-                                        async {
-                                            let! r = Api.sendAll()
-                                            match r with
-                                            | Ok () -> onJoined ()
-                                            | Error e -> setJoinMsg (Some ("Error: " + e))
-                                            setJoining false
-                                        } |> Async.StartImmediate)
-                                    prop.text "Send all"
+                                Html.div [
+                                    prop.className "btn-row"
+                                    prop.children [
+                                        Html.button [
+                                            prop.className "btn btn-join btn-join-secondary"
+                                            prop.disabled joining
+                                            prop.onClick (fun _ ->
+                                                setJoining true; setJoinMsg None
+                                                async {
+                                                    let! r = Api.sendGroup()
+                                                    match r with
+                                                    | Ok _ -> onJoined ()
+                                                    | Error e -> setJoinMsg (Some ("Error: " + e))
+                                                    setJoining false
+                                                } |> Async.StartImmediate)
+                                            prop.text "Send group"
+                                        ]
+                                        Html.button [
+                                            prop.className "btn btn-join btn-join-secondary"
+                                            prop.disabled joining
+                                            prop.onClick (fun _ ->
+                                                setJoining true; setJoinMsg None
+                                                async {
+                                                    let! r = Api.sendAll()
+                                                    match r with
+                                                    | Ok _ -> onJoined ()
+                                                    | Error e -> setJoinMsg (Some ("Error: " + e))
+                                                    setJoining false
+                                                } |> Async.StartImmediate)
+                                            prop.text "Send all"
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
@@ -324,7 +329,7 @@ let BattlePage () =
                 ]
             | None -> Html.none
 
-        let isChampViewVisible =
+        let isRoundStarted =
             roundInfo
             |> Option.map (fun r -> r.Status = RoundStatus.Started)
             |> Option.defaultValue true
@@ -334,16 +339,26 @@ let BattlePage () =
                 prop.className "block current-battle"
                 prop.id "current-battle"
                 prop.children [
-                    let cbi = dto.CurrentBattleInfo
-                    let rounds = dto.History.Rounds.Length
+                    let cbi = dto.CurrentBattleInfo.CurrentBattleInfo
+                    let cri = dto.CurrentBattleInfo.CurrentRoundInfo
                     Html.h2 [ prop.text $"Current battle: {cbi.BattleNum} ({DisplayEnum.BattleStatus cbi.BattleStatus})" ]
                         
                     Html.div [
                         prop.className "progress-row"
                         prop.children [
-                            Html.progress [ prop.className "progress-bar"; prop.value (float rounds / float Constants.RoundsInBattle) ]
-                            Html.span [ prop.className "round-count"; prop.text $"{rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}" ]
+                            Html.progress [ prop.className "progress-bar"; prop.value (float cri.Rounds / float Constants.RoundsInBattle) ]
+                            Html.span [ prop.className "round-count"; prop.text $"{cri.Rounds} / {Constants.RoundsInBattle} rounds {WebEmoji.Rounds}" ]
+                        ]
+                    ]
+
+                    Html.div [
+                        prop.className "battle-meta"
+                        prop.children [
                             timerBlock
+                            Html.span [
+                                prop.className "round-rewards"
+                                prop.dangerouslySetInnerHTML $"Round rewards: {cri.Rewards} {WebEmoji.DarkCoin}"
+                            ]
                         ]
                     ]
 
@@ -362,7 +377,7 @@ let BattlePage () =
                                 ]
                             ]
                             
-                            if isChampViewVisible then
+                            if isRoundStarted then
                                 Html.div [
                                     prop.className "battle-join"
                                     prop.children [ 
