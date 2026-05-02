@@ -307,6 +307,9 @@ let CustomSelectInput (value: string) (onChange: string -> unit) (options: (stri
                 for (v, label, img) in options do
                     Html.div [
                         prop.className ("custom-select-option" + (if v = value then " selected" else ""))
+                        prop.onMouseDown (fun e ->
+                            e.preventDefault()
+                            e.stopPropagation())
                         prop.onClick (fun e ->
                             e.stopPropagation()
                             onChange v
@@ -328,6 +331,7 @@ let CustomSelectInput (value: string) (onChange: string -> unit) (options: (stri
             prop.children [
                 Html.div [
                     prop.className "custom-select-control"
+                    prop.onMouseDown (fun e -> e.preventDefault())
                     prop.onClick (fun _ ->
                         if isOpen then setIsOpen false
                         else

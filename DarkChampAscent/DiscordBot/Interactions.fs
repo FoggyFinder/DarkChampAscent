@@ -76,7 +76,7 @@ let sendAll (bs:BattleService) (context:ButtonInteractionContext) =
 let getPendingRewards (db:SqliteStorage) (context:ButtonInteractionContext) =
     task {
         let r = db.GetPendingRewards(UserId.Discord context.User.Id)
-        let str = match r with | Some d -> $"Your Champs earned you {d} {Display.Emoj.Coin} DarkCoins so far! They will be distributed at the end of the battle" | None -> "Unexpected error"
+        let str = match r with | Some d -> $"Your Champs earned you {d} {Display.Emoj.Coin} DarkCoins so far! They will be distributed at the end of the battle" | None -> "Unexpected error. Make sure you have registered your Algorand wallet first."
         let callback =
             [ TextDisplayProperties(str) :> IMessageComponentProperties ]
             |> DUtils.interactionMessageFromComponents
