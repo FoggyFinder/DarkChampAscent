@@ -3834,7 +3834,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         "battleId", SqlType.Int64 <| int64 cb.BattleNum
                     ]
                     |> Db.querySingle(fun r ->
-                        let count = r.GetInt32(0) + 1
+                        let count = r.GetInt32(0)
                         let timestamp = if r.IsDBNull(1) then DateTime.UtcNow else DateTime.SpecifyKind(r.GetDateTime(1), DateTimeKind.Utc)
                         let rewards = if r.IsDBNull(2) then 0M else r.GetDecimal(2)
                         CurrentRoundInfo(count, timestamp, rewards))
