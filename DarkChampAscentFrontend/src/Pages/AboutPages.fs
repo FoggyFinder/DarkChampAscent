@@ -195,23 +195,58 @@ let HomePage () =
                     prop.className "block rules-section"
                     prop.id "rules-section"
                     prop.children [
-
                         Html.h3 [prop.text "General"]
-                        Html.p [prop.dangerouslySetInnerHTML (sprintf "DarkChampAscent started as an experiment - a discord bot where players collect DarkCoins (%s) by performing actions each round." WebEmoji.DarkCoin)]
+
+                        Html.div [
+                            prop.className "notice"
+                            prop.children [
+                                Html.p [ 
+                                    Html.text "The main goal of this project is to create an easy & fun way to slightly improve" 
+                                    Html.a [prop.href Links.DarkCoinIo; prop.target.blank; prop.text "Dark Coin"]
+                                    Html.text "distribution among active community members."
+                                ]
+                            ]
+                        ]
+
+                        Html.p [prop.dangerouslySetInnerHTML (sprintf "DarkChampAscent started as an experiment - a discord bot where players collect DarkCoins (%s) by performing actions each round. It has evolved into a web app which continues to improve.." WebEmoji.DarkCoin)]
                         
+                        Html.p [ prop.className "notice"; prop.text "The project is in an early stage of development; everything is subject to change without prior notice. If you have any ideas or suggestions, feel free to share them on Discord." ]
+
                         Html.p [
                             Html.text "To play, hold at least one NFT from"
                             Html.a [prop.href Links.DarkChampCollection; prop.target.blank; prop.text "Dark Coin Champions"]
                             Html.text " collection."
                         ]
 
+
+                        
+
                         Html.p [ 
                             prop.dangerouslySetInnerHTML $"All earned DarkCoins ({WebEmoji.DarkCoin}) are added to in-game Champion balance and automatically distributed at the end of every battle. No actions required from users."
+                        ]
+
+                        Html.h3 [prop.text "Monsters"]
+                        Html.p [ 
+                            prop.text $"Currently there are 3 types of monsters and 3 subtypes. Each one has unique elements."
+                        ]
+                        Html.p [ 
+                            prop.text $"Types:"
+                        ]
+                        Html.ul [
+                            for mt in AllEnums.MonsterTypes ->
+                                Html.li [ prop.text $"{DisplayEnum.MonsterType mt}" ]
+                        ]
+                        Html.p [ 
+                            prop.text $"Subtypes:"
+                        ]
+                        Html.ul [
+                            for mst in AllEnums.MonsterSubTypes ->
+                                Html.li [ prop.text $"{DisplayEnum.MonsterSubType mst}" ]
                         ]
                         Html.h3 [prop.text "Characteristics"]
                         Html.ul [
                             for ch in AllEnums.Characteristics ->
-                                Html.li [prop.text $"{Display.webEmojiFromChar ch} {DisplayEnum.Characteristic ch}"]
+                                Html.li [ prop.text $"{Display.webEmojiFromChar ch} {DisplayEnum.Characteristic ch}" ]
                         ]
                         Html.h3 [prop.text "Round actions"]
                         Html.ul [

@@ -13,6 +13,8 @@ open Display
 open System.Threading.Tasks
 open Serilog
 open DarkChampAscent.Account
+open Microsoft.Extensions.Options
+open DiscordBot.Components
 
 [<RequireQualifiedAccess>]
 module ApplicationCommand =
@@ -25,7 +27,7 @@ module ApplicationCommand =
         } :> Task
 
 [<SlashCommand("wallet", "Wallet command")>]
-type WalletModule(db:SqliteStorage) =
+type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
     let frontendOrigin =
         match Environment.GetEnvironmentVariable("frontendorigin") with
@@ -39,16 +41,51 @@ type WalletModule(db:SqliteStorage) =
             if Blockchain.isValidAddress wallet' then
                 db.RegisterNewWallet(UserId.Discord x.Context.User.Id, wallet')
             else
-                try
-                    Log.Error($"{x.Context.User} attempts to register invalid {wallet'} address")
-                with exn ->
-                    Log.Error(exn, $"attempt to register {wallet'} address")
                 Error($"Invalid Algorand address. Please, check correctness: {wallet'}")
         let str =
             match res with
-            | Ok () -> $"Good, auth with discord on [web-app]({frontendOrigin}) and follow instruction to confirm your wallet ({wallet'})"
+            | Ok code ->
+                $"Good, now follow instructions to confirm your wallet ({wallet'}). There 2 different ways:
+1. Send a 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
+2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"
             | Error err -> $"Oh, no...there was error: {err}"
         (fun (moptions:MessageOptions) -> moptions.Content <- str)
+        |> ApplicationCommand.deferredMessage x.Context
+
+    [<SubSlashCommand("wallets", "Get user wallets")>]
+    member x.GetWallets() =
+        let res = db.GetUserWallets(UserId.Discord x.Context.User.Id)
+        (fun (moptions:MessageOptions) ->
+            match res with
+            | Ok xs ->
+                if xs.IsEmpty then
+                    moptions.Content <- "No registered wallets found"
+                else
+                    moptions.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                    moptions.Components <-
+                        xs |> List.map(fun w ->
+                            let isConfirmed =
+                                let isConfStr = Display.fromBool w.IsConfirmed
+                                if w.IsConfirmed then isConfStr
+                                else $"{isConfStr} ({w.Code})"
+                            TextDisplayProperties($"{w.Wallet} Confirmed: {isConfirmed}") :> IMessageComponentProperties)
+            | Error err -> 
+                moptions.Content <- $"Oh, no...there was error: {err}")
+        |> ApplicationCommand.deferredMessage x.Context
+    
+    [<SubSlashCommand("gamewallets", "Get wallets used in game")>]
+    member x.GetGameWallets() =
+        let w = options.Value
+        (fun (moptions:MessageOptions) ->
+            moptions.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+            moptions.Components <- [
+                ChainComponent.walletComponent "Game Wallet" w.GameWallet
+                ChainComponent.walletComponent "Burn Wallet" w.BurnWallet
+                ChainComponent.walletComponent "DAO Wallet" w.DAOWallet
+                ChainComponent.walletComponent "Devs Wallet" w.DevsWallet
+                ChainComponent.walletComponent "Reserve Wallet" w.ReserveWallet
+                ChainComponent.walletComponent "Staking Wallet" w.StakingWallet
+            ])
         |> ApplicationCommand.deferredMessage x.Context
 
 type UserModule(db:SqliteStorage) =

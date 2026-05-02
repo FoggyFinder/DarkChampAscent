@@ -98,6 +98,9 @@ let parseBool (json: string) : Result<bool, string> =
 let parseString (json: string) : Result<string, string> =
     parseResultRaw (function JString s -> Some s | _ -> None) json
 
+let parseInt (json: string) : Result<int, string> =
+    parseResultRaw (function JNumber f -> Some (int f) | _ -> None) json
+
 let parseList<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T list, string> =
     parseResultRaw (function
         | JArray items -> items |> List.choose (fun j -> j |> asObj |> Option.bind decoder) |> Some
@@ -634,6 +637,24 @@ let private decodeCurrentBattleInfo (m: Map<string, Json>) : CurrentBattleInfo o
         Some (CurrentBattleInfo(asUInt64 bn, bs, monster, asUInt64 mid))
     | _ -> None
 
+let private decodeCurrentRoundInfo (m: Map<string, Json>) : CurrentRoundInfo option =
+    match reqNum "Rounds" m,
+          reqStr "RoundStarted" m,
+          reqNum "Rewards" m with
+    | Some rounds, Some roundStarted, Some rewards ->
+        match System.DateTime.TryParse roundStarted with
+        | true, dt -> 
+            Some (CurrentRoundInfo(int rounds, dt, decimal rewards))
+        | false, _ -> None
+    | _ -> None
+
+let private decodeCurrentFullBattleInfo (m: Map<string, Json>) : CurrentFullBattleInfo option =
+    match field "CurrentBattleInfo" m |> Option.bind asObj |> Option.bind decodeCurrentBattleInfo,
+          field "CurrentRoundInfo" m |> Option.bind asObj |> Option.bind decodeCurrentRoundInfo with
+    | Some cbi, Some cri ->
+        Some (CurrentFullBattleInfo(cbi, cri))
+    | _ -> None
+
 let decodeBattleInfoDTO json : BattleInfoDTO option =
     match SimpleJson.tryParseNative json with
     | Some o ->
@@ -642,7 +663,7 @@ let decodeBattleInfoDTO json : BattleInfoDTO option =
             let cbrO =
                 field "CurrentBattleInfo" m
                 |> Option.bind asObj
-                |> Option.bind decodeCurrentBattleInfo
+                |> Option.bind decodeCurrentFullBattleInfo
 
             let historyO =
                 field "History" m

@@ -1024,6 +1024,7 @@ th {
 
 /* Progress bar row */
 .progress-row {
+    justify-content: center;
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -3585,4 +3586,118 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
 .wallet-card-actions .notice {
     width: 100%;
     margin: 0;
+}
+
+/* === Battle header meta row === */
+.battle-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: center;
+    width: 100%;
+}
+
+.round-rewards {
+    text-align: center;
+    width: 100%;
+}
+
+.battle-meta .round-rewards {
+    margin-inline-start: auto;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+/* === Timer inline in meta === */
+.battle-meta .timer-group {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--color-primary-alpha-06);
+    border: 1px solid var(--color-primary-alpha-12);
+    border-radius: var(--radius);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+}
+
+.battle-meta .countdown-ms {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    font-size: var(--font-size-sm);
+}
+
+.battle-meta .countdown-ms .countdown-unit {
+    min-inline-size: 26px;
+    padding: 2px var(--space-1);
+    font-size: var(--font-size-sm);
+}
+
+/* === Join action buttons === */
+.join-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+}
+
+.join-actions .btn-join {
+    width: 100%;
+    padding-block: var(--space-3);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+}
+
+/* Primary join gets full gradient treatment */
+.join-actions .btn-join-primary {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+    box-shadow: 0 4px 15px rgba(127, 24, 255, 0.35);
+    font-size: var(--font-size-base);
+}
+
+/* Group/All are secondary — same family but quieter */
+.join-actions .btn-join-secondary {
+    background: var(--color-primary-alpha-12);
+    border: 1px solid var(--color-primary-alpha-18);
+    color: var(--color-primary-light);
+    box-shadow: none;
+}
+
+.join-actions .btn-join-secondary:hover {
+    background: var(--color-primary-alpha-18);
+    box-shadow: 0 4px 12px rgba(127, 24, 255, 0.2);
+}
+
+/* Secondary pair side-by-side on wider join panel */
+.join-actions .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+}
+
+@media (max-width: 400px) {
+    .join-actions .btn-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* === battle-join spacing === */
+.battle-join-inner {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.battle-join-inner h2 {
+    font-size: var(--font-size-base) !important;
+    text-align: start !important;
+    margin: 0 !important;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: var(--font-size-xs) !important;
 }

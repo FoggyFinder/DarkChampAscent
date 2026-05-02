@@ -31,8 +31,8 @@ module MonsterImg =
 
 [<RequireQualifiedAccess>]
 module MonstersComponent =
-    let monsterComponent (monster:MonsterInfo) (title:string) (url:string) =
-        ComponentContainerProperties([
+    let monsterComponents (monster:MonsterInfo) (title:string) (url:string) : IComponentContainerComponentProperties list =
+        [
             TextDisplayProperties($"**{monster.Name} {title} **")
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             
@@ -48,7 +48,10 @@ module MonstersComponent =
             TextDisplayProperties(magic monster.Stat.Magic)
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
             yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
-        ])
+        ]
+
+    let monsterComponent (monster:MonsterInfo) (title:string) (url:string) =
+        ComponentContainerProperties(monsterComponents monster title url)
 
     let monsterAttachnment (name:string) (mimg:MonsterImg) =
         let filename = match mimg with | MonsterImg.File fn -> fn
@@ -58,6 +61,20 @@ module MonstersComponent =
 
 [<RequireQualifiedAccess>]
 module BattleComponent =
+    let champJoinRoundComponent (name:string) (ipfs:string) =
+        ComponentContainerProperties(
+            [ ComponentSectionProperties(
+                    ComponentSectionThumbnailProperties(
+                        ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                    [ TextDisplayProperties($"**{name}**")
+                      TextDisplayProperties("joined round!") ]) ]) :> IMessageComponentProperties
+
+    let roundCard (roundId:int64) (rewards:decimal) =
+        ComponentContainerProperties([
+            TextDisplayProperties($"Round {roundId} has started!")
+            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+            TextDisplayProperties($" {Emoj.Coin} Rewards: {rewards} {Emoj.Coin}")
+        ])
 
     let battleResults(br:BattleResult) (names:Map<uint64, string>) (lvlsStat: Map<uint64, Stat>) (boosts:Map<uint64, Stat>)=
         let movesComponent =

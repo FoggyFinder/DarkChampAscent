@@ -209,6 +209,14 @@ let getDarkCoinTxForWallet(wallet:string, afterTimeOpt:DateTime option) =
             |> Some
         else None)
 
+/// returns (sender, note)
+let getNotesForWallet(wallet:string, afterTimeOpt:DateTime option) =
+    getAssetTxsForAddress(wallet, Nullable(), afterTimeOpt)
+    |> Seq.choose(fun tx ->
+        if tx.PaymentTransaction <> null && tx.PaymentTransaction.Amount = 0UL then
+            Some(tx.Sender, tx.Note)
+        else None)
+
 open Algorand.Algod.Model
 open Algorand.Utils
 open Algorand.Algod.Model.Transactions

@@ -817,6 +817,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, $"registerNewCustomUser: {wallet}")
             Error("Unexpected error")
+
     member _.RegisterNewWallet(uId:UserId, wallet:string) =
         let isRegistered =
             match uId with
@@ -843,7 +844,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                 "code", SqlType.String code
                             ]
                             |> Db.exec
-                        Ok()
+                        Ok(code)
                     with exn ->
                         Log.Error(exn, $"RegisterNewWallet: {userId}, {wallet}")
                         Error("Something went wrong: unable to register wallet")              
@@ -1950,7 +1951,22 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             with exn ->
                 Log.Error(exn, $"GetUserEarnings {uId}: [{startRound}-{endRound}]")
                 None
-        | None -> None 
+        | None -> None
+
+    member _.GetPendingRewards(uId: UserId) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                Db.newCommand SQL.GetPendingRewards conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                ]
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
+            with exn ->
+                Log.Error(exn, $"GetPendingRewards {uId}")
+                None
+        | None -> None
 
     member t.UseItemFromStorage(uId: UserId, item:ShopItem, champId: uint64) =
         match getUserIdByUserId uId with
@@ -3767,47 +3783,65 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         | None -> Error("Something went wrong - unable to get round. Maybe there is no any?")
     
     /// includes stats from the level
-    member _.GetCurrentBattleInfo() : Result<CurrentBattleInfo, string> =
+    member _.GetCurrentBattleInfo() : Result<CurrentFullBattleInfo, string> =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetLastBattleInfo conn
-            |> Db.querySingle (fun r ->
-                CurrentBattleInfo(
-                    uint64 <| r.GetInt64(0),
-                    r.GetInt32(1) |> enum<BattleStatus>,
-                    {
-                        Name = r.GetString(3)
-                        Description = r.GetString(4)
-                        Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 5, jsOptions)
-                        XP = uint64 <| r.GetInt32(6)
-                        Stat = {
 
-                            Health = r.GetInt64(7)
-                            Magic = r.GetInt64(8)
+            let cbi =
+                Db.newCommand SQL.GetLastBattleInfo conn
+                |> Db.querySingle (fun r ->
+                    CurrentBattleInfo(
+                        uint64 <| r.GetInt64(0),
+                        r.GetInt32(1) |> enum<BattleStatus>,
+                        {
+                            Name = r.GetString(3)
+                            Description = r.GetString(4)
+                            Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 5, jsOptions)
+                            XP = uint64 <| r.GetInt32(6)
+                            Stat = {
 
-                            Accuracy = r.GetInt64(9)
-                            Luck = r.GetInt64(10)
+                                Health = r.GetInt64(7)
+                                Magic = r.GetInt64(8)
 
-                            Attack = r.GetInt64(11)
-                            MagicAttack = r.GetInt64(12)
+                                Accuracy = r.GetInt64(9)
+                                Luck = r.GetInt64(10)
 
-                            Defense = r.GetInt64(13)
-                            MagicDefense = r.GetInt64(14)
-                        }
-                        MType = enum<MonsterType> <| r.GetInt32(15)
-                        MSubType = enum<MonsterSubType> <| r.GetInt32(16)
-                    },
-                    r.GetInt64(2) |> uint64
+                                Attack = r.GetInt64(11)
+                                MagicAttack = r.GetInt64(12)
+
+                                Defense = r.GetInt64(13)
+                                MagicDefense = r.GetInt64(14)
+                            }
+                            MType = enum<MonsterType> <| r.GetInt32(15)
+                            MSubType = enum<MonsterSubType> <| r.GetInt32(16)
+                        },
+                        r.GetInt64(2) |> uint64
+                    )
                 )
-            )
-            |> function
-                | Some v ->
-                    let monster = v.Monster
-                    let monsterLvl = Levels.getLvlByXp monster.XP
-                    let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
-                    v.WithMonsterInfo({ v.Monster with Stat = v.Monster.Stat + monsterLvlStats })
-                    |> Ok
-                | None -> Error("Unknown error")
+                |> function
+                    | Some v ->
+                        let monster = v.Monster
+                        let monsterLvl = Levels.getLvlByXp monster.XP
+                        let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
+                        v.WithMonsterInfo({ v.Monster with Stat = v.Monster.Stat + monsterLvlStats })
+                        |> Ok
+                    | None -> Error("Unknown error")
+            match cbi with
+            | Ok cb ->
+                let roundsInBattleO =
+                    Db.newCommand SQL.RoundInfoByBattleId conn
+                    |> Db.setParams [
+                        "battleId", SqlType.Int64 <| int64 cb.BattleNum
+                    ]
+                    |> Db.querySingle(fun r ->
+                        let count = r.GetInt32(0) + 1
+                        let timestamp = if r.IsDBNull(1) then DateTime.UtcNow else DateTime.SpecifyKind(r.GetDateTime(1), DateTimeKind.Utc)
+                        let rewards = if r.IsDBNull(2) then 0M else r.GetDecimal(2)
+                        CurrentRoundInfo(count, timestamp, rewards))
+                match roundsInBattleO with
+                | Some cri -> CurrentFullBattleInfo(cb, cri) |> Ok
+                | None -> Error "Unable to read current round info"
+            | Error err -> Error err
         with exn ->
             Log.Error(exn, "GetCurrentBattleInfo")
             Error("Unexpected error")
