@@ -296,6 +296,7 @@ module Emoj =
 
     let [<Literal>] Gem = ":gem:"
     let [<Literal>] Critical = ":zap:"
+    let [<Literal>] Battle = ":crossed_swords:"
 
     let [<Literal>] Rounds = ":hourglass:"
 

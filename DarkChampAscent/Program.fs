@@ -27,9 +27,12 @@ open Microsoft.AspNetCore.Identity
 open System.Text.Json
 open System.Text.Json.Serialization
 open DTO
+open Serilog.Events
 
 Log.Logger <-
     (new LoggerConfiguration())
+          .MinimumLevel.Information()
+          .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Error)
           .Enrich.FromLogContext()
           .WriteTo.Console()
           .WriteTo.File("log.txt", rollingInterval=RollingInterval.Month)
@@ -401,7 +404,7 @@ let battleInfoHandler : HttpHandler =
             let s = ctx.Plug<BattleService>()
             let apply =
                 Some(Option.map(fun (bi:BattleInfoDTO) ->
-                    bi.WithMonsterImg (FileUtils.mapToLocalImg bi.CurrentBattleInfo.Monster.Picture)))
+                    bi.WithMonsterImg (FileUtils.mapToLocalImg bi.CurrentBattleInfo.CurrentBattleInfo.Monster.Picture)))
             return! SSEHelper.handler s.BattleStatus apply ctx
         }
 
@@ -442,6 +445,32 @@ let joinBattleHandler : HttpHandler =
                     | Ok champId, Ok move -> bs.JoinRound(a.ID, { ChampId = champId; Move = move } )
                     | Error err1, Error err2 -> Error(err1 + Environment.NewLine + err2)
                     | Error err, _ | _, Error err -> Error err
+                return! apiResult response ctx
+            | None ->
+                return! apiUnauthorized ctx
+        }
+
+let joinGroupBattleHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+            let bs = ctx.Plug<BattleService>()
+            match ao with
+            | Some a ->
+                let response = bs.SendGroup(a.ID)
+                return! apiResult response ctx
+            | None ->
+                return! apiUnauthorized ctx
+        }
+
+let joinAllBattleHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+            let bs = ctx.Plug<BattleService>()
+            match ao with
+            | Some a ->
+                let response = bs.SendAll(a.ID)
                 return! apiResult response ctx
             | None ->
                 return! apiUnauthorized ctx
@@ -1080,8 +1109,8 @@ builder.Services
     .AddApplicationCommands()
     .AddGatewayHandlers(typeof<DiscordBot.GuildCreateHandler>.Assembly)
     .AddComponentInteractions<StringMenuInteraction, StringMenuInteractionContext>()
-    //.AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
-    //.AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
+    .AddComponentInteractions<ButtonInteraction, ButtonInteractionContext>()
+    .AddComponentInteractions<ModalInteraction, ModalInteractionContext>() 
     |> ignore
 
 builder.Services.AddDistributedMemoryCache() |> ignore
@@ -1120,6 +1149,7 @@ builder
         .AddHostedService<GenService>()
         .AddHostedService<RefundInvalidTxService>()
         .AddHostedService<RefundFailedGenService>()
+        .AddHostedService<ConfirmationService>()
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme          <- CookieAuthenticationDefaults.AuthenticationScheme
@@ -1168,6 +1198,8 @@ let endpoints =
 
         Pattern.Battle, battleHandler
         Pattern.BattleJoin, joinBattleHandler
+        Pattern.BattleJoinGroup, joinGroupBattleHandler
+        Pattern.BattleJoinAll, joinAllBattleHandler
         Pattern.BattleParticipants, battleParticipantsHandler
         Pattern.BattleRoundStatusInfo, battleRoundInfoHandler
         Pattern.BattleStatusInfo, battleInfoHandler
@@ -1215,6 +1247,13 @@ host
     .AddApplicationCommandModule(typeof<BattleModule>)
     .AddApplicationCommandModule(typeof<GeneralModule>)
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("sendgroup", Func<_,_,_>(Interactions.sendGroup)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("sendall", Func<_,_,_>(Interactions.sendAll)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_,_,_>(Interactions.register)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("pendingrewards", Func<_,_,_>(Interactions.getPendingRewards)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("info", Func<_,_>(Interactions.info)) |> ignore
+host.AddComponentInteraction<ModalInteractionContext>("registerwalletmodal", Func<_,_,_,_>(Interactions.registerWalletModal)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("registerWallet", Func<_,_>(Interactions.registerWallet)) |> ignore
 
 wapp.UseForwardedHeaders(
     ForwardedHeadersOptions(

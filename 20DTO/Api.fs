@@ -77,6 +77,8 @@ type Pattern =
 
    | Battle
    | BattleJoin
+   | BattleJoinGroup
+   | BattleJoinAll
    | BattleParticipants
    | BattleRoundStatusInfo
    | BattleStatusInfo
@@ -127,6 +129,8 @@ type Pattern =
 
        | Pattern.Battle -> "/api/battle"
        | Pattern.BattleJoin -> "/api/battle/join"
+       | Pattern.BattleJoinGroup -> "/api/battle/joingroup"
+       | Pattern.BattleJoinAll -> "/api/battle/joinall"
        | Pattern.BattleParticipants -> "/api/battle/participants"
        | Pattern.BattleRoundStatusInfo -> "/api/battle/roundstatusinfo"
        | Pattern.BattleStatusInfo -> "/api/battle/statusinfo"
@@ -204,6 +208,8 @@ type Pattern =
        | Pattern.AuthLogout
        | Pattern.AccountNewWallet
        | Pattern.BattleJoin
+       | Pattern.BattleJoinGroup
+       | Pattern.BattleJoinAll
        | Pattern.StorageUseItem
        | Pattern.ChampsLevelUp
        | Pattern.ChampsRescan

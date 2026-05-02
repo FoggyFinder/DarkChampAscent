@@ -46,7 +46,7 @@ type RoundInfoDTO(status:RoundStatus, roundStarted:DateTime option, roundId:uint
     member _.Round = roundId
 
 [<Struct>]
-type BattleInfoDTO(cbr:CurrentBattleInfo, history:BattleHistory) =
+type BattleInfoDTO(cbr:CurrentFullBattleInfo, history:BattleHistory) =
     member _.CurrentBattleInfo = cbr
     member _.History = history
     member _.WithMonsterImg(pic:MonsterImg) =

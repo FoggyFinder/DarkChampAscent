@@ -130,7 +130,6 @@ module Monster =
                     Characteristic.Health; Characteristic.Health
                     Characteristic.Attack; Characteristic.Attack
                     Characteristic.Defense; Characteristic.Defense
-                   
 
                     Characteristic.Attack; Characteristic.Health
                     Characteristic.Defense; Characteristic.Health
@@ -265,9 +264,9 @@ module Monster =
 
     let getRevivalDuration(monster:Monster) =
         match monster.MType with
-        | MonsterType.Zombie -> Constants.RoundsInBattle * 5
-        | MonsterType.Demon -> Constants.RoundsInBattle * 17
-        | MonsterType.Necromancer ->  Constants.RoundsInBattle * 12
+        | MonsterType.Zombie -> Constants.RoundsInBattle * 7
+        | MonsterType.Demon -> Constants.RoundsInBattle * 21
+        | MonsterType.Necromancer ->  Constants.RoundsInBattle * 15
         |> uint
 
     // dpmpp_2,; sgm_uniform

@@ -127,6 +127,21 @@ let joinBattle (champId: uint64) (move: Move) =
         return parseUnit json
     }
 
+let sendGroup () =
+    async { 
+        let p = Pattern.BattleJoinGroup
+        let! json = fetchJson p.Str p.Method None
+        return parseInt json
+    }
+
+let sendAll () =
+    async { 
+        let p = Pattern.BattleJoinAll
+        let! json = fetchJson p.Str p.Method None
+        return parseInt json
+    }
+
+
 let getShop () =
     async {
         let p = Pattern.Shop
