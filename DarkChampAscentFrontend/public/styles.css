@@ -3598,6 +3598,11 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     width: 100%;
 }
 
+.round-rewards {
+    text-align: center;
+    width: 100%;
+}
+
 .battle-meta .round-rewards {
     margin-inline-start: auto;
     font-size: var(--font-size-sm);

@@ -312,7 +312,7 @@ let BattlePage () =
                                 else None, None, "Round starts within 1 minute as any player joins it"
                             else Some targetUtc, Some "Time to round update:", ""
                         | None -> None, None, ""
-                    | RoundStatus.Processing -> None, Some "Round is processing:", ""
+                    | RoundStatus.Processing -> None, Some "Round is processing...", ""
                     | RoundStatus.Finished   -> None, Some "Round is finished, waiting...", ""
                     | _ -> None, None, ""
                 Html.div [

@@ -177,13 +177,32 @@ let register (db:SqliteStorage) (context:ButtonInteractionContext) =
 
 let info (context:ButtonInteractionContext) =
     task {
-        // 1. general info
-        // if user registered:
-        // 2. short stats:
-        // total champs: N
-        // defeated champs: M
+        let frontendOrigin =
+            match Environment.GetEnvironmentVariable "frontendorigin" with
+            | null -> "http://localhost:5173"
+            | str -> str
+
+        let about = $"""
+        **DarkChampAscent** is a discord bot and [web app]({frontendOrigin}) where players collect DarkCoins ({Display.Emoj.Coin}) by performing actions each round.
+You can find details on tokenomics [here]({frontendOrigin}//#/tokenomics)"""
+
+        let commands = """
+Not all features are available in the Discord bot, but the main ones are:
+
+* `Send group` – since rewards are split among all moves, sometimes the best strategy is to send only a few Champs while keeping the rest idle. Send group tries to use at most 6 Champs.
+* `Send all` – all Champs join battle. First it tries to apply different moves and the rest use attack.
+* `Pending rewards` – displays earned rewards for the current battle.
+* `Info` – displays short info about the project and available commands.
+* `Register` – allows adding a new wallet, or displays current wallets in case the user already has one registered.
+
+More commands are available as application commands, e.g. `/rewards`, ...
+The project is in an early stage of development; everything is subject to change without prior notice. If you have any ideas or suggestions, feel free to share them
+            """
         let callback =
-            [ TextDisplayProperties("Not implemented!") :> IMessageComponentProperties ]
+            [
+                TextDisplayProperties(about) :> IMessageComponentProperties
+                TextDisplayProperties(commands) :> IMessageComponentProperties
+            ]
             |> DUtils.interactionMessageFromComponents
             |> InteractionCallback.Message
 
