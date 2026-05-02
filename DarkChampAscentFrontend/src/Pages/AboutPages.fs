@@ -195,8 +195,19 @@ let HomePage () =
                     prop.className "block rules-section"
                     prop.id "rules-section"
                     prop.children [
-
                         Html.h3 [prop.text "General"]
+
+                        Html.div [
+                            prop.className "notice"
+                            prop.children [
+                                Html.p [ 
+                                    Html.text "The main goal of this project is to create an easy & fun way to slightly improve" 
+                                    Html.a [prop.href Links.DarkCoinIo; prop.target.blank; prop.text "Dark Coin"]
+                                    Html.text "distribution among active community members."
+                                ]
+                            ]
+                        ]
+
                         Html.p [prop.dangerouslySetInnerHTML (sprintf "DarkChampAscent started as an experiment - a discord bot where players collect DarkCoins (%s) by performing actions each round. It has evolved into a web app which continues to improve.." WebEmoji.DarkCoin)]
                         
                         Html.p [ prop.className "notice"; prop.text "The project is in an early stage of development; everything is subject to change without prior notice. If you have any ideas or suggestions, feel free to share them on Discord." ]
@@ -206,6 +217,9 @@ let HomePage () =
                             Html.a [prop.href Links.DarkChampCollection; prop.target.blank; prop.text "Dark Coin Champions"]
                             Html.text " collection."
                         ]
+
+
+                        
 
                         Html.p [ 
                             prop.dangerouslySetInnerHTML $"All earned DarkCoins ({WebEmoji.DarkCoin}) are added to in-game Champion balance and automatically distributed at the end of every battle. No actions required from users."

@@ -46,8 +46,8 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
             match res with
             | Ok code ->
                 $"Good, now follow instructions to confirm your wallet ({wallet'}). There 2 different ways:
-1. Send 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
-2. Auth with discord on [web-app]({frontendOrigin}), navigate to Account page and follow instructions there"
+1. Send a 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
+2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"
             | Error err -> $"Oh, no...there was error: {err}"
         (fun (moptions:MessageOptions) -> moptions.Content <- str)
         |> ApplicationCommand.deferredMessage x.Context
