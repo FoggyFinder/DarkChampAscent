@@ -91,10 +91,12 @@ open Microsoft.Extensions.Options
 
 let registerWalletModal (db:SqliteStorage) (options: IOptions<Conf.WalletConfiguration>) (context:ModalInteractionContext) =
     task {
-        let callback = InteractionCallback.ModifyMessage(fun options ->
-            options.Components <- [ TextDisplayProperties($"Registering...") ])      
-
+        let callback = InteractionCallback.DeferredMessage(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
         let! _ = context.Interaction.SendResponseAsync(callback)
+        let! _ =
+            context.Interaction.ModifyResponseAsync(fun options ->
+                options.Flags <- Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2)
+                options.Components <- [ TextDisplayProperties($"Registering...") ])
 
         let nWalletO = 
             context.Components
@@ -140,55 +142,55 @@ let registerWallet (_:ButtonInteractionContext) =
     }
 
 let register (db:SqliteStorage) (options: IOptions<Conf.WalletConfiguration>) (context:ButtonInteractionContext) =
-    let uId = UserId.Discord context.User.Id
-    match db.FindUserIdByUserId uId, db.GetUserWallets uId with
-    | Some _, Ok wallets when wallets.Length > 0 ->
-        let userWallets =
-            wallets |> List.map(fun w ->
-                let isConfirmed =
-                    let isConfStr = Display.fromBool w.IsConfirmed
-                    if w.IsConfirmed then isConfStr
-                    else $"{isConfStr} ({w.Code})"
-                TextDisplayProperties($"{w.Wallet} Confirmed: {isConfirmed}") 
-                    :> IMessageComponentProperties)
-        let confirmationHint =
+//    let uId = UserId.Discord context.User.Id
+//    match db.FindUserIdByUserId uId, db.GetUserWallets uId with
+//    | Some _, Ok wallets when wallets.Length > 0 ->
+//        let userWallets =
+//            wallets |> List.map(fun w ->
+//                let isConfirmed =
+//                    let isConfStr = Display.fromBool w.IsConfirmed
+//                    if w.IsConfirmed then isConfStr
+//                    else $"{isConfStr} ({w.Code})"
+//                TextDisplayProperties($"{w.Wallet} Confirmed: {isConfirmed}") 
+//                    :> IMessageComponentProperties)
+//        let confirmationHint =
             
-            if wallets |> List.exists(fun w -> w.IsConfirmed |> not) then
-                let frontendOrigin =
-                    match Environment.GetEnvironmentVariable "frontendorigin" with
-                    | null -> "http://localhost:5173"
-                    | str -> str
-                let instruction = $"""There 2 different ways to confirm a wallet:
-1. Send a 0-cost Algo tx to {options.Value.GameWallet} with the code you see in brackets as a note: .
-2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"""
-                TextDisplayProperties(instruction) :> IMessageComponentProperties |> Some
-            else None
-        task {
-            let callback =
-                [ 
-                    TextDisplayProperties("Registered wallets") :> IMessageComponentProperties
-                    yield! userWallets
-                    match confirmationHint with
-                    | Some c -> c
-                    | None -> ()
-                    ActionRowProperties([ButtonProperties($"registerWallet", "Add new wallet", ButtonStyle.Danger)])
-                ]
-                |> DUtils.interactionMessageFromComponents
-                |> InteractionCallback.Message
+//            if wallets |> List.exists(fun w -> w.IsConfirmed |> not) then
+//                let frontendOrigin =
+//                    match Environment.GetEnvironmentVariable "frontendorigin" with
+//                    | null -> "http://localhost:5173"
+//                    | str -> str
+//                let instruction = $"""There 2 different ways to confirm a wallet:
+//1. Send a 0-cost Algo tx to {options.Value.GameWallet} with the code you see in brackets as a note: .
+//2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"""
+//                TextDisplayProperties(instruction) :> IMessageComponentProperties |> Some
+//            else None
+//        task {
+//            let callback =
+//                [ 
+//                    TextDisplayProperties("Registered wallets") :> IMessageComponentProperties
+//                    yield! userWallets
+//                    match confirmationHint with
+//                    | Some c -> c
+//                    | None -> ()
+//                    ActionRowProperties([ButtonProperties($"registerWallet", "Add new wallet", ButtonStyle.Danger)])
+//                ]
+//                |> DUtils.interactionMessageFromComponents
+//                |> InteractionCallback.Message
 
-            let! _ = context.Interaction.SendResponseAsync(callback)
+//            let! _ = context.Interaction.SendResponseAsync(callback)
     
-            return ()
-        } :> System.Threading.Tasks.Task
-    | _, _ ->
-        task {
-            let callback = InteractionCallback.Modal(
-                ModalProperties($"registerwalletmodal", "Register wallet", [
-                    LabelProperties("New wallet", TextInputProperties("newWallet", TextInputStyle.Short))
-                        .WithDescription($"No nfd support")
-                ]))
-            return callback
-        }
+//            return ()
+//        } :> System.Threading.Tasks.Task
+//    | _, _ ->
+    task {
+        let callback = InteractionCallback.Modal(
+            ModalProperties($"registerwalletmodal", "Register wallet", [
+                LabelProperties("New wallet", TextInputProperties("newWallet", TextInputStyle.Short))
+                    .WithDescription($"No nfd support")
+            ]))
+        return callback
+    }
 
 let info (context:ButtonInteractionContext) =
     task {
