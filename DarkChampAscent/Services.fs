@@ -208,7 +208,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
     let roundParticipants = Signal<RoundParticipantChamp list>([])
     let roundStatus = Signal<RoundInfoDTO>(RoundInfoDTO(RoundStatus.Processing, None, 0UL))
     let battleStatus = Signal<BattleInfoDTO option>(None)
-
+    
     let updateBattleStatus() = 
         task {
             match db.GetCurrentBattleInfo() with
@@ -218,6 +218,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 for guild in gclient.Cache.Guilds do
                     match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = Channels.EntryChannel) with
                     | Some channel ->
+                        // TODO: cache message for each guild and use it instead of requesting pinned message every time
                         let! pinnedMsgs = gclient.Rest.GetPinnedMessagesAsync(channel.Key)
                         match pinnedMsgs.Count with
                         | 0 -> Log.Error($"No pinned messages in {Channels.EntryChannel} channel")
@@ -559,48 +560,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             let cRound = roundStatus.Value.Round
             match db.GetActiveUserChamps(userId, cRound) with
             | Ok champs when champs.Length > 0 ->
-                let moves = Dictionary<uint64, RoundActionRecord>()
-                let minMagic = 5
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortBy(fun c -> c.Stat.Health)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Heal; ChampId = c.ID }))
-     
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortBy(fun c -> c.Stat.Magic)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Meditate; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.MagicAttack)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.MagicAttack; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.MagicDefense)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.MagicShield; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.Defense)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Shield; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.Attack)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Attack; ChampId = c.ID }))
-
-                let results =
-                    moves.Values |> Seq.map(fun rar -> joinRound(userId, rar, false)) |> Seq.toList
+                let moves = champs |> List.map(fun r -> r.ID, r.Stat) |> ActionSelector.selectActions
+                let results = moves |> List.map(fun rar -> joinRound(userId, rar, false))
                 if results |> List.forall(fun r -> r.IsOk) then
-                    Ok (moves.Count)
+                    Ok (moves.Length)
                 else Error("Unexpected error")
             | Ok _ -> Error "No available (alive) champs!"
             | Error err -> Error err
