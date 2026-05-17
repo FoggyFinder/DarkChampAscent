@@ -164,9 +164,7 @@ let allChamps =
     lazy(getAccountCreatedAssets DarkCoinChampsCreator |> Seq.map(fun asset -> asset.Index) |> Set.ofSeq)
 
 let getChampsForWallet wallet =
-    printfn "get champs"
     let acmps' = allChamps.Value
-    printfn "champs collected %A" acmps'.Count
     getAssets wallet
     |> Seq.choose(fun m ->
         if m.Amount > 0UL && acmps'.Contains m.AssetId 
