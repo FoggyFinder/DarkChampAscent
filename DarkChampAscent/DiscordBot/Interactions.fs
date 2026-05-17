@@ -110,17 +110,28 @@ let registerWalletModal (db:SqliteStorage) (options: IOptions<Conf.WalletConfigu
             match nWalletO with
             | Some newWallet ->
                 let wallet' = newWallet.Trim()
+                let cInstr code = 
+                    let frontendOrigin =
+                        match Environment.GetEnvironmentVariable "frontendorigin" with
+                        | null -> "http://localhost:5173"
+                        | str -> str
+                    $"Good, this wallet ({wallet'}) is registered. There 2 different ways to confirm it:
+1. Send 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
+2. Auth with discord on [web-app]({frontendOrigin}), navigate to Account page and follow instructions there"
                 if Blockchain.isValidAddress wallet' then
                     match db.RegisterNewWallet(UserId.Discord context.User.Id, wallet') with
                     | Ok code ->
-                        let frontendOrigin =
-                            match Environment.GetEnvironmentVariable "frontendorigin" with
-                            | null -> "http://localhost:5173"
-                            | str -> str
-                        $"Good, now follow instructions to confirm your wallet ({wallet'}). There 2 different ways:
-1. Send 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
-2. Auth with discord on [web-app]({frontendOrigin}), navigate to Account page and follow instructions there"
-                    | Error err -> err
+                        cInstr code
+                    | Error err ->
+                        let uId = UserId.Discord context.User.Id
+                        match db.GetUserWallets uId with
+                        | Ok wallets when wallets.Length > 0 ->
+                            match wallets |> List.tryFind(fun w -> w.Wallet = wallet') with
+                            | Some w ->
+                                if w.IsConfirmed then "You already registered this wallet"
+                                else cInstr w.Code
+                            | None -> err
+                        | _ -> err
                 else
                     $"Invalid Algorand address. Please, check correctness: {wallet'}"
             | _ -> "Error: Incorrect input"
@@ -131,58 +142,7 @@ let registerWalletModal (db:SqliteStorage) (options: IOptions<Conf.WalletConfigu
         ()
     } :> System.Threading.Tasks.Task
 
-let registerWallet (_:ButtonInteractionContext) =
-    task {
-        let callback = InteractionCallback.Modal(
-            ModalProperties($"registerwalletmodal", "New wallet", [
-                LabelProperties("New wallet", TextInputProperties("newWallet", TextInputStyle.Short))
-                    .WithDescription($"No nfd support")
-            ]))
-        return callback
-    }
-
-let register (db:SqliteStorage) (options: IOptions<Conf.WalletConfiguration>) (context:ButtonInteractionContext) =
-//    let uId = UserId.Discord context.User.Id
-//    match db.FindUserIdByUserId uId, db.GetUserWallets uId with
-//    | Some _, Ok wallets when wallets.Length > 0 ->
-//        let userWallets =
-//            wallets |> List.map(fun w ->
-//                let isConfirmed =
-//                    let isConfStr = Display.fromBool w.IsConfirmed
-//                    if w.IsConfirmed then isConfStr
-//                    else $"{isConfStr} ({w.Code})"
-//                TextDisplayProperties($"{w.Wallet} Confirmed: {isConfirmed}") 
-//                    :> IMessageComponentProperties)
-//        let confirmationHint =
-            
-//            if wallets |> List.exists(fun w -> w.IsConfirmed |> not) then
-//                let frontendOrigin =
-//                    match Environment.GetEnvironmentVariable "frontendorigin" with
-//                    | null -> "http://localhost:5173"
-//                    | str -> str
-//                let instruction = $"""There 2 different ways to confirm a wallet:
-//1. Send a 0-cost Algo tx to {options.Value.GameWallet} with the code you see in brackets as a note: .
-//2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"""
-//                TextDisplayProperties(instruction) :> IMessageComponentProperties |> Some
-//            else None
-//        task {
-//            let callback =
-//                [ 
-//                    TextDisplayProperties("Registered wallets") :> IMessageComponentProperties
-//                    yield! userWallets
-//                    match confirmationHint with
-//                    | Some c -> c
-//                    | None -> ()
-//                    ActionRowProperties([ButtonProperties($"registerWallet", "Add new wallet", ButtonStyle.Danger)])
-//                ]
-//                |> DUtils.interactionMessageFromComponents
-//                |> InteractionCallback.Message
-
-//            let! _ = context.Interaction.SendResponseAsync(callback)
-    
-//            return ()
-//        } :> System.Threading.Tasks.Task
-//    | _, _ ->
+let register (_:ButtonInteractionContext) =
     task {
         let callback = InteractionCallback.Modal(
             ModalProperties($"registerwalletmodal", "Register wallet", [

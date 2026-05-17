@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="01GameLogic/01GameLogic.fsproj" />
+  <Project Path="0GameLogic/02GameBattle.fsproj" />
+  <Project Path="1GameLogicTests/1GameLogicTests.fsproj" />
+  <Project Path="20DTO/20DTO.fsproj" />
+  <Project Path="2DataLayer/2DataLayer.fsproj" />
+  <Project Path="DarkChampAscent/DarkChampAscent.fsproj" />
+  <Project Path="DarkChampAscentFrontend/DarkChampAscentFrontend.fsproj" />
+</Solution>

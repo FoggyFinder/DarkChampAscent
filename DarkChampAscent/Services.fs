@@ -105,6 +105,31 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                     Log.Error(exn, "confirmationTracker2")
         }
 
+type RescanChampsService(db:SqliteStorage) =
+    inherit BackgroundService()
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(7.0), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                try
+                    let userAndWallets = db.GetAllConfirmedWallets()
+                    for (userId, wallets) in userAndWallets |> List.groupBy(fun (uId, _) -> uId) do
+                        let wallets' = wallets |> List.map snd
+                        try 
+                            let r = CommonHelpers.updateChampsForAUser(db, userId, wallets')
+                            match r with
+                            | Ok () -> ()
+                            | Error err -> Log.Error(err)
+                        with err ->
+                            Log.Error(err, $"rescan for {userId} failed")
+                        do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
+                with exn ->
+                    Log.Error(exn, "rescanChampsService")
+                // TODO: twice or once a day will be enough later
+                do! Task.Delay(TimeSpan.FromHours(6.0), cancellationToken)
+        }
+
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
     inherit BackgroundService()
 
@@ -147,7 +172,7 @@ type TxTrackerService(db:SqliteStorage, options: IOptions<Conf.WalletConfigurati
                     let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
                     let txs = Blockchain.getDarkCoinTxForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
                     // delay before processing so give time to handle tx properly if it was created from the app
-                    do! Task.Delay(TimeSpan.FromMinutes(45.0), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromHours(3.0), cancellationToken)
                     
                     let statuses = txs |> Array.map(fun ptx -> db.ProcessParsedRawTx ptx)
                     if statuses |> Array.forall id then
@@ -196,7 +221,6 @@ type TrackChampCfgService(db:SqliteStorage) =
 
 open Types
 open DarkChampAscent.Account
-open System.Collections.Generic
 
 type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
     inherit BackgroundService()
@@ -208,7 +232,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
     let roundParticipants = Signal<RoundParticipantChamp list>([])
     let roundStatus = Signal<RoundInfoDTO>(RoundInfoDTO(RoundStatus.Processing, None, 0UL))
     let battleStatus = Signal<BattleInfoDTO option>(None)
-
+    
     let updateBattleStatus() = 
         task {
             match db.GetCurrentBattleInfo() with
@@ -218,6 +242,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 for guild in gclient.Cache.Guilds do
                     match guild.Value.Channels |> Seq.tryFind(fun c -> c.Value.Name = Channels.EntryChannel) with
                     | Some channel ->
+                        // TODO: cache message for each guild and use it instead of requesting pinned message every time
                         let! pinnedMsgs = gclient.Rest.GetPinnedMessagesAsync(channel.Key)
                         match pinnedMsgs.Count with
                         | 0 -> Log.Error($"No pinned messages in {Channels.EntryChannel} channel")
@@ -559,48 +584,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             let cRound = roundStatus.Value.Round
             match db.GetActiveUserChamps(userId, cRound) with
             | Ok champs when champs.Length > 0 ->
-                let moves = Dictionary<uint64, RoundActionRecord>()
-                let minMagic = 5
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortBy(fun c -> c.Stat.Health)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Heal; ChampId = c.ID }))
-     
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortBy(fun c -> c.Stat.Magic)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Meditate; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.MagicAttack)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.MagicAttack; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.MagicDefense)
-                |> List.tryPick(fun c -> if c.Stat.Magic > minMagic then Some c else None)
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.MagicShield; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.Defense)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Shield; ChampId = c.ID }))
-
-                champs
-                |> List.filter(fun c -> moves.ContainsKey c.ID |> not)
-                |> List.sortByDescending(fun c -> c.Stat.Attack)
-                |> List.tryHead
-                |> Option.iter(fun c -> moves.Add(c.ID, { Move = Move.Attack; ChampId = c.ID }))
-
-                let results =
-                    moves.Values |> Seq.map(fun rar -> joinRound(userId, rar, false)) |> Seq.toList
+                let moves = champs |> List.map(fun r -> r.ID, r.Stat) |> ActionSelector.selectActions
+                let results = moves |> List.map(fun rar -> joinRound(userId, rar, false))
                 if results |> List.forall(fun r -> r.IsOk) then
-                    Ok (moves.Count)
+                    Ok (moves.Length)
                 else Error("Unexpected error")
             | Ok _ -> Error "No available (alive) champs!"
             | Error err -> Error err

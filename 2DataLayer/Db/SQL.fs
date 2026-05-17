@@ -522,6 +522,11 @@ module internal SQL =
         WHERE UserId = @userId
     """
 
+    let GetConfirmedWallets = """
+        SELECT UserId, Address FROM Wallet
+        WHERE IsConfirmed = 1
+    """
+
     let GetKey = "SELECT Value FROM KeyValue WHERE Key = @key"
     let SetKey = "
         INSERT INTO KeyValue(Key, Value) VALUES(@key, @value)

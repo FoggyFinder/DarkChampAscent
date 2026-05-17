@@ -6,6 +6,99 @@ open GameLogic.Effects
 open GameLogic.Champs
 open GameLogic.Monsters
 
+[<RequireQualifiedAccess>]
+module ActionSelector =
+    open System.Collections.Generic
+    let [<Literal>] MinMagic = 5
+
+    let private fullGroup(champs:(uint64 * Stat) list) =
+        let moves = Dictionary<uint64, RoundActionRecord>()
+        
+        champs
+        |> List.filter(fun (cId, _) -> moves.ContainsKey cId |> not)
+        |> List.sortBy(fun (_, stat) -> stat.Health)
+        |> List.tryPick(fun (cId, stat) -> if stat.Magic > MinMagic then Some cId else None)
+        |> Option.iter(fun cId -> moves.Add(cId, { Move = Move.Heal; ChampId = cId }))
+     
+        champs
+        |> List.filter(fun (cId, _) -> moves.ContainsKey cId |> not)
+        |> List.sortBy(fun (_, stat) -> stat.Magic)
+        |> List.tryHead
+        |> Option.iter(fun (cId, _) -> moves.Add(cId, { Move = Move.Meditate; ChampId = cId }))
+
+        champs
+        |> List.sortByDescending(fun (_, stat) -> stat.MagicAttack)
+        |> List.tryPick(fun (cId, stat) ->
+            if moves.ContainsKey cId |> not && stat.Magic > MinMagic then Some cId else None)
+        |> Option.iter(fun cId -> moves.Add(cId, { Move = Move.MagicAttack; ChampId = cId }))
+
+        champs
+        |> List.sortByDescending(fun (_, stat) -> stat.MagicDefense)
+        |> List.tryPick(fun (cId, stat) -> 
+            if moves.ContainsKey cId |> not && stat.Magic > MinMagic then Some cId else None)
+        |> Option.iter(fun cId -> moves.Add(cId, { Move = Move.MagicShield; ChampId = cId }))
+
+        champs
+        |> List.filter(fun (cId, _) -> moves.ContainsKey cId |> not)
+        |> List.sortByDescending(fun (_, stat) -> stat.Defense)
+        |> List.tryHead
+        |> Option.iter(fun (cId, _) -> moves.Add(cId, { Move = Move.Shield; ChampId = cId }))
+
+        champs
+        |> List.filter(fun (cId, _) -> moves.ContainsKey cId |> not)
+        |> List.sortByDescending(fun (_, stat) -> stat.Attack)
+        |> List.tryHead
+        |> Option.iter(fun (cId, _) -> moves.Add(cId, { Move = Move.Attack; ChampId = cId }))
+
+        moves.Values |> Seq.toList
+
+    let shortenedGroup(champs:(uint64 * Stat) list) =
+        match champs with
+        | [] -> []
+        | [(cId, stat)] ->
+            let move =
+                if stat.Health > 10 && stat.Magic > 5 then Move.Heal
+                elif stat.Health > 50 && stat.Magic < 20 then Move.Meditate
+                else Move.Attack
+            [{ Move = move; ChampId = cId }]
+        | [(cId1, stat1); (cId2, stat2)] ->
+            let move1 =
+                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
+                else Move.Attack
+            let move2 =
+                if stat2.Magic > 30 then Move.MagicAttack
+                elif move1 <> Move.Attack then Move.Attack
+                else Move.Shield
+            [ { Move = move1; ChampId = cId1 }; { Move = move2; ChampId = cId2 } ]
+        | [(cId1, stat1); (cId2, stat2); (cId3, stat3) ] ->
+            let move1 =
+                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
+                else Move.Attack
+            let move2 =
+                if stat2.Magic > 30 then Move.MagicAttack
+                elif move1 <> Move.Attack then Move.Attack
+                else Move.Shield
+            let move3 =
+                if stat3.Magic > 30 then Move.MagicShield
+                elif move1 <> Move.Attack && move2 <> Move.Attack then Move.Attack
+                elif move1 <> Move.Meditate then Move.Meditate
+                elif move2 <> Move.Shield then Move.Shield
+                else Move.Attack
+            [ { Move = move1; ChampId = cId1 }; { Move = move2; ChampId = cId2 }; { Move = move3; ChampId = cId3 } ]
+        | xs ->
+            xs
+            |> List.map(fun (cId, stat) ->
+                let move =
+                    if stat.Health > 20 && stat.Magic > 5 then Move.Heal
+                    elif stat.Health > 50 && stat.Magic < 25 then Move.Meditate
+                    else Move.Attack
+                { Move = move; ChampId = cId })
+
+    let selectActions(champs:(uint64 * Stat) list) =
+        if champs.Length > 3 then fullGroup champs
+        else shortenedGroup champs
 
 [<RequireQualifiedAccess>]
 module Battle =
