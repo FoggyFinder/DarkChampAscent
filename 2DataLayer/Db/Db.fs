@@ -1010,7 +1010,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             try
                 use conn = new SqliteConnection(cs)
                 Db.newCommand SQL.GetUserWallets conn
-                |> Db.setParams [ 
+                |> Db.setParams [
                     "userId", SqlType.Int64 id
                 ]
                 |> Db.query(fun r -> Wallet(r.GetString(0), r.GetBoolean(1), r.GetString(3), r.GetBoolean(2)))
@@ -3750,6 +3750,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 None
         | None -> None
 
+    member _.ChampBelongsToAUserRaw(champId:int64, userId: uint64) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.ChampBelongsToAUser conn
+            |> Db.setParams [
+                "champId", SqlType.Int64 champId
+                "userId", SqlType.Int64 <| int64 userId
+            ]
+            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0))
+        with exn ->
+            Log.Error(exn, "ChampBelongsToAUserRaw")
+            None
+
     member _.MonsterBelongsToAUser(monsterId:uint64, uId: UserId) =
         match getUserIdByUserId uId with
         | Some userId ->
@@ -4151,6 +4164,29 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"AddTxRevertHistory: {txId} | {outTx}")
             false
 
+    member _.GetChampIdByAssetId(assetId:uint64) =
+        try
+            use conn = new SqliteConnection(cs)
+            
+            Db.newCommand SQL.GetChampIdByAssetId conn
+            |> Db.setParams [
+                "assetId", SqlType.Int64 <| int64 assetId
+            ]
+            |> Db.querySingle (fun r -> r.GetInt64(0))
+        with exn ->
+            Log.Error(exn, $"GetChampIdByAssetId : {assetId}")
+            None
+
+    member _.GetAllConfirmedWallets(): (uint64 * string) list =
+        try
+            use conn = new SqliteConnection(cs)
+            
+            Db.newCommand SQL.GetConfirmedWallets conn
+            |> Db.query(fun r -> uint64 <| r.GetInt64(0), r.GetString(1))
+        with exn ->
+            Log.Error(exn, $"GetAllConfirmedWallets")
+            []
+            
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
         getKeyDateTime conn key

@@ -11,7 +11,13 @@ let private scanChamps (db:SqliteStorage) (userId:uint64) (wallet:string) =
         let r = db.ChampExists assetId
         match r with
         | Ok b ->
-            if b then db.UpdateUserForChamp(userId, assetId)
+            if b then
+                let belongsToAUser =
+                    db.GetChampIdByAssetId assetId
+                    |> Option.bind(fun champId -> db.ChampBelongsToAUserRaw(champId, userId))
+                    |> Option.defaultValue true
+                if belongsToAUser then Ok ()
+                else db.UpdateUserForChamp(userId, assetId)
             else
                 match Blockchain.tryGetChampInfo assetId with
                 | Some (trait', ipfs) ->

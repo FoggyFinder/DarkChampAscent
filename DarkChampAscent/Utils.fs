@@ -94,7 +94,6 @@ module AuthenticationHandler =
     open DarkChampAscent.Account
     open System.Security.Claims
     open Microsoft.AspNetCore.Authentication
-    open System
 
     let [<Literal>] Custom = "Custom"
     let [<Literal>] Web3 = "Web3"

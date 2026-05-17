@@ -105,6 +105,31 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                     Log.Error(exn, "confirmationTracker2")
         }
 
+type RescanChampsService(db:SqliteStorage) =
+    inherit BackgroundService()
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(7.0), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                try
+                    let userAndWallets = db.GetAllConfirmedWallets()
+                    for (userId, wallets) in userAndWallets |> List.groupBy(fun (uId, _) -> uId) do
+                        let wallets' = wallets |> List.map snd
+                        try 
+                            let r = CommonHelpers.updateChampsForAUser(db, userId, wallets')
+                            match r with
+                            | Ok () -> ()
+                            | Error err -> Log.Error(err)
+                        with err ->
+                            Log.Error(err, $"rescan for {userId} failed")
+                        do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
+                with exn ->
+                    Log.Error(exn, "rescanChampsService")
+                // TODO: twice or once a day will be enough later
+                do! Task.Delay(TimeSpan.FromHours(6.0), cancellationToken)
+        }
+
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
     inherit BackgroundService()
 
@@ -147,7 +172,7 @@ type TxTrackerService(db:SqliteStorage, options: IOptions<Conf.WalletConfigurati
                     let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
                     let txs = Blockchain.getDarkCoinTxForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
                     // delay before processing so give time to handle tx properly if it was created from the app
-                    do! Task.Delay(TimeSpan.FromMinutes(45.0), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromHours(3.0), cancellationToken)
                     
                     let statuses = txs |> Array.map(fun ptx -> db.ProcessParsedRawTx ptx)
                     if statuses |> Array.forall id then
@@ -196,7 +221,6 @@ type TrackChampCfgService(db:SqliteStorage) =
 
 open Types
 open DarkChampAscent.Account
-open System.Collections.Generic
 
 type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Conf.Configuration>) =
     inherit BackgroundService()

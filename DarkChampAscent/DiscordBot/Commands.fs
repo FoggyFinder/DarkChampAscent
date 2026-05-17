@@ -11,7 +11,6 @@ open NetCord
 open GameLogic.Limits
 open Display
 open System.Threading.Tasks
-open Serilog
 open DarkChampAscent.Account
 open Microsoft.Extensions.Options
 open DiscordBot.Components

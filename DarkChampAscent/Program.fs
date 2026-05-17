@@ -630,6 +630,7 @@ let champsDefeatedHandler : HttpHandler =
             return! response ctx
         }
 
+// TODO: remove in next update
 let rescanHandler : HttpHandler =
     fun ctx ->
         task {
@@ -1150,6 +1151,7 @@ builder
         .AddHostedService<RefundInvalidTxService>()
         .AddHostedService<RefundFailedGenService>()
         .AddHostedService<ConfirmationService>()
+        .AddHostedService<RescanChampsService>()
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme          <- CookieAuthenticationDefaults.AuthenticationScheme
@@ -1249,11 +1251,10 @@ host
     .AddComponentInteraction<StringMenuInteractionContext>("actionselect", Func<_,_,_,_>(Interactions.actionselect)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("sendgroup", Func<_,_,_>(Interactions.sendGroup)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("sendall", Func<_,_,_>(Interactions.sendAll)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_,_,_>(Interactions.register)) |> ignore
+host.AddComponentInteraction<ButtonInteractionContext>("register", Func<_,_>(Interactions.register)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("pendingrewards", Func<_,_,_>(Interactions.getPendingRewards)) |> ignore
 host.AddComponentInteraction<ButtonInteractionContext>("info", Func<_,_>(Interactions.info)) |> ignore
 host.AddComponentInteraction<ModalInteractionContext>("registerwalletmodal", Func<_,_,_,_>(Interactions.registerWalletModal)) |> ignore
-host.AddComponentInteraction<ButtonInteractionContext>("registerWallet", Func<_,_>(Interactions.registerWallet)) |> ignore
 
 wapp.UseForwardedHeaders(
     ForwardedHeadersOptions(
