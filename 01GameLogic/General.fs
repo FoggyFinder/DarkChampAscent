@@ -834,25 +834,6 @@ module Champ =
             fromMagic trts.Magic
         ] |> List.sum
 
-type Champ = {
-    Id: int64
-    Stats: Stat
-}
-
-type ChampInfo = {
-    ID: uint64
-    Name : string
-    Ipfs : string
-    Balance : decimal
-    XP : uint64
-
-    Stat: Stat
-    Traits: Traits
-    BoostStat: Stat option
-    LevelsStat: Stat option
-    LeveledChars: uint64
-}
-
 [<RequireQualifiedAccess>]
 type Move =
     /// attack -> takes damage

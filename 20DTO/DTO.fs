@@ -1,8 +1,7 @@
-module DTO
+namespace DTO
 
 open Types
 open GameLogic.Shop
-open GameLogic.Champs
 open GameLogic.Monsters
 open GameLogic.Battle
 open System
@@ -19,17 +18,16 @@ type UserStorageDTO(storage:(ShopItem * int) list, champs:ChampInfoWithStat list
     member _.Storage = storage
     member _.Champs = champs
 
-type ChampDTO(champ:ChampInfo, belongsToAUser: bool, price: decimal) =
+type ChampDTO(champ:ChampInfoWithUserLink, belongsToAUser: bool, price: decimal) =
     member _.ChampInfo = champ
     member _.BelongsToAUser = belongsToAUser
     member _.Price = price
 
-type MonsterDTO(monster:MonsterInfo, id:uint64, isOwned:bool) =
+type MonsterDTO(monster:MonsterInfoWithUserLink, isOwned:bool) =
     member _.Monster = monster
-    member _.ID = id
     member _.IsOwned = isOwned
     member x.WithMonsterImg(img:MonsterImg) =
-        MonsterDTO({ x.Monster with Picture = img }, x.ID, x.IsOwned)
+        MonsterDTO(MonsterInfoWithUserLink(x.Monster.MonsterInfo.WithPic img, x.Monster.UserLink), x.IsOwned)
 
 type UserMonstersDTO(monsters:MonsterShortInfo list, price: decimal) =
     member _.Monsters = monsters

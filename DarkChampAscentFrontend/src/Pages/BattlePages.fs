@@ -369,7 +369,7 @@ let BattlePage () =
                                 prop.className "battle-monster"
                                 prop.children [
                                     Html.img [ prop.className "picNormal"; Utils.srcMonsterImg cbi.Monster.Picture ]
-                                    Html.div [ prop.className "center"; prop.children [ monsterLink (uint64 cbi.MonsterId) cbi.Monster.Name ] ]
+                                    Html.div [ prop.className "center"; prop.children [ monsterLink (uint64 cbi.Monster.Id) cbi.Monster.Name ] ]
                                     Html.div [ prop.className "center muted"; prop.text (Display.monsterClass(cbi.Monster.MType, cbi.Monster.MSubType)) ]
                                     Html.div [ prop.className "center"; prop.text $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)" ]
                        
@@ -467,10 +467,6 @@ let BattlePage () =
                                             Html.tr [
                                                 Html.td [ prop.text $"{WebEmoji.Reserve} Reserve {WebEmoji.Reserve}" ]
                                                 Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Reserve)} {WebEmoji.DarkCoin}" ]
-                                            ]
-                                            Html.tr [
-                                                Html.td [ prop.text $"{WebEmoji.Staking} Staking {WebEmoji.Staking}" ]
-                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Staking)} {WebEmoji.DarkCoin}" ]
                                             ]
                                             Html.tr [
                                                 Html.td [ prop.text $"{WebEmoji.Fire} Burn {WebEmoji.Fire}" ]

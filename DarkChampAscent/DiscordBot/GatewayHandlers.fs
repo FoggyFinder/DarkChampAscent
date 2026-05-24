@@ -48,27 +48,6 @@ type GuildCreateHandler(db:SqliteStorage, rclient:RestClient) =
                     let! ch = arg.Guild.CreateChannelAsync(logChannel)
                     Log.Information($"Done! {ch.Id}")
                 
-                let battleChannelIsCreated = arg.Guild.Channels |> Seq.exists(fun ch -> ch.Value.Name = Channels.BattleChannel)
-                if battleChannelIsCreated |> not then
-                    let battleChannel = GuildChannelProperties(Channels.BattleChannel, ChannelType.TextGuildChannel)
-                    battleChannel.ParentId <- Nullable(categoryId)
-                    battleChannel.PermissionOverwrites <- [
-                        PermissionOverwriteProperties(arg.Guild.EveryoneRole.Id, PermissionOverwriteType.Role).WithDenied(
-                            Nullable(Permissions.SendMessages)
-                        )
-                        match botRole with
-                        | Some brole ->
-                            PermissionOverwriteProperties(brole.Key, PermissionOverwriteType.Role).WithAllowed(
-                                Nullable(Permissions.SendMessages 
-                                    // ||| Permissions.ManageMessages
-                                )
-                            )                            
-                        | None -> ()
-                    ]
-                    Log.Information($"Creating...{Channels.BattleChannel}")
-                    let! ch = arg.Guild.CreateChannelAsync(battleChannel)
-                    Log.Information($"Done! {ch.Id}")
-
                 let entryChannelIsCreated = arg.Guild.Channels |> Seq.exists(fun ch -> ch.Value.Name = Channels.EntryChannel)
                 if entryChannelIsCreated |> not then
                     let entryChannel = GuildChannelProperties(Channels.EntryChannel, ChannelType.TextGuildChannel)

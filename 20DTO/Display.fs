@@ -59,6 +59,7 @@ module DisplayEnum =
         | MonsterType.Zombie -> "Zombie"
         | MonsterType.Demon -> "Demon"
         | MonsterType.Necromancer -> "Necromancer"
+        | MonsterType.Universal -> "Universal"
         
     let MonsterSubType(mst:MonsterSubType) =
         match mst with
@@ -396,7 +397,6 @@ module WebEmoji =
     let [<Literal>] Fire = "🔥"
     let [<Literal>] DAO = "🏛️"
     let [<Literal>] Dev = "💻"
-    let [<Literal>] Staking = "♻️"
     let [<Literal>] Reserve = "🔑"
     let [<Literal>] History = "📜"
     let [<Literal>] Progress = "⟳"

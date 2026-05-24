@@ -7,8 +7,12 @@ type IFormCollection with
         match x.TryGetValue key with
         | true, s -> Some s
         | false, _ -> None
+
 open System
 open System.Threading.Tasks
+open Types
+open DarkChampAscent.Account
+open Db
 
 let retry (f: unit -> bool) (retries: int) (delay: TimeSpan) : Task<bool> =
     task {
@@ -137,6 +141,61 @@ module BlockchainUtils =
             note
         )
 
+[<RequireQualifiedAccess>]
+module Cache =
+    open System.Collections.Concurrent
+    open Serilog
+    open Falco
+    open NetCord.Rest
+
+    let names = ConcurrentDictionary<uint64, string>()
+    let userLinks = ConcurrentDictionary<int64, UserLink>()
+
+    let tryGetNameByDiscordId (ctx:HttpContext) (dId:uint64) =
+        task {
+            match names.TryGetValue dId with
+            | true, name -> return name
+            | false, _ ->
+                try
+                    let client = ctx.Plug<RestClient>()
+                    let! u = client.GetUserAsync dId
+                    names.TryAdd(dId, u.GlobalName) |> ignore
+                    return u.GlobalName
+                with exn ->
+                    Log.Error("Attempt to get user info", exn)
+                    return $"Discord:{dId}"
+        }
+
+    let tryGetUserLinkByRawUserId (db:SqliteStorage) (restClient:RestClient) (dbId:int64) =
+        task {
+            match userLinks.TryGetValue dbId with
+            | true, uLink -> return Some uLink
+            | false, _ ->
+                try
+                    match db.GetUserInfoRaw dbId with
+                    | Some ut ->
+                        match ut with
+                        | UserType.Discord dId ->
+                            match names.TryGetValue dId with
+                            | true, name -> return UserLink(uint64 dbId, name) |> Some
+                            | false, _ ->
+                                let! u = restClient.GetUserAsync dId
+                                names.TryAdd(dId, u.GlobalName) |> ignore
+                                return UserLink(uint64 dbId, u.GlobalName) |> Some
+                        | UserType.Custom nickname ->
+                            return UserLink(uint64 dbId, nickname) |> Some
+                        | UserType.Web3 wallet ->
+                            return UserLink(uint64 dbId, wallet) |> Some
+                    | None -> return None
+                with exn ->
+                    Log.Error("Attempt to get user info", exn)
+                    return None
+        }
+
+    let tryGetUserLinkByUserId (db:SqliteStorage) (restClient:RestClient) (userId:UserId) =
+        match db.FindUserIdByUserId userId with
+        | Some dbId -> tryGetUserLinkByRawUserId db restClient dbId
+        | None -> task { return None }
 
 open NetCord.Rest
 open NetCord.Gateway
@@ -145,7 +204,6 @@ open Serilog
 [<RequireQualifiedAccess>]
 module Channels =
     let [<Literal>] LogChannel = "dark-champs-ascent-logs"
-    let [<Literal>] BattleChannel = "dark-champs-ascent-battle"
     let [<Literal>] ChatChannel = "dark-champs-ascent-chat"
     let [<Literal>] EntryChannel = "dark-champs-ascent-entry"
     let [<Literal>] Category = "Dark Champs Ascent"
@@ -235,3 +293,19 @@ module DUtils =
         InteractionMessageProperties()
             .WithFlags(Nullable(MessageFlags.Ephemeral ||| MessageFlags.IsComponentsV2))
             .WithComponents(components)
+
+[<RequireQualifiedAccess>]
+module Links =
+    let frontendOrigin =
+        match Environment.GetEnvironmentVariable "frontendorigin" with
+        | null -> "http://localhost:5173"
+        | str -> str
+
+    let userProfile (userId:uint64) =
+        $"{frontendOrigin}//#/user/{userId}"
+
+    let monsterProfile (monsterId:uint64) =
+        $"{frontendOrigin}//#/monster/{monsterId}"
+
+    let champProfile (champId:uint64) =
+        $"{frontendOrigin}//#/champ/{champId}"

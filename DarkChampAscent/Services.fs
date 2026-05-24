@@ -126,8 +126,7 @@ type RescanChampsService(db:SqliteStorage) =
                         do! Task.Delay(TimeSpan.FromMinutes(3.0), cancellationToken)
                 with exn ->
                     Log.Error(exn, "rescanChampsService")
-                // TODO: twice or once a day will be enough later
-                do! Task.Delay(TimeSpan.FromHours(6.0), cancellationToken)
+                do! Task.Delay(TimeSpan.FromHours(8.0), cancellationToken)
         }
 
 type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
@@ -237,6 +236,14 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         task {
             match db.GetCurrentBattleInfo() with
             | Ok cfbi ->
+                let! createdBy =
+                    match cfbi.CurrentBattleInfo.Monster.OwnerId with
+                    | Some ownerId -> Cache.tryGetUserLinkByRawUserId db gclient.Rest (int64 ownerId)                     
+                    | None -> task { return None }
+                let createdByStr =
+                    match createdBy with
+                    | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
+                    | None -> None
                 let cbi = cfbi.CurrentBattleInfo
                 let cri = cfbi.CurrentRoundInfo
                 for guild in gclient.Cache.Guilds do
@@ -250,10 +257,6 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             let! _ = pinnedMsgs.[0].ModifyAsync(fun options ->
                                 let name = "image.png"
                                 let uri = $"attachment://{name}"
-                                let frontendOrigin =
-                                    match Environment.GetEnvironmentVariable "frontendorigin" with
-                                    | null -> "http://localhost:5173"
-                                    | str -> str
                                 let components =
                                     ComponentContainerProperties([
                                         TextDisplayProperties($"{Emoj.Battle} Battle # {cbi.BattleNum}")
@@ -262,9 +265,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                         TextDisplayProperties($"{Emoj.Trophy} Round Rewards: {cri.Rewards} {Emoj.Coin}")
                                         TextDisplayProperties($"{Emoj.Rounds} Next round: <t:{toUnixSeconds (cri.RoundStarted + BattleParams.RoundDuration())}:R>")
                                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                        yield! MonstersComponent.monsterComponents cbi.Monster "" uri
+                                        yield! MonstersComponent.monsterComponents cbi.Monster "" uri createdByStr
                                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                                        TextDisplayProperties($"To send single Champ use `/battle` command or [webApp]({frontendOrigin})")
+                                        TextDisplayProperties($"To send single Champ use `/battle` command or [webApp]({Links.frontendOrigin})")
                                         ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                                         ActionRowProperties([ 
                                             ButtonProperties($"sendgroup", "Send group", ButtonStyle.Primary)
@@ -285,7 +288,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | Ok bh ->
                     let bidto = 
                         BattleInfoDTO(cfbi, BattleHistory(bh,
-                            RoundParticipantMonster(cbi.MonsterId, cbi.Monster.Name, cbi.Monster.Picture)))
+                            RoundParticipantMonster(cbi.Monster.Id, cbi.Monster.Name, cbi.Monster.Picture)))
                     battleStatus.Set(Some bidto)
                 | _ -> battleStatus.Set None
             | _ -> battleStatus.Set None
@@ -387,8 +390,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 Log.Error($"StartBattleError - no alive monsters")
                 do! Task.Delay(TimeSpan.FromHours(1.0))
             | Ok monsters ->
-                let uMonsters, _ = monsters |> List.partition snd
-                let monsterId, _ =
+                let uMonsters, _ = monsters |> List.partition (snd >> Option.isSome)
+                let monsterId, ownerIdO =
                     if uMonsters.IsEmpty then monsters
                     else uMonsters
                     |> List.randomChoice
@@ -398,6 +401,14 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | Ok ar ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Started, Some dt, uint64 ar.RoundId))
                     roundParticipants.Set([])
+                    let! createdBy =
+                        match ownerIdO with
+                        | Some ownerId -> Cache.tryGetUserLinkByRawUserId db gclient.Rest (int64 ownerId)                     
+                        | None -> task { return None }
+                    let createdByStr =
+                        match createdBy with
+                        | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
+                        | None -> None
                     do! updateBattleStatus()
                     match db.GetMonsterById(monsterId) with
                     | Some monster ->
@@ -411,7 +422,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             
                             let name = "image.png"
                             let uri = $"attachment://{name}"
-                            let monsterCard = MonstersComponent.monsterComponent monster "Info" uri
+                            let monsterCard = MonstersComponent.monsterComponent monster "Info" uri createdByStr
                         
                             MessageProperties()
                                 .WithComponents([battleCard; monsterCard])
@@ -557,10 +568,11 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
     let joinRound(userId:UserId, rar:RoundActionRecord, sendDiscordMsg:bool) =
         let t (rar:RoundActionRecord) =
+            // TODO: add link to a champ's owner
             task {
                 let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue ("", "")
                 let mp = 
-                    [ BattleComponent.champJoinRoundComponent name ipfs ]
+                    [ BattleComponent.champJoinRoundComponent name ipfs rar.ChampId ]
                     |> DUtils.v2ComponentMessage
                 DUtils.sendMsgToLogChannel gclient mp |> ignore
             }
@@ -612,9 +624,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     elif c.Stat.Health > 50 && c.Stat.Magic < 25 then Move.Meditate
                                     else Move.Attack
                                 { Move = move; ChampId = c.ID })
-
                         let results =
-                            moves |> List.map(fun rar -> joinRound(userId, rar, false))
+                            moves |> List.map(fun rar -> joinRound(userId, rar, moves.Length = 1))
                         if results |> List.forall(fun r -> r.IsOk) then
                             Ok (champs.Length + v)
                         else Error("Unexpected error")
@@ -635,10 +646,21 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         try
             match sendGroup(userId) with
             | Ok c ->
-                let mp = 
-                    [ TextDisplayProperties($"{c} champs joined round!") :> IMessageComponentProperties ]
-                    |> DUtils.v2ComponentMessage
-                DUtils.sendMsgToLogChannel gclient mp |> ignore
+                if c > 1 then
+                    task {
+                        try
+                            let! uLink = Cache.tryGetUserLinkByUserId db gclient.Rest userId
+                            let msg =
+                                match uLink with
+                                | Some u -> $"[{u.Nickname}]({Links.userProfile u.UserRawId}) send {c} champs to join round!"
+                                | None -> $"{c} champs joined round!"
+                            let mp = 
+                                [ TextDisplayProperties(msg) :> IMessageComponentProperties ]
+                                |> DUtils.v2ComponentMessage
+                            do! DUtils.sendMsgToLogChannel gclient mp
+                        with e ->
+                            Log.Error(e, e.Message)
+                    } |> ignore
                 Ok c
             | Error err ->
                 Error err
@@ -646,21 +668,28 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             Log.Error(e, e.Message)
             Error e.Message
 
-    member _.SendAll(userId:UserId) =
-        try
-            match sendAll(userId) with
-            | Ok c ->
-                let mp = 
-                    [ TextDisplayProperties($"{c} champs joined round!") :> IMessageComponentProperties ]
-                    |> DUtils.v2ComponentMessage
-                DUtils.sendMsgToLogChannel gclient mp |> ignore
-                Ok c
-            | Error err ->
-                Error err
-        with e ->
-            Log.Error(e, e.Message)
-            Error e.Message   
-
+    member _.SendAll(userId:UserId) =    
+        match sendAll(userId) with
+        | Ok c ->
+            if c > 1 then
+                task {
+                    try
+                        let! uLink = Cache.tryGetUserLinkByUserId db gclient.Rest userId
+                        let msg =
+                            match uLink with
+                            | Some u -> $"[{u.Nickname}]({Links.userProfile u.UserRawId}) send {c} champs to join round!"
+                            | None -> $"{c} champs joined round!"
+                        let mp = 
+                            [ TextDisplayProperties(msg) :> IMessageComponentProperties ]
+                            |> DUtils.v2ComponentMessage
+                        do! DUtils.sendMsgToLogChannel gclient mp
+                    with e ->
+                        Log.Error(e, e.Message)
+                } |> ignore
+            Ok c
+        | Error err ->
+            Error err
+     
     override _.ExecuteAsync(cancellationToken) =
         task {
             db.GetLastRoundParticipants()
@@ -932,24 +961,23 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                 // save img locally
                                 System.IO.File.WriteAllBytes(filepath, bytes)
                                 let mi = MonsterImg.File filepath
+                                let! createdBy = Cache.tryGetUserLinkByRawUserId db gclient.Rest req.UserId                     
+                                let createdByStr =
+                                    match createdBy with
+                                    | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
+                                    | None -> None
                                 match Monster.TryCreate(req.MType, req.MSubType) with
                                 | Some monster ->
                                     let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL)
-                                    if db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) then
+                                    match db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) with
+                                    | Ok mId ->
                                         try
-                                           let minfo = {
-                                                XP = monsterRecord.Xp
-                                                Name = monsterRecord.Name
-                                                Description = monsterRecord.Description
-                                                Picture = mi
-                                                Stat = monsterRecord.Stats
-                                                MType = monsterRecord.Monster.MType
-                                                MSubType = monsterRecord.Monster.MSubType
-                                           }
+                                           let minfo = MonsterInfo(uint64 mId, monsterRecord.Xp, monsterRecord.Name, monsterRecord.Description,
+                                                mi, monsterRecord.Stats, monsterRecord.Monster.MType, monsterRecord.Monster.MSubType, Some (uint64 req.UserId))
 
                                            let name = "image.png"
                                            let uri = $"attachment://{name}"
-                                           let monsterCard = MonstersComponent.monsterComponent minfo $"is {Format.createMsg monster.MType}!" uri
+                                           let monsterCard = MonstersComponent.monsterComponent minfo $"is {Format.createMsg monster.MType}!" uri createdByStr
                         
                                            let createMP() =
                                               MessageProperties()
@@ -961,7 +989,7 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
 
                                         with ex ->
                                             Log.Error(ex, "CreateCustomMonster msg")
-                                    else
+                                    | Error _ ->
                                         let newPayload = GenFailure.Final("Db error") |> GenPayload.Failure
                                         db.UpdateGenRequest(req.ID, newPayload, req.UserId) |> ignore                                        
                                 | None ->

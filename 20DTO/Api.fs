@@ -91,14 +91,14 @@ type Pattern =
    | ChampsUnderEffects
    | ChampsDefeated
    | ChampsLevelUp
-   | ChampsRescan
    | ChampsDetail of id:uint64 option
-   | ChampsNames
 
    | Monsters
    | MonstersDefeated
    | MonstersRename
    | MonstersDetail of id:uint64 option
+
+   | UsersDetail of id:uint64 option
 
    | Requests
 
@@ -143,13 +143,10 @@ type Pattern =
        | Pattern.ChampsDefeated -> "/api/champs/defeated"
        | Pattern.ChampsUnderEffects -> "/api/champs/effects"
        | Pattern.ChampsLevelUp -> "/api/champs/levelup"
-       | Pattern.ChampsRescan -> "/api/champs/rescan"
        | Pattern.ChampsDetail ido ->
             match ido with
             | Some id -> $"/api/champs/{id}"
             | None -> "/api/champs/{id:long}"
-       | Pattern.ChampsNames ->
-            "/api/champs/names"
 
        | Pattern.Monsters -> "/api/monsters/my"
        | Pattern.MonstersDefeated -> "/api/monsters/defeated"
@@ -158,6 +155,11 @@ type Pattern =
             match ido with
             | Some id -> $"/api/monsters/{id}"
             | None -> "/api/monsters/{id:long}"
+
+       | Pattern.UsersDetail ido ->
+            match ido with
+            | Some id -> $"/api/users/{id}"
+            | None -> "/api/users/{id:long}"
 
        | Pattern.Requests -> "/api/requests/my"
 
@@ -187,11 +189,12 @@ type Pattern =
        | Pattern.ChampsUnderEffects
        | Pattern.ChampsDefeated
        | Pattern.ChampsDetail _ 
-       | Pattern.ChampsNames
        | Pattern.Monsters
        | Pattern.MonstersDefeated
        | Pattern.MonstersDetail _
        | Pattern.Requests
+
+       | Pattern.UsersDetail _
 
        | Pattern.LeaderboardChamps
        | Pattern.LeaderboardMonsters
@@ -212,7 +215,6 @@ type Pattern =
        | Pattern.BattleJoinAll
        | Pattern.StorageUseItem
        | Pattern.ChampsLevelUp
-       | Pattern.ChampsRescan
        | Pattern.MonstersRename
        | Pattern.CreateTx
        | Pattern.SubmitTx

@@ -253,32 +253,27 @@ let decodeUserAccount (m: Map<string, Json>) : UserAccount option =
     | _ -> None
 
 let decodeMonsterInfo (m: Map<string, Json>) : MonsterInfo option =
-    match reqNum "XP" m, reqStr "Name" m, reqStr "Description" m,
+    match reqNum "Id" m, reqNum "XP" m, reqStr "Name" m, reqStr "Description" m,
           field "Picture" m |> Option.bind decodeMonsterImg,
           field "Stat" m |> Option.bind asObj |> Option.bind decodeStat,
           field "MType" m |> Option.bind decodeMonsterType,
-          field "MSubType" m |> Option.bind decodeMonsterSubType with
-    | Some xp, Some name, Some desc, Some pic, Some stat, Some mt, Some ms ->
-        Some { XP = asUInt64 xp; Name = name; Description = desc
-               Picture = pic; Stat = stat; MType = mt; MSubType = ms }
+          field "MSubType" m |> Option.bind decodeMonsterSubType,
+          reqNum "OwnerId" m with
+    | Some mId, Some xp, Some name, Some desc, Some pic, Some stat, Some mt, Some ms, ownerId ->
+        MonsterInfo(asUInt64 mId, asUInt64 xp, name, desc, pic, stat, mt, ms, ownerId |> Option.map asUInt64) |> Some
     | _ -> None
 
 let decodeChampInfo (m: Map<string, Json>) : ChampInfo option =
     match reqNum "ID" m, reqStr "Name" m, reqStr "Ipfs" m,
           reqNum "Balance" m, reqNum "XP" m,
           field "Stat" m |> Option.bind asObj |> Option.bind decodeStat,
-          field "Traits" m |> Option.bind asObj |> Option.bind decodeTraits with
-    | Some id, Some name, Some ipfs, Some bal, Some xp, Some stat, Some traits ->
+          field "Traits" m |> Option.bind asObj |> Option.bind decodeTraits,
+          reqNum "OwnerId" m with
+    | Some id, Some name, Some ipfs, Some bal, Some xp, Some stat, Some traits, Some ownerId ->
         let boostStat = field "BoostStat" m |> Option.bind (function JNull -> None | j -> asObj j |> Option.bind decodeStat)
         let levelsStat = field "LevelsStat" m |> Option.bind (function JNull -> None | j -> asObj j |> Option.bind decodeStat)
         let leveledChars = reqNum "LeveledChars" m |> Option.map asUInt64 |> Option.defaultValue 0UL
-        Some {
-            ID = asUInt64 id; Name = name; Ipfs = ipfs
-            Balance = asDecimal bal; XP = asUInt64 xp
-            Stat = stat; Traits = traits
-            BoostStat = boostStat; LevelsStat = levelsStat
-            LeveledChars = leveledChars
-        }
+        Some (ChampInfo(asUInt64 id, name, ipfs, asDecimal bal, asUInt64 xp, stat, traits, boostStat, levelsStat, leveledChars, asUInt64 ownerId))
     | _ -> None
 
 let decodeGenRequest (m: Map<string, Json>) : GenRequest option =
@@ -353,9 +348,9 @@ let decodeShopDTO (m: Map<string, Json>) : ShopDTO option =
 
 let decodeChampInfoWithStat (m: Map<string, Json>) =
     let stat = (field "Stat" m) |> Option.bind asObj |> Option.bind decodeStat
-    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, stat with
-    | Some id, Some name, Some ipfs, Some stat ->
-        Some (ChampInfoWithStat(uint64 id, name, ipfs, stat))
+    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, reqNum "XP" m, stat with
+    | Some id, Some name, Some ipfs, Some xp, Some stat ->
+        Some (ChampInfoWithStat(uint64 id, name, ipfs, uint64 xp, stat))
     | _ -> None
 
 let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
@@ -370,8 +365,26 @@ let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
         |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
     Some (UserStorageDTO(storage, champs))
 
-let decodeChampDTO (m: Map<string, Json>) : ChampDTO option =
+let decodeUserLink (m: Map<string, Json>) : UserLink option =
+    match reqNum "UserRawId" m, reqStr "Nickname" m with
+    | Some uId, Some nickname -> Some (UserLink(asUInt64 uId, nickname))
+    | _ -> None
+
+let decodeChampInfoWithUserLink (m: Map<string, Json>) : ChampInfoWithUserLink option =
     match field "ChampInfo" m |> Option.bind asObj |> Option.bind decodeChampInfo,
+          field "UserLink" m |> Option.bind asObj |> Option.bind decodeUserLink with
+    | Some champInfo, Some userLink -> Some (ChampInfoWithUserLink(champInfo, userLink))
+    | _ -> None
+
+let decodeMonsterInfoWithUserLink (m: Map<string, Json>) : MonsterInfoWithUserLink option =
+    match field "MonsterInfo" m |> Option.bind asObj |> Option.bind decodeMonsterInfo with
+    | Some monsterInfo ->
+        let userLink = field "UserLink" m |> Option.bind (function JNull -> None | j -> asObj j |> Option.bind decodeUserLink)
+        Some (MonsterInfoWithUserLink(monsterInfo, userLink))
+    | _ -> None
+
+let decodeChampDTO (m: Map<string, Json>) : ChampDTO option =
+    match field "ChampInfo" m |> Option.bind asObj |> Option.bind decodeChampInfoWithUserLink,
           reqNum "Price" m with
     | Some champ, Some price ->
         let b = reqBool "BelongsToAUser" m |> Option.defaultValue false
@@ -379,10 +392,19 @@ let decodeChampDTO (m: Map<string, Json>) : ChampDTO option =
     | _ -> None
 
 let decodeMonsterDTO (m: Map<string, Json>) : MonsterDTO option =
-    match field "Monster" m |> Option.bind asObj |> Option.bind decodeMonsterInfo,
-          reqNum "ID" m, reqBool "IsOwned" m with
-    | Some monster, Some id, Some owned ->
-        Some (MonsterDTO(monster, asUInt64 id, owned))
+    match field "Monster" m |> Option.bind asObj |> Option.bind decodeMonsterInfoWithUserLink,
+          reqBool "IsOwned" m with
+    | Some monster, Some owned ->
+        Some (MonsterDTO(monster, owned))
+    | _ -> None
+
+let decodeUserInfo (m: Map<string, Json>) : UserInfo option =
+    match reqStr "Nickname" m with
+    | Some nickname ->
+        let champs =
+            reqArr "Champs" m
+            |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
+        Some (UserInfo(nickname, champs))
     | _ -> None
 
 let decodeUserMonstersDTO (m: Map<string, Json>) : UserMonstersDTO option =
@@ -415,10 +437,7 @@ let private decodeGameStats (m: Map<string, Json>) : GameStats option =
 
 let private decodeTStats (m: Map<string, Json>) : TStats option =
     let optWV key = field key m |> Option.bind asObj |> Option.bind decodeWalletValue
-    Some (TStats(
-        optWV "Burnt", optWV "Dao", optWV "Reserve",
-        optWV "Devs", optWV "Staking"
-    ))
+    Some (TStats(optWV "Burnt", optWV "Dao", optWV "Reserve", optWV "Devs"))
 
 let decodeStats (m: Map<string, Json>) : Stats option =
     match field "GameStats" m |> Option.bind asObj |> Option.bind decodeGameStats,
@@ -583,9 +602,9 @@ let private decodePMResult (j: Json) : PMResult option =
 
 let private decodeRoundReward (m: Map<string, Json>) : RoundReward option =
     match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Burn" m,
-          reqNum "Dev" m, reqNum "Staking" m, reqNum "Champs" m with
-    | Some dao, Some reserve, Some burn, Some dev, Some staking, Some champs ->
-        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal burn, asDecimal dev, asDecimal staking)
+          reqNum "Dev" m, reqNum "Champs" m with
+    | Some dao, Some reserve, Some burn, Some dev, Some champs ->
+        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal burn, asDecimal dev)
         RoundReward(sr, asDecimal champs) |> Some
     | _ -> None
 
@@ -631,10 +650,9 @@ let parseParticipants (json: string) : RoundParticipantChamp list option =
 let private decodeCurrentBattleInfo (m: Map<string, Json>) : CurrentBattleInfo option =
     match reqNum "BattleNum" m,
           field "BattleStatus" m |> Option.bind decodeBattleStatus,
-          field "Monster" m |> Option.bind asObj |> Option.bind decodeMonsterInfo,
-          reqNum "MonsterId" m with
-    | Some bn, Some bs, Some monster, Some mid ->
-        Some (CurrentBattleInfo(asUInt64 bn, bs, monster, asUInt64 mid))
+          field "Monster" m |> Option.bind asObj |> Option.bind decodeMonsterInfo
+          with
+    | Some bn, Some bs, Some monster -> Some (CurrentBattleInfo(asUInt64 bn, bs, monster))
     | _ -> None
 
 let private decodeCurrentRoundInfo (m: Map<string, Json>) : CurrentRoundInfo option =

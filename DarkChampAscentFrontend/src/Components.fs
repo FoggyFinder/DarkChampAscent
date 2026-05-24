@@ -397,7 +397,6 @@ let fullStatRow (WebEmoji: string) (label: string) (value: string) (link: string
 let statRow (WebEmoji: string) (label: string) (value: string) =
     fullStatRow WebEmoji label value None
 
-
 let chTable (stat:Stat) =
     Html.table [
         Html.tbody [

@@ -37,14 +37,14 @@ let ChampDetailPage (champId: uint64) =
         async {
             let! r = Api.getChamp champId
             match r with
-            | Ok d  -> setData (Loaded d); setNewName d.ChampInfo.Name
+            | Ok d  -> setData (Loaded d); setNewName d.ChampInfo.ChampInfo.Name
             | Error e -> setData (Failed e)
         } |> Async.StartImmediate
 
     React.useEffect((fun () -> load ()), [| box champId |])
 
     deferred data (fun d ->
-        let c = d.ChampInfo
+        let c = d.ChampInfo.ChampInfo
         let isOwner = d.BelongsToAUser
         let lvl = Levels.getLvlByXp c.XP
 
@@ -94,10 +94,7 @@ let ChampDetailPage (champId: uint64) =
                                 Html.p [ prop.className "notice"; prop.text "Connect confirmed wallet on 'Account' page to rename" ]
                         ]
                     ]
-                    
-                else
-                    Html.h2 [ prop.text c.Name ]
-
+                
                 Html.div [
                     prop.className "champ-body"
                     prop.children [
@@ -106,13 +103,31 @@ let ChampDetailPage (champId: uint64) =
                             prop.className "champ-left"
                             prop.children [
                                 ipfsImg c.Ipfs "picNormal"
+                                Html.h3 [ prop.text c.Name ]
+                                Html.div [
+                                    Html.a [
+                                        prop.href (Page.UserDetail d.ChampInfo.UserLink.UserRawId).Route
+                                        prop.onClick (Nav.navTo (Page.UserDetail d.ChampInfo.UserLink.UserRawId).Route)
+                                        prop.target.blank;
+                                        prop.text $"Owned by {d.ChampInfo.UserLink.Nickname}" 
+                                    ]
+                                ]
                                 Html.table [
                                     prop.className "stats-table"
                                     prop.children [
                                         Html.tbody [
                                             Html.tr [
-                                                Html.td [ Html.div [ prop.dangerouslySetInnerHTML $"{WebEmoji.DarkCoin} Balance" ] ]
-                                                Html.td [ prop.dangerouslySetInnerHTML $"{toRound2StrD c.Balance} {WebEmoji.DarkCoin}" ]
+                                                Html.td [ Html.span [ prop.dangerouslySetInnerHTML WebEmoji.DarkCoin ]  ]
+                                                Html.td [ 
+                                                    Html.div [ 
+                                                        prop.className "label-wrap" 
+                                                        prop.text "Balance"
+                                                    ]
+                                                ]
+                                                Html.td [ 
+                                                    
+                                                    prop.className "stat-value"
+                                                    prop.dangerouslySetInnerHTML $"{toRound2StrD c.Balance} {WebEmoji.DarkCoin}" ]
                                             ]
                                             statRow WebEmoji.Gem "XP" (string c.XP)
                                             statRow WebEmoji.Level "Level" (string lvl)
@@ -256,14 +271,14 @@ let MonsterDetailPage (monsterId: uint64) =
         async {
             let! r = Api.getMonster monsterId
             match r with
-            | Ok d  -> setData (Loaded d); setNewName d.Monster.Name
+            | Ok d  -> setData (Loaded d); setNewName d.Monster.MonsterInfo.Name
             | Error e -> setData (Failed e)
         } |> Async.StartImmediate
 
     React.useEffect((fun () -> load ()), [| box monsterId |])
 
     deferred data (fun d ->
-        let m = d.Monster
+        let m = d.Monster.MonsterInfo
         let lvl = Levels.getLvlByXp(m.XP)
 
         let bs = Stat.Zero
@@ -286,7 +301,7 @@ let MonsterDetailPage (monsterId: uint64) =
                                 prop.disabled (newName = m.Name || newName.Length < 5)
                                 prop.onClick (fun _ ->
                                     async {
-                                        let! r = Api.renameMonster d.ID newName
+                                        let! r = Api.renameMonster m.Id newName
                                         match r with
                                         | Ok ()   -> setMsg (Some "Renamed!"); load ()
                                         | Error e -> setMsg (Some ("Error: " + e))
@@ -295,8 +310,6 @@ let MonsterDetailPage (monsterId: uint64) =
                             ]
                         ]
                     ]
-                else
-                    Html.h2 [ prop.text m.Name ]
 
                 Html.div [
                     prop.className "champ-body"
@@ -305,6 +318,20 @@ let MonsterDetailPage (monsterId: uint64) =
                             prop.className "champ-left"
                             prop.children [
                                 Html.img [ prop.className "picNormal"; Utils.srcMonsterImg m.Picture; prop.alt m.Name ]
+
+                                Html.h3 [ prop.text m.Name ]
+                                match d.Monster.UserLink with
+                                | Some ul ->
+                                    Html.div [
+                                        Html.a [
+                                            prop.href (Page.UserDetail ul.UserRawId).Route
+                                            prop.onClick (Nav.navTo (Page.UserDetail ul.UserRawId).Route)
+                                            prop.target.blank;
+                                            prop.text $"Owned by {ul.Nickname}"
+                                        ]
+                                    ]
+                                | None -> ()
+
                                 Html.p [ prop.className "center muted"; prop.text m.Description ]
                                 Html.p [ prop.className "center muted"; prop.text (Display.monsterClass(m.MType, m.MSubType)) ]
                             ]
@@ -331,6 +358,167 @@ let MonsterDetailPage (monsterId: uint64) =
                                 ]
                                 if ls <> Stat.Zero then
                                     Html.p [ prop.className "muted"; prop.text "(*) - values gained from levels up" ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ])
+
+[<ReactComponent>]
+let UserDetailPage (userId: uint64) =
+    let data, setData = React.useState<Deferred<UserInfo>> Loading
+    let selectedIdx, setSelectedIdx = React.useState<int option> None
+
+    let load () =
+        async {
+            let! r = Api.getUserInfo userId
+            match r with
+            | Ok d  ->
+                setData (Loaded d)
+                if d.Champs.Length > 0 then setSelectedIdx (Some 0)
+            | Error e -> setData (Failed e)
+        } |> Async.StartImmediate
+
+    React.useEffect((fun () -> load ()), [| box userId |])
+
+    deferred data (fun d ->
+        let champs = d.Champs
+        let count  = champs.Length
+
+        let selectedChamp =
+            selectedIdx |> Option.bind (fun i ->
+                if i >= 0 && i < count then Some (i, champs.[i]) else None)
+
+        Html.div [
+            prop.className "user-card"
+            prop.children [
+
+                Html.div [
+                    prop.className "user-card-header"
+                    prop.children [
+                        Html.h2 [ prop.text d.Nickname ]
+                        Html.p [
+                            prop.className "muted"
+                            prop.text $"Champs: {count}"
+                        ]
+                    ]
+                ]
+
+                Html.div [
+                    prop.className (
+                        if count <= 3
+                        then "user-card-body user-card-body--centered"
+                        else "user-card-body")
+                    prop.children [
+
+                        Html.div [
+                            prop.className "user-card-list"
+                            prop.children [
+                                Html.div [
+                                    prop.className "participants-grid"
+                                    prop.children [
+                                        for i, c in champs |> List.indexed do
+                                            let isActive =
+                                                selectedIdx |> Option.map ((=) i) |> Option.defaultValue false
+                                            Html.div [
+                                                prop.className (
+                                                    if isActive
+                                                    then "participant-avatar participant-avatar--active"
+                                                    else "participant-avatar")
+                                                prop.title c.Name
+                                                prop.onClick (fun _ -> setSelectedIdx (Some i))
+                                                prop.children [
+                                                    ipfsImg c.IPFS "participant-img"
+                                                ]
+                                            ]
+                                    ]
+                                ]
+                            ]
+                        ]
+
+                        Html.div [
+                            prop.className "user-card-detail"
+                            prop.children [
+                                match selectedChamp with
+                                | None ->
+                                    if champs.Length > 0 then
+                                        Html.p [
+                                            prop.className "muted"
+                                            prop.text "Select a champ"
+                                        ]
+                                    else
+                                        Html.none
+                                | Some (idx, c) ->
+                                    let isNavBackDisabled = idx = 0
+                                    let isNavForwardDisabled = idx = count - 1
+                                    
+                                    Html.div [
+                                        prop.className "champ-nav"
+                                        prop.children [
+                                            Html.button [
+                                                prop.className "btn champ-nav-btn"
+                                                prop.disabled isNavBackDisabled
+                                                prop.onClick (fun _ -> setSelectedIdx (Some (idx - 1)))
+                                                prop.text "‹"
+                                            ]
+                                            Html.a [
+                                                prop.href (Page.ChampDetail c.ID).Route
+                                                prop.onClick (Nav.navTo (Page.ChampDetail c.ID).Route)
+                                                prop.className "champ-nav-name"
+                                                prop.text c.Name
+                                            ]
+                                            Html.button [
+                                                prop.className "btn champ-nav-btn"
+                                                prop.disabled isNavForwardDisabled
+                                                prop.onClick (fun _ -> setSelectedIdx (Some (idx + 1)))
+                                                prop.text "›"
+                                            ]
+                                        ]
+                                    ]
+
+                                    let lvl = Levels.getLvlByXp c.XP
+
+                                    Html.div [
+                                        prop.className "champ-body"
+                                        prop.children [
+                                            Html.div [
+                                                prop.className "champ-left"
+                                                prop.children [
+                                                    ipfsImg c.IPFS "picNormal"
+                                                    Html.table [
+                                                        prop.className "stats-table"
+                                                        prop.children [
+                                                            Html.tbody [
+                                                                statRow WebEmoji.Gem "XP" (string c.XP)
+                                                                statRow WebEmoji.Level "Level" (string lvl)
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                            Html.div [
+                                                prop.className "champ-right"
+                                                prop.children [
+                                                    Html.table [
+                                                        prop.className "stats-table"
+                                                        prop.children [
+                                                            Html.tbody [
+                                                                statRow WebEmoji.Health      "Health"       (string c.Stat.Health)
+                                                                statRow WebEmoji.Magic       "Magic"        (string c.Stat.Magic)
+                                                                statRow WebEmoji.Luck        "Luck"         (string c.Stat.Luck)
+                                                                statRow WebEmoji.Accuracy    "Accuracy"     (string c.Stat.Accuracy)
+                                                                statRow WebEmoji.Attack      "Attack"       (string c.Stat.Attack)
+                                                                statRow WebEmoji.MagicAttack "MagicAttack"  (string c.Stat.MagicAttack)
+                                                                statRow WebEmoji.Shield      "Defense"      (string c.Stat.Defense)
+                                                                statRow WebEmoji.MagicShield "MagicDefense" (string c.Stat.MagicDefense)
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
                             ]
                         ]
                     ]

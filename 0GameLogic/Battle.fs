@@ -186,6 +186,13 @@ module Battle =
                     elif v <= 75L then Move.MagicShield
                     elif v <= 88L then Move.Meditate
                     else Move.Heal
+        | MonsterType.Universal ->
+            if v <= 7L then Move.MagicShield
+            elif v <= 15L then Move.Shield
+            elif v <= 27L then Move.MagicAttack
+            elif v <= 40L then Move.Heal
+            elif v <= 65L then Move.Meditate
+            else Move.Attack        
 
     let processEffect (stat:Stat) (re:RoundEffect) (currenrRound:int64) =
         match re.Item with

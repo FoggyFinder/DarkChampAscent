@@ -476,6 +476,33 @@ let joinAllBattleHandler : HttpHandler =
                 return! apiUnauthorized ctx
         }
 
+let userInfoHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let db = ctx.Plug<SqliteStorage>()
+            let route = Request.getRoute ctx
+            let uId = route.GetInt64 "id"
+            
+            let! userInfo =
+                match db.GetUserInfoRaw uId, db.GetUserChampsRaw uId with
+                | Some uinfo, Ok champs ->
+                    task {
+                        let! name =
+                            task {
+                                match uinfo with
+                                | UserType.Discord dId -> return! Cache.tryGetNameByDiscordId ctx dId
+                                | UserType.Custom name -> return name
+                                | UserType.Web3 wallet -> return wallet
+                            }
+                        return UserInfo(name, champs) |> Ok
+                    }
+                | _, _ -> task { return Error $"Unexpected error, maybe user doesn't exist" }
+
+            let response = userInfo |> apiResult
+            
+            return! response ctx
+        }
+
 let shopHandler : HttpHandler =
     fun ctx ->
         task {
@@ -555,20 +582,17 @@ let champHandler : HttpHandler =
                     let uId = u.ID
                     db.ChampBelongsToAUser(uint64 champId, uId))
                 |> Option.defaultValue false
-            let response =
-                match db.GetChampInfoById champId, db.GetNumKey Db.DbKeysNum.DarkCoinPrice with
+            let! response =
+                match db.GetChampInfo champId, db.GetNumKey Db.DbKeysNum.DarkCoinPrice with
                 | Some champ, Some price ->
-                    ChampDTO(champ, belongsToAUser, price) |> apiOk
-                | _ -> apiNotFound
-            return! response ctx
-        }
-
-let champsNamesHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let db = ctx.Plug<SqliteStorage>()
-            let response = db.GetChampsNames() |> apiOk
-            return! response ctx
+                    let client = ctx.Plug<RestClient>()
+                    task {
+                        let! uLinkO = Cache.tryGetUserLinkByRawUserId db client (int64 champ.OwnerId)
+                        let uLink = uLinkO |> Option.defaultValue(UserLink(champ.OwnerId, "Unknown"))
+                        return (ChampDTO(ChampInfoWithUserLink(champ, uLink), belongsToAUser, price)) |> apiOk                    
+                    }
+                | _ -> task { return apiNotFound }
+            return response ctx
         }
 
 let lvlUpHandler : HttpHandler =
@@ -630,24 +654,6 @@ let champsDefeatedHandler : HttpHandler =
             return! response ctx
         }
 
-// TODO: remove in next update
-let rescanHandler : HttpHandler =
-    fun ctx ->
-        task {
-            let! ao = authenticate ctx
-            let db  = ctx.Plug<SqliteStorage>()
-            match ao with
-            | Some user ->
-                let response =
-                    match db.GetUserWallets user.ID with
-                    | Ok xs ->
-                        let confirmed = xs |> List.choose (fun ar -> if ar.IsConfirmed then Some ar.Wallet else None)
-                        CommonHelpers.updateChamps(db, user.ID, confirmed)
-                    | Error e -> Error e
-                return! apiResult response ctx
-            | None -> return! apiUnauthorized ctx
-        }
-
 let myMonstersHandler : HttpHandler =
     fun ctx ->
         task {
@@ -677,13 +683,26 @@ let monstrHandler : HttpHandler =
             let isOwned =
                 ao |> Option.bind (fun u -> db.MonsterBelongsToAUser(uint64 mId, u.ID))
                    |> Option.defaultValue false
-            let response =
+            let! response =
                 match db.GetMonsterById mId with
                 | Some monstr ->
-                    MonsterDTO({ monstr with Picture = FileUtils.mapToLocalImg monstr.Picture }, uint64 mId, isOwned)
-                    |> apiOk
-                | _ -> apiNotFound
-            return! response ctx
+                    let client = ctx.Plug<RestClient>()
+                    task {
+                        let! uLinkO =
+                            match monstr.OwnerId with
+                            | Some dbId -> 
+                                task {
+                                    let! ulo = Cache.tryGetUserLinkByRawUserId db client (int64 dbId)
+                                    return ulo |> Option.defaultValue(UserLink(dbId, "Unknown")) |> Some
+                                }
+                            | None -> task { return None }
+                        let m' = monstr.WithPic (FileUtils.mapToLocalImg monstr.Picture)
+                        let mWithLink = MonsterInfoWithUserLink(m', uLinkO)
+                        
+                        return MonsterDTO(mWithLink, isOwned) |> apiOk
+                    }
+                | _ -> task { return apiNotFound }
+            return response ctx
         }
 
 let renameMonstrHandler : HttpHandler =
@@ -763,12 +782,10 @@ module LeaderboardHandlers =
                 return! apiResult response ctx
             }
 
-    let donatersHandler : HttpHandler =
-        let names = ConcurrentDictionary<uint64, string>()
+    let donatersHandler : HttpHandler =  
         fun ctx ->
             task {
                 let db     = ctx.Plug<SqliteStorage>()
-                let client = ctx.Plug<RestClient>()
                 let! response =
                     match db.GetTopDonaters(), db.GetLatestDonations() with
                     | Ok xs, Ok latest ->
@@ -779,7 +796,7 @@ module LeaderboardHandlers =
                                         match d.Donater with
                                         | Donater.Discord dId ->
                                             let id' = uint64 dId
-                                            if names.ContainsKey id' then None else Some id'
+                                            if Cache.names.ContainsKey id' then None else Some id'
                                         | _ -> None)
                                     |> Set.ofList
                                 let xs2 = 
@@ -787,18 +804,17 @@ module LeaderboardHandlers =
                                         match d.Donater with
                                         | Donater.Discord dId ->
                                             let id' = uint64 dId
-                                            if names.ContainsKey id' then None else Some id'
+                                            if Cache.names.ContainsKey id' then None else Some id'
                                         | _ -> None)
                                     |> Set.ofList
                                 xs1 |> Set.union xs2
-                            let! us = Task.WhenAll([ for dId in newIds -> task { return! client.GetUserAsync dId } ])
-                            us |> Array.iter (fun u -> names.TryAdd(u.Id, u.GlobalName) |> ignore)
+                            let! _ = Task.WhenAll([ for dId in newIds -> task { return! Cache.tryGetNameByDiscordId ctx dId } ])
                             let leaderboard =
                                 xs |> List.map (fun d ->
                                     let name =
                                         match d.Donater with
                                         | Donater.Discord dId ->
-                                            match names.TryGetValue(uint64 dId) with
+                                            match Cache.names.TryGetValue(uint64 dId) with
                                             | true, n -> n
                                             | _ -> string dId
                                         | Donater.Unknown wallet  -> wallet
@@ -809,7 +825,7 @@ module LeaderboardHandlers =
                                     let name =
                                         match d.Donater with
                                         | Donater.Discord dId ->
-                                            match names.TryGetValue(uint64 dId) with
+                                            match Cache.names.TryGetValue(uint64 dId) with
                                             | true, n -> n
                                             | _ -> string dId
                                         | Donater.Unknown wallet  -> wallet
@@ -1048,9 +1064,7 @@ let statsHandler : HttpHandler =
                             rewards.TryFind WalletType.Reserve |> Option.map(fun v ->
                                 WalletValue(wallet.ReserveWallet, v)),
                             rewards.TryFind WalletType.Dev |> Option.map(fun v ->
-                                WalletValue(wallet.DevsWallet, v)),
-                            rewards.TryFind WalletType.Staking |> Option.map(fun v ->
-                                WalletValue(wallet.StakingWallet, v)))
+                                WalletValue(wallet.DevsWallet, v)))
                     Stats(gs, ts, pw) |> apiOk
                 | _ -> apiError "Could not fetch stats" 500
             return! response ctx
@@ -1122,17 +1136,12 @@ builder.Services.AddSession(fun opt ->
 
 // CORS – allow Fable dev server and production origin
 
-let frontendOrigin =
-    match Environment.GetEnvironmentVariable "frontendorigin" with
-    | null -> "http://localhost:5173"
-    | str -> str
-
-let frontendUrl = frontendOrigin + "/"
+let frontendUrl = Links.frontendOrigin + "/"
 
 builder.Services.AddCors(fun options ->
     options.AddDefaultPolicy(fun policy ->
         policy
-            .WithOrigins(frontendOrigin)
+            .WithOrigins(Links.frontendOrigin)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials() // required for cookie auth
@@ -1206,6 +1215,8 @@ let endpoints =
         Pattern.BattleRoundStatusInfo, battleRoundInfoHandler
         Pattern.BattleStatusInfo, battleInfoHandler
 
+        Pattern.UsersDetail None, userInfoHandler
+
         Pattern.Shop, shopHandler
         Pattern.Storage, storageHandler
         Pattern.StorageUseItem, useItemHandler
@@ -1214,9 +1225,7 @@ let endpoints =
         Pattern.ChampsUnderEffects, champsUnderEffectsHandler
         Pattern.ChampsDefeated, champsDefeatedHandler
         Pattern.ChampsLevelUp, lvlUpHandler
-        Pattern.ChampsRescan, rescanHandler
         Pattern.ChampsDetail None, champHandler
-        Pattern.ChampsNames, champsNamesHandler
 
         Pattern.Monsters, myMonstersHandler
         Pattern.MonstersDefeated, monstersDefeatedHandler

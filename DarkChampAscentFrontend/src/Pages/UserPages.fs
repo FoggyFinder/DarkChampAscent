@@ -346,17 +346,6 @@ let MyChampsPage () =
         Html.div [
             prop.className "my-champs"
             prop.children [
-                Html.button [
-                    prop.className "btn btn-secondary"
-                    prop.onClick (fun _ ->
-                        async {
-                            let! r = Api.rescan ()
-                            match r with
-                            | Ok ()   -> setMsg (Some "Rescanned!"); load ()
-                            | Error e -> setMsg (Some ("Error: " + e))
-                        } |> Async.StartImmediate)
-                    prop.text "Rescan"
-                ]
                 match msg with
                 | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
                 | None -> Html.none

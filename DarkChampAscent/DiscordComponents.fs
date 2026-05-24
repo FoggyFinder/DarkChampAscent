@@ -20,6 +20,7 @@ let donationCard (d:decimal) (donater:string) (uriO:string option) =
 
 open GameLogic.Monsters
 open GameLogic.Battle
+open Types
 
 [<RequireQualifiedAccess>]
 module MonsterImg =
@@ -31,9 +32,13 @@ module MonsterImg =
 
 [<RequireQualifiedAccess>]
 module MonstersComponent =
-    let monsterComponents (monster:MonsterInfo) (title:string) (url:string) : IComponentContainerComponentProperties list =
+    open Helpers
+    let monsterComponents (monster:MonsterInfo) (title:string) (url:string) (createdBy: string option) : IComponentContainerComponentProperties list =
         [
-            TextDisplayProperties($"**{monster.Name} {title} **")
+            TextDisplayProperties($"**[{monster.Name}]({Links.monsterProfile monster.Id}) {title} **")
+            match createdBy with
+            | Some s -> TextDisplayProperties(s)
+            | None -> ()
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             
             ComponentSectionProperties
@@ -50,8 +55,8 @@ module MonstersComponent =
             yield! toTable2 monster.Stat |> List.map TextDisplayProperties |> Seq.cast
         ]
 
-    let monsterComponent (monster:MonsterInfo) (title:string) (url:string) =
-        ComponentContainerProperties(monsterComponents monster title url)
+    let monsterComponent (monster:MonsterInfo) (title:string) (url:string) (createdBy: string option) =
+        ComponentContainerProperties(monsterComponents monster title url createdBy)
 
     let monsterAttachnment (name:string) (mimg:MonsterImg) =
         let filename = match mimg with | MonsterImg.File fn -> fn
@@ -61,13 +66,16 @@ module MonstersComponent =
 
 [<RequireQualifiedAccess>]
 module BattleComponent =
-    let champJoinRoundComponent (name:string) (ipfs:string) =
+    open Helpers
+    let champJoinRoundComponent (name:string) (ipfs:string) (champId:uint64) =
+        let components =
+            [ TextDisplayProperties($"** [{name}]({Links.champProfile champId}) **")
+              TextDisplayProperties("joined round!") ]
         ComponentContainerProperties(
             [ ComponentSectionProperties(
-                    ComponentSectionThumbnailProperties(
-                        ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
-                    [ TextDisplayProperties($"**{name}**")
-                      TextDisplayProperties("joined round!") ]) ]) :> IMessageComponentProperties
+                ComponentSectionThumbnailProperties(
+                    ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                    components)]) :> IMessageComponentProperties
 
     let roundCard (roundId:int64) (rewards:decimal) =
         ComponentContainerProperties([
@@ -77,39 +85,50 @@ module BattleComponent =
         ])
 
     let battleResults(br:BattleResult) (names:Map<uint64, string>) (lvlsStat: Map<uint64, Stat>) (boosts:Map<uint64, Stat>)=
-        let movesComponent =
-            ComponentContainerProperties([
-                TextDisplayProperties($"** Actions **")
-                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+        let chunkSize = 25
+        
+        let movesComponents =
+            br.ChampsMoveAndXp
+            |> Seq.map(fun kv ->
+                let name = names.[kv.Key]
+                let move, xp = kv.Value
+                TextDisplayProperties($"{Display.performedMoveDiscord move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties)
+            |> Seq.toList
+            |> List.chunkBySize chunkSize
+            |> List.map(fun chunk ->
+                ComponentContainerProperties([
+                    TextDisplayProperties($"** Actions **")
+                    ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
                             
-                yield! br.ChampsMoveAndXp |> Seq.map(fun kv ->
-                    let name = names.[kv.Key]
-                    let move, xp = kv.Value
-                    TextDisplayProperties($"{Display.performedMoveDiscord move name br.MonsterChar.Name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
-                )
-        ])
-    
-        let monsterActionsComponent =
+                    yield! chunk
+                ]))
+            
+        
+        let monsterActionsComponents =
             match br.MonsterPM with
             | Some pm ->
-                ComponentContainerProperties([
-                    TextDisplayProperties($"""** Monster Action: ** {Display.performedMoveDiscord pm br.MonsterChar.Name ""}""")
-                ])
-                |> Some
-            | None ->
-                if br.MonsterActions.IsEmpty then None
-                else
+                [
                     ComponentContainerProperties([
-                        TextDisplayProperties("** Monster Actions **")
-                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            
-                        yield! br.MonsterActions |> Seq.map(fun kv ->
-                            let name = names.[kv.Key]
-                            let move, xp = kv.Value
-                            TextDisplayProperties($"{Display.performedMoveDiscord move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties
-                        )
+                        TextDisplayProperties($"""** Monster Action: ** {Display.performedMoveDiscord pm br.MonsterChar.Name ""}""")
                     ])
-                    |> Some
+                ]
+            | None ->
+                if br.MonsterActions.IsEmpty then [ ]
+                else
+                    br.MonsterActions
+                    |> Seq.map(fun kv ->
+                        let name = names.[kv.Key]
+                        let move, xp = kv.Value
+                        TextDisplayProperties($"{Display.performedMoveDiscord move br.MonsterChar.Name name} (+{xp} {Emoj.Gem})") :> IComponentContainerComponentProperties)
+                    |> Seq.toList
+                    |> List.chunkBySize chunkSize
+                    |> List.map(fun chunk ->
+                        ComponentContainerProperties([
+                            TextDisplayProperties("** Monster Actions **")
+                            ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                            
+                            yield! chunk 
+                        ]))
 
         let totalRewardsComponent =
             let rewards = br.Rewards.SRewards
@@ -122,47 +141,54 @@ module BattleComponent =
                 TextDisplayProperties($"** Burn **: {Display.toRound6StrD rewards.Burn} {Emoj.Coin}")
                 TextDisplayProperties($"** Champs **: {Display.toRound6StrD br.Rewards.ChampsTotal} {Emoj.Coin}")
             ])
-
-        // ToDo: split by group with 30 champs
-        let champRewardsComponent =
+        
+        let champRewardsComponents =
             let rewards = br.Rewards
-            ComponentContainerProperties([
-                TextDisplayProperties($"** Champ Rewards **")
-                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                yield! rewards.Champs |> List.map(fun r ->
-                    let name = names.[r.ChampId]
-                    TextDisplayProperties($"{name}: {Display.toRound6StrD r.Reward} {Emoj.Coin}") :> IComponentContainerComponentProperties
-                )
-            ])
-
-        let defeatedChampsComponent =
-            if br.DeadChamps.IsEmpty then None
-            else
+            rewards.Champs |> List.map(fun r ->
+                let name = names.[r.ChampId]
+                TextDisplayProperties($"{name}: {Display.toRound6StrD r.Reward} {Emoj.Coin}") :> IComponentContainerComponentProperties)
+            |> List.chunkBySize chunkSize
+            |> List.map(fun chunk ->
                 ComponentContainerProperties([
-                    TextDisplayProperties($"** Defeated Champs **")
+                    TextDisplayProperties($"** Champ Rewards **")
                     ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                    yield! br.DeadChamps |> List.map(fun r ->
-                        TextDisplayProperties($"{names.[r]}") :> IComponentContainerComponentProperties
-                    )
-                ]) |> Some
+                    yield! chunk
+                ]))
+
+        let defeatedChampsComponents =
+            if br.DeadChamps.IsEmpty then [ ]
+            else
+                br.DeadChamps
+                |> List.map(fun r -> TextDisplayProperties($"{names.[r]}") :> IComponentContainerComponentProperties)
+                |> List.chunkBySize chunkSize
+                |> List.map(fun chunk ->
+                    ComponentContainerProperties([
+                        TextDisplayProperties($"** Defeated Champs **")
+                        ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                        yield! chunk
+                    ]))
+
         let monster = br.MonsterChar.Monster
         let monsterLvl = Levels.getLvlByXp br.MonsterChar.XP
         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
         let mstat' = monsterLvlStats + br.MonsterChar.Stat
         let stats =
-            ComponentContainerProperties([
-                TextDisplayProperties($"** Stats **")
-                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                TextDisplayProperties($"{br.MonsterChar.Name}: {mstat'.Health} {Emoj.Health} {mstat'.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
-                ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                yield! br.ChampsFinalStat |> Seq.map(fun kv ->
-                    let name = names.[kv.Key]
-                    let lStat = Map.tryFind kv.Key lvlsStat |> Option.defaultValue (Stat.Zero)
-                    let bStat = Map.tryFind kv.Key boosts |> Option.defaultValue (Stat.Zero)
-                    let stat = kv.Value + lStat + bStat
-                    TextDisplayProperties($"{name}: {stat.Health} {Emoj.Health} {stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
-                )
-            ])
+            br.ChampsFinalStat |> Seq.map(fun kv ->
+                let name = names.[kv.Key]
+                let lStat = Map.tryFind kv.Key lvlsStat |> Option.defaultValue (Stat.Zero)
+                let bStat = Map.tryFind kv.Key boosts |> Option.defaultValue (Stat.Zero)
+                let stat = kv.Value + lStat + bStat
+                TextDisplayProperties($"{name}: {stat.Health} {Emoj.Health} {stat.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties)
+            |> Seq.toList
+            |> List.chunkBySize chunkSize
+            |> List.map(fun chunk ->
+                ComponentContainerProperties([
+                    TextDisplayProperties($"** Stats **")
+                    ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                    TextDisplayProperties($"{br.MonsterChar.Name}: {mstat'.Health} {Emoj.Health} {mstat'.Magic} {Emoj.Magic}") :> IComponentContainerComponentProperties
+                    ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
+                    yield! chunk
+                ]))
     
         let defeatedMonsterComponent =
             if br.MonsterDefeater.IsNone then None
@@ -172,16 +198,14 @@ module BattleComponent =
                 ]) |> Some
 
         [
-            yield movesComponent
-            if monsterActionsComponent.IsSome then
-                yield monsterActionsComponent.Value
+            yield! movesComponents
+            yield! monsterActionsComponents
             yield totalRewardsComponent
-            yield champRewardsComponent
-            if defeatedChampsComponent.IsSome then
-                yield defeatedChampsComponent.Value
+            yield! champRewardsComponents
+            yield! defeatedChampsComponents
             if defeatedMonsterComponent.IsSome then
                 yield defeatedMonsterComponent.Value
-            yield stats
+            yield! stats
         ]
 
 [<RequireQualifiedAccess>]

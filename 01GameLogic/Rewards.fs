@@ -26,13 +26,12 @@ type ChampEarnedReward = {
 }
 
 [<Struct>]
-type SpecialReward(dao: decimal, reserve: decimal, burn: decimal, dev: decimal, staking: decimal) =
+type SpecialReward(dao: decimal, reserve: decimal, burn: decimal, dev: decimal) =
     member _.DAO = dao
     member _.Reserve = reserve
     member _.Burn = burn
     member _.Dev = dev
-    member _.Staking = staking
-    member _.Total = dao + reserve + burn + dev + staking
+    member _.Total = dao + reserve + burn + dev
 
 type RoundRewardSplit private (
         champs: ChampEarnedReward list,
@@ -139,25 +138,23 @@ type RoundRewardSplit private (
         // 75% - champ's rewards
         // 10% - dao
         // 8% - to devs
-        // 5% - reserve
-        // 1% - staking
+        // 6% - reserve
         // 1% - burn
 
         let dao = Math.Round(10M * x, 6)
         let devs = Math.Round(8M * x, 6)
-        let reserve = Math.Round(5M * x, 6)
-        let staking = Math.Round(x, 6)
+        let reserve = Math.Round(6M * x, 6)
         let burn = Math.Round(x, 6)
-        let sRewards = SpecialReward(dao, reserve, burn, devs, staking)
+        let sRewards = SpecialReward(dao, reserve, burn, devs)
         let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
         
-        let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - burn - staking
+        let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - burn
         // rounding error?
         //let reserve' =
         //    if unclaimed < 0M && unclaimed >= -0.0001M then
         //        reserve + unclaimed
         //    else reserve
         if unclaimed < -0.0001M then
-            Error($"Unclaimed is less than prec: {roundRewards};ChampsTotal = {champsTotal};DAO = {dao}; Devs = {devs}; Reserve = {reserve}; Burn = {burn}; Staking = {staking}")
+            Error($"Unclaimed is less than prec: {roundRewards};ChampsTotal = {champsTotal};DAO = {dao}; Devs = {devs}; Reserve = {reserve}; Burn = {burn}")
         else RoundRewardSplit(champs, sRewards, unclaimed) |> Ok
         

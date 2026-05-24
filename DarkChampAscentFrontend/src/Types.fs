@@ -30,6 +30,7 @@ type Page =
     | DefeatedMonsters
     | ChampDetail of uint64
     | MonsterDetail of uint64
+    | UserDetail of uint64
     | TopGeneral
     | TopChamps
     | TopMonsters
@@ -54,6 +55,7 @@ type Page =
         | DefeatedChamps    -> "#/champsdefeated"
         | ChampDetail id     -> $"#/champ/{id}"
         | MonsterDetail id   -> $"#/monster/{id}"
+        | UserDetail id -> $"#/user/{id}"
         | TopGeneral         -> "#/top"
         | TopChamps          -> "#/top/champs"
         | TopMonsters        -> "#/top/monsters"
