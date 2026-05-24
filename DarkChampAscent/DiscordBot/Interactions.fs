@@ -111,13 +111,9 @@ let registerWalletModal (db:SqliteStorage) (options: IOptions<Conf.WalletConfigu
             | Some newWallet ->
                 let wallet' = newWallet.Trim()
                 let cInstr code = 
-                    let frontendOrigin =
-                        match Environment.GetEnvironmentVariable "frontendorigin" with
-                        | null -> "http://localhost:5173"
-                        | str -> str
                     $"Good, this wallet ({wallet'}) is registered. There 2 different ways to confirm it:
 1. Send 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
-2. Auth with discord on [web-app]({frontendOrigin}), navigate to Account page and follow instructions there"
+2. Auth with discord on [web-app]({Links.frontendOrigin}), navigate to Account page and follow instructions there"
                 if Blockchain.isValidAddress wallet' then
                     match db.RegisterNewWallet(UserId.Discord context.User.Id, wallet') with
                     | Ok code ->
@@ -154,15 +150,10 @@ let register (_:ButtonInteractionContext) =
 
 let info (context:ButtonInteractionContext) =
     task {
-        let frontendOrigin =
-            match Environment.GetEnvironmentVariable "frontendorigin" with
-            | null -> "http://localhost:5173"
-            | str -> str
-
         let about = $"""
-        **DarkChampAscent** is a discord bot and [web app]({frontendOrigin}) where players collect DarkCoins ({Display.Emoj.Coin}) by performing actions each round.
+        **DarkChampAscent** is a discord bot and [web app]({Links.frontendOrigin}) where players collect DarkCoins ({Display.Emoj.Coin}) by performing actions each round.
 The main goal of this project is to create an easy & fun way to slightly improve [DarkCoin](https://dark-coin.io/) distribution among active community members.
-You can find details on tokenomics [here]({frontendOrigin}//#/tokenomics)"""
+You can find details on tokenomics [here]({Links.frontendOrigin}//#/tokenomics)"""
 
         let commands = """
 Not all features are available in the Discord bot, but the main ones are:

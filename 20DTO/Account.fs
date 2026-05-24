@@ -51,6 +51,11 @@ type Account =
         | Custom _ -> None
         | Web3 _ -> None
 
+type UserType =
+    | Discord of uint64
+    | Custom of string
+    | Web3 of string
+
 [<RequireQualifiedAccess>]
 module Validation =
     let validateNickname (nickname: string) : Result<string, string> =

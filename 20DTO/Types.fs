@@ -8,15 +8,56 @@ open System
 open DarkChampAscent.Account
 open GameLogic.Rewards
 
-type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo, mId: uint64) =
+type UserLink(uId:uint64, nickname:string) =
+    member _.UserRawId = uId
+    member _.Nickname = nickname
+
+type ChampInfo(id: uint64, name: string, ipfs: string, balance: decimal, xp: uint64, stat: Stat, traits: Traits, boostStat: Stat option, levelsStat: Stat option, leveledChars: uint64, ownerId: uint64) =
+    member _.ID = id
+    member _.Name = name
+    member _.Ipfs = ipfs
+    member _.Balance = balance
+    member _.XP = xp
+    member _.Stat = stat
+    member _.Traits = traits
+    member _.BoostStat = boostStat
+    member _.LevelsStat = levelsStat
+    member _.LeveledChars = leveledChars
+    member _.OwnerId = ownerId
+    member x.WithFullStats(levelsStat, boostedStat) =
+        ChampInfo(x.ID, x.Name, x.Ipfs, x.Balance, x.XP, x.Stat, x.Traits, Some boostedStat, Some levelsStat, x.LeveledChars, x.OwnerId)
+
+type ChampInfoWithUserLink(champInfo:ChampInfo, userLink: UserLink) =
+    member _.ChampInfo = champInfo
+    member _.UserLink = userLink
+
+type MonsterInfo(id: uint64, xp: uint64, name: string, description: string, picture: MonsterImg, stat: Stat, mType: MonsterType, mSubType: MonsterSubType, ownerId: uint64 option) =
+    member _.Id = id
+    member _.XP = xp
+    member _.Name = name
+    member _.Description = description
+    member _.Picture = picture
+    member _.Stat = stat
+    member _.MType = mType
+    member _.MSubType = mSubType
+    member _.OwnerId = ownerId
+    member x.WithPic(pic:MonsterImg) =
+        MonsterInfo(x.Id, x.XP, x.Name, x.Description, pic, x.Stat, x.MType, x.MSubType, x.OwnerId)
+    member x.WithStat(stat:Stat) =
+        MonsterInfo(x.Id, x.XP, x.Name, x.Description, x.Picture, stat, x.MType, x.MSubType, x.OwnerId)
+
+type MonsterInfoWithUserLink(monsterInfo:MonsterInfo, userLinkO:UserLink option) =
+    member _.MonsterInfo = monsterInfo
+    member _.UserLink = userLinkO
+
+type CurrentBattleInfo(battleNum:uint64, battleStatus: BattleStatus, monster:MonsterInfo) =
     member _.BattleNum = battleNum
     member _.BattleStatus = battleStatus
     member _.Monster = monster
-    member _.MonsterId = mId
     member x.WithMonsterImg(pic:MonsterImg) =
-        CurrentBattleInfo(x.BattleNum, x.BattleStatus, { x.Monster with Picture = pic }, x.MonsterId)
+        CurrentBattleInfo(x.BattleNum, x.BattleStatus, x.Monster.WithPic pic)
     member x.WithMonsterInfo(mi:MonsterInfo) =
-        CurrentBattleInfo(x.BattleNum, x.BattleStatus, mi, x.MonsterId)
+        CurrentBattleInfo(x.BattleNum, x.BattleStatus, mi)
 
 type CurrentRoundInfo(rounds:int, roundStarted:DateTime, rewards:decimal) =
     member _.Rounds = rounds
@@ -73,7 +114,6 @@ type RoundReward(sr:SpecialReward, champs:decimal) =
     member _.Reserve = sr.Reserve
     member _.Burn = sr.Burn
     member _.Dev = sr.Dev
-    member _.Staking = sr.Staking
     member _.Champs = champs
     member _.Total = sr.Total + champs
 
@@ -123,10 +163,11 @@ type ChampShortInfo(cid:uint64, name:string, ipfs:string, xp:uint64) =
     member _.IPFS = ipfs
     member _.XP = xp
 
-type ChampInfoWithStat(cid:uint64, name:string, ipfs:string, stat:Stat) =
-    member _.ID = cid
+type ChampInfoWithStat(cId:uint64, name:string, ipfs:string, xp:uint64, stat:Stat) =
+    member _.ID = cId
     member _.Name = name
     member _.IPFS = ipfs
+    member _.XP = xp
     member _.Stat = stat
 
 type MonsterShortInfo(mid:uint64, name:string, mtype:MonsterType, msubtype:MonsterSubType, pic:MonsterImg, xp:uint64) =
@@ -153,13 +194,11 @@ type WalletValue(wallet:string, value:decimal) =
     member _.Wallet = wallet
     member _.Value = value
 
-type TStats(burnt: WalletValue option, dao: WalletValue option, reserve: WalletValue option,
-    devs: WalletValue option, staking: WalletValue option) =
+type TStats(burnt: WalletValue option, dao: WalletValue option, reserve: WalletValue option, devs: WalletValue option) =
     member _.Burnt = burnt
     member _.Dao = dao
     member _.Reserve = reserve
     member _.Devs = devs
-    member _.Staking = staking
 
 type Stats(gameStats:GameStats, tStats:TStats, rewards: decimal option) =
     member _.GameStats = gameStats
@@ -228,3 +267,8 @@ type MonsterUnderEffect(id:int64, name:string, mtype:MonsterType, msubtype:Monst
     member _.Pic = mpic
     member x.WithMonsterImg(img:MonsterImg) =
         MonsterUnderEffect(x.ID, x.Name, x.MType, x.MSubType, x.EndsAt, x.Effect, x.RoundsLeft, img)
+
+// TODO: include monsters info
+type UserInfo(nickname:string, champs:ChampInfoWithStat list) =
+    member _.Champs = champs
+    member _.Nickname = nickname

@@ -14,6 +14,7 @@ open System.Threading.Tasks
 open DarkChampAscent.Account
 open Microsoft.Extensions.Options
 open DiscordBot.Components
+open Helpers
 
 [<RequireQualifiedAccess>]
 module ApplicationCommand =
@@ -28,10 +29,6 @@ module ApplicationCommand =
 [<SlashCommand("wallet", "Wallet command")>]
 type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>) =
     inherit ApplicationCommandModule<ApplicationCommandContext>()
-    let frontendOrigin =
-        match Environment.GetEnvironmentVariable("frontendorigin") with
-        | null -> "http://localhost:5173"
-        | str -> str
     
     [<SubSlashCommand("register", "Register Algorand wallet, nfd not supported yet")>]
     member x.Register([<SlashCommandParameter(Name = "wallet", Description = "your wallets")>] wallet:string): Task =
@@ -46,7 +43,7 @@ type WalletModule(db:SqliteStorage, options: IOptions<Conf.WalletConfiguration>)
             | Ok code ->
                 $"Good, now follow instructions to confirm your wallet ({wallet'}). There 2 different ways:
 1. Send a 0-cost Algo tx to {options.Value.GameWallet} with following note: {code}.
-2. Auth with Discord on the [web app]({frontendOrigin}), navigate to the Account page and follow the instructions there"
+2. Auth with Discord on the [web app]({Links.frontendOrigin}), navigate to the Account page and follow the instructions there"
             | Error err -> $"Oh, no...there was error: {err}"
         (fun (moptions:MessageOptions) -> moptions.Content <- str)
         |> ApplicationCommand.deferredMessage x.Context

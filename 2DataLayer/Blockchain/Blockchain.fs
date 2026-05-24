@@ -110,7 +110,6 @@ let tryGetIpfs (assetId: uint64) =
 open GameLogic
 let tryGetChampInfo(assetId:uint64) =
     async {
-        let! d = lookUpApi.lookupAssetByIDAsync(assetId) |> Async.AwaitTask
         let! tr = lookUpApi.lookupAssetTransactionsAsync(assetId, txType = "acfg") |> Async.AwaitTask
         return
             tr.Transactions

@@ -3701,3 +3701,102 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     letter-spacing: 0.04em;
     font-size: var(--font-size-xs) !important;
 }
+
+/* ── UserDetailPage ─────────────────────────────────────────── */
+
+.user-card-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-6);
+}
+
+.user-card-body {
+    display: flex;
+    flex-direction: column;       /* stacked on mobile */
+    gap: var(--space-6);
+}
+
+@media (min-width: 768px) {
+    .user-card-body {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .user-card-list {
+        flex: 0 0 auto;
+        width: fit-content; 
+    }
+
+    .user-card-detail {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+}
+
+.user-card-body--centered {
+    justify-content: center;
+}
+
+@media (min-width: 768px) {
+    .user-card-body--centered .user-card-list {
+        /* align grid to top of detail panel rather than stretching */
+        align-self: flex-start;
+    }
+
+    .user-card-body--centered .user-card-detail {
+        flex: 0 1 520px;   /* don't let it grow to full remaining width */
+    }
+}
+
+.user-card-list {
+    flex: 0 0 300px;
+    width: 300px;
+    max-height: 70vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-primary-alpha-18) transparent;
+}
+
+.user-card-list .participants-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100%;
+}
+
+/* active avatar highlight */
+.participant-avatar--active {
+    outline: 2px solid var(--color-primary-light);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+/* champ nav bar */
+.champ-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    margin-block-end: var(--space-4);
+}
+
+.champ-nav-name {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    text-align: center;
+    flex: 1;
+}
+
+.champ-nav-btn {
+    padding-block: var(--space-2);
+    padding-inline: var(--space-3);
+    font-size: var(--font-size-lg);
+    line-height: 1;
+    min-width: 2rem;
+}
+
+.champ-nav-btn:disabled {
+    opacity: 0.25;
+    cursor: default;
+    transform: none;
+}

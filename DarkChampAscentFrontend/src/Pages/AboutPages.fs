@@ -127,7 +127,6 @@ let StatsPage () =
                             optTRow "Devs" WebEmoji.Dev s.TStats.Devs
                             optTRow "Reserve" WebEmoji.Reserve s.TStats.Reserve
                             optTRow "Burnt" WebEmoji.Fire s.TStats.Burnt
-                            optTRow "Staking" WebEmoji.Staking s.TStats.Staking
                         ]
                     ]
                 ]
@@ -290,9 +289,9 @@ let TokenomicsPage () =
                                 prop.children [
                                     Html.p [ prop.text "For each round rewards are splitted by following logic:" ]
                                     Charts.PieChart "champsChart" 420 420
-                                        [ "Players"; "DAO"; "Devs"; "Reserve"; "Staking"; "Burn" ]
-                                        [ 75.0; 10.0; 8.0; 5.0; 1.0; 1.0 ]
-                                        [ "#74c67a"; "#e64a2b"; "#ffd60a"; "#00d6d6"; "#ff73d6"; "#3d7ef0" ]
+                                        [ "Players"; "DAO"; "Devs"; "Reserve"; "Burn" ]
+                                        [ 75.0; 10.0; 8.0; 6.0; 1.0 ]
+                                        [ "#74c67a"; "#e64a2b"; "#ffd60a"; "#00d6d6"; "#3d7ef0" ]
                                 ]
                             ]
                             Html.div [

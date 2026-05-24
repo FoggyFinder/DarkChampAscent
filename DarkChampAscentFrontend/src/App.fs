@@ -37,6 +37,8 @@ let private parseHash () : Page =
         match System.UInt64.TryParse id with true, v -> Page.ChampDetail v | _ -> Page.NotFound
     | [ "monster"; id ]                ->
         match System.UInt64.TryParse id with true, v -> Page.MonsterDetail v | _ -> Page.NotFound
+    | [ "user"; id ]                ->
+        match System.UInt64.TryParse id with true, v -> Page.UserDetail v | _ -> Page.NotFound
     | [ "top" ]                        -> Page.TopGeneral
     | [ "top"; "champs" ]              -> Page.TopChamps
     | [ "top"; "monsters" ]            -> Page.TopMonsters
@@ -93,6 +95,7 @@ let App () =
         | Page.DefeatedChamps    -> DefeatedChampsPage ()
         | Page.ChampDetail id     -> ChampDetailPage id
         | Page.MonsterDetail id   -> MonsterDetailPage id
+        | Page.UserDetail id -> UserDetailPage id
         | Page.TopGeneral         -> LeaderboardGeneralPage ()
         | Page.TopChamps          -> LeaderboardChampsPage ()
         | Page.TopMonsters        -> LeaderboardMonstersPage ()

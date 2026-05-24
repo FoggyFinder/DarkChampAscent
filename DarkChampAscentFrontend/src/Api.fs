@@ -2,7 +2,6 @@ module Api
 
 open Fable.SimpleHttp
 open GameLogic.Shop
-open GameLogic.Monsters
 open GameLogic.Champs
 open DarkChampAscent.Api
 open DarkChampAscent.Account
@@ -204,13 +203,6 @@ let levelUp (champId: uint64) (characteristic: Characteristic) =
         return parseUnit json
     }
 
-let rescan () =
-    async {
-        let p = Pattern.ChampsRescan
-        let! json = fetchJson p.Str p.Method None
-        return parseUnit json
-    }
-
 let getMyMonsters () =
     async {
         let p = Pattern.Monsters
@@ -223,6 +215,13 @@ let getMonster (id: uint64) =
         let p = Pattern.MonstersDetail (Some id)
         let! json = fetchJson p.Str p.Method None
         return parseResult decodeMonsterDTO json
+    }
+
+let getUserInfo (id: uint64) =
+    async {
+        let p = Pattern.UsersDetail (Some id)
+        let! json = fetchJson p.Str p.Method None
+        return parseResult decodeUserInfo json
     }
 
 let getDefeatedMonsters () =

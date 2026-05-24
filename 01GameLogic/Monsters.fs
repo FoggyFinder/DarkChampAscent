@@ -9,6 +9,8 @@ type MonsterType =
     | Demon = 1
     /// strong magic
     | Necromancer = 2
+    /// universal, created for an nft
+    | Universal = 3
     
 type MonsterSubType =
     | None = 0
@@ -28,7 +30,7 @@ type MonsterChar(id: uint64, monster:Monster, stat:Stat, xp: uint64, name:string
     member _.Stat = stat
     member _.XP = xp
     member _.Name = name
-    member t.UpdateStat(nStat:Stat) = MonsterChar(id, monster, nStat, xp, name)
+    member _.UpdateStat(nStat:Stat) = MonsterChar(id, monster, nStat, xp, name)
     override x.ToString (): string = 
         $"{id}. {monster}: {stat} ({xp})"
 
@@ -42,16 +44,6 @@ type MonsterRecord(name:string, description:string, monster:Monster, stats:Stat,
 [<RequireQualifiedAccess>]
 type MonsterImg =
     | File of filepath:string
-
-type MonsterInfo = {
-    XP : uint64
-    Name : string
-    Description : string
-    Picture : MonsterImg
-    Stat: Stat
-    MType : MonsterType
-    MSubType : MonsterSubType
-}
 
 [<RequireQualifiedAccess>]
 module Monster =
@@ -83,6 +75,17 @@ module Monster =
             {
                 Health = 600L
                 Magic = 2500L
+                Accuracy = 3L
+                Luck = 2L
+                Attack = 6L
+                MagicAttack = 15L
+                Defense = 1L
+                MagicDefense = 3L
+            }
+        | MonsterType.Universal ->
+            {
+                Health = 1000L
+                Magic = 1000L
                 Accuracy = 3L
                 Luck = 2L
                 Attack = 6L
@@ -238,6 +241,15 @@ module Monster =
                     Characteristic.Magic; Characteristic.MagicAttack
                     Characteristic.Accuracy; Characteristic.MagicAttack
                 |]
+            | MonsterType.Universal, _ ->
+                [|
+                    Characteristic.Health; Characteristic.Magic
+                    Characteristic.Accuracy; Characteristic.Attack
+
+                    Characteristic.Defense; Characteristic.MagicDefense
+                    Characteristic.Luck; Characteristic.MagicAttack
+                |]
+
         Seq.init (int lvl) (fun i -> arr.[i % arr.Length]) |> Levels.statFromCharacteristicSeq
     
     /// from 0 to 100
@@ -258,15 +270,21 @@ module Monster =
             | MonsterSubType.None -> if isMagicAttack then 95 else 80
             | MonsterSubType.Fire -> if isMagicAttack then 90 else 75
             | MonsterSubType.Frost -> if isMagicAttack then 85 else 90
+        | MonsterType.Universal ->
+            match monster.MSubType with
+            | MonsterSubType.None -> 80
+            | MonsterSubType.Fire -> 75
+            | MonsterSubType.Frost -> 70            
 
     let getStats(monster:Monster) =
         getTypeStats monster.MType + getSubTypeStats monster.MSubType
 
     let getRevivalDuration(monster:Monster) =
         match monster.MType with
-        | MonsterType.Zombie -> Constants.RoundsInBattle * 7
-        | MonsterType.Demon -> Constants.RoundsInBattle * 21
-        | MonsterType.Necromancer ->  Constants.RoundsInBattle * 15
+        | MonsterType.Zombie -> Constants.RoundsInBattle * 5
+        | MonsterType.Demon -> Constants.RoundsInBattle * 17
+        | MonsterType.Necromancer ->  Constants.RoundsInBattle * 13
+        | MonsterType.Universal -> Constants.RoundsInBattle * 7
         |> uint
 
     // dpmpp_2,; sgm_uniform
@@ -319,4 +337,5 @@ module Format =
         | MonsterType.Zombie -> "resurrected"
         | MonsterType.Demon -> "summoned"
         | MonsterType.Necromancer -> "invited"
+        | MonsterType.Universal -> "revealed"
 

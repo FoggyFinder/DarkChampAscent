@@ -586,7 +586,8 @@ module internal SQL =
     let GetUserChamps = """
         SELECT
             c.ID, Name, IPFS,
-            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense
+            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense,
+            Xp
         FROM Champ c
         JOIN UserChamp uc ON uc.ChampId = c.ID
         JOIN ChampStat cs ON cs.ChampId = c.ID
@@ -609,7 +610,8 @@ module internal SQL =
     let GetActiveUserChamps = """
         SELECT
             c.ID, Name, IPFS,
-            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense
+            Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense,
+            Xp
         FROM Champ c
         JOIN UserChamp uc ON uc.ChampId = c.ID
         JOIN ChampStat cs ON cs.ChampId = c.ID
@@ -680,26 +682,16 @@ module internal SQL =
         WHERE UserId = @userId
     """
 
-    let GetChampInfo = """
-        SELECT
-            Champ.ID, Name, IPFS, Balance,
-            Xp, Health, cs.Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense,
-            Background, Skin, Weapon, ct.Magic, Head, Armour, Extra
-        FROM Champ
-        JOIN ChampStat cs ON cs.ChampId = Champ.ID
-        JOIN ChampTrait ct ON ct.ChampId = Champ.ID
-        WHERE AssetId = @assetId
-        LIMIT 1
-    """
-
     let GetChampInfoByID = """
         SELECT
             Champ.ID, Name, IPFS, Balance,
             Xp, Health, cs.Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense,
-            Background, Skin, Weapon, ct.Magic, Head, Armour, Extra
+            Background, Skin, Weapon, ct.Magic, Head, Armour, Extra,
+			UserId
         FROM Champ
         JOIN ChampStat cs ON cs.ChampId = Champ.ID
         JOIN ChampTrait ct ON ct.ChampId = Champ.ID
+        JOIN UserChamp uc ON uc.ChampId = Champ.ID
         WHERE Champ.ID = @champId
         LIMIT 1
     """
@@ -972,9 +964,12 @@ module internal SQL =
     """
 
     let GetMonsterStats = """
-        SELECT Xp, Name, Description, Picture, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType
+        SELECT
+	        Xp, Name, Description, Picture, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType,
+	        UserId
         FROM Monster
-        WHERE ID = @monsterId
+        LEFT JOIN UserMonster um ON um.MonsterId = Monster.ID
+        WHERE Monster.ID = @monsterId
         LIMIT 1
     """
 
@@ -1033,7 +1028,7 @@ module internal SQL =
 
     let InsertRoundRewards = """
         INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
-        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs, @staking)
+        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs, 0)
     """
 
     let InsertRewardsPayed = """
@@ -1202,10 +1197,6 @@ module internal SQL =
         SELECT EXISTS(SELECT 1 FROM Champ WHERE Name = @name);
     """
 
-    let GetChampsNames = """
-        SELECT Name From Champ
-    """
-
     let IsMonsterDescriptionExists = """
         SELECT EXISTS(SELECT 1 FROM Monster WHERE Description = @description);
     """
@@ -1257,8 +1248,9 @@ module internal SQL =
     """
     
     let GetLastBattleInfo = """
-        SELECT b.ID as BattleId, Status, m.* FROM Battle b
+        SELECT b.ID as BattleId, Status, m.*, UserId FROM Battle b
         JOIN Monster m ON m.ID = b.MonsterId
+        LEFT JOIN UserMonster um ON um.MonsterId = b.MonsterId
         WHERE b.ID = (SELECT Max(ID) FROM Battle)
     """
 
@@ -1279,7 +1271,7 @@ module internal SQL =
     """
 
     let GetRewardsForBattle = """
-        SELECT h.RoundId, h.Burn, h.DAO, h.Reserve, h.Devs, h.Staking, h.Champs FROM RewardsHistory h
+        SELECT h.RoundId, h.Burn, h.DAO, h.Reserve, h.Devs, h.Champs FROM RewardsHistory h
         JOIN Round r ON r.ID = h.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         WHERE r.BattleId = @battleId
@@ -1333,4 +1325,10 @@ module internal SQL =
     let AddTxRevertHistory = """
         INSERT INTO TxRevertHistory(TxId, OutTx)
         VALUES(@txId, @outTx)
+    """
+
+    let GetUserInfo = """
+         SELECT u.DiscordId, cu.Nickname, u.PrimaryWallet FROM User u
+         LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
+         WHERE u.ID = @userId
     """

@@ -100,6 +100,7 @@ open System.Collections.Concurrent
 open Blockchain
 open GameLogic.Limits
 open System.Text
+open System.Collections.Generic
 
 type SqliteStorage(options:IOptions<DbConfiguration>) =
     let jsOptions = JsonFSharpOptions().ToJsonSerializerOptions()
@@ -340,6 +341,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     let dbIdByDiscordId = ConcurrentDictionary<uint64, int64>()
     let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
     let dbIdByWallet = ConcurrentDictionary<string, int64>()
+    let userChampsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, ChampInfoWithStat list>>()
 
     let getUserIdByWallet(wallet: string) =
         try 
@@ -1179,25 +1181,27 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             if amount > 0M then Ok(())
                             else Error("Invalid amount")
                         | Tx.CreateCustomMonster(_, mtype, msubtype) ->
-                            let monstersCreatedR = monstersByTypeSubtype(userId, mtype, msubtype)
-                            let pendingRequestsR = unfinishedRequestsByUser(userId)
-                            match monstersCreatedR, pendingRequestsR with
-                            | Ok m, Ok r when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
-                                Ok (())
-                            | Ok m, Ok r ->
-                                let sb = StringBuilder()
+                            if mtype = MonsterType.Universal then Error "Unexpected monster type"
+                            else
+                                let monstersCreatedR = monstersByTypeSubtype(userId, mtype, msubtype)
+                                let pendingRequestsR = unfinishedRequestsByUser(userId)
+                                match monstersCreatedR, pendingRequestsR with
+                                | Ok m, Ok r when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
+                                    Ok (())
+                                | Ok m, Ok r ->
+                                    let sb = StringBuilder()
                     
-                                if m >= Limits.CustomMonstersPerTypeSubtype then
-                                    sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
-                                    |> ignore
+                                    if m >= Limits.CustomMonstersPerTypeSubtype then
+                                        sb.AppendLine $"Max amount of custom monsters for this type and subtype reached: {m} >= {Limits.CustomMonstersPerTypeSubtype}"
+                                        |> ignore
                     
-                                if r >= Limits.UnfinishedRequests then
-                                    sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
-                                    |> ignore
+                                    if r >= Limits.UnfinishedRequests then
+                                        sb.AppendLine $"Max amount of pending requests reached: {r} >= {Limits.UnfinishedRequests}"
+                                        |> ignore
 
-                                Error (sb.ToString())
-                            | Error err, _ 
-                            | _, Error err -> Error err
+                                    Error (sb.ToString())
+                                | Error err, _ 
+                                | _, Error err -> Error err
                         | Tx.BuyItem _ ->
                             Ok (())
                     else
@@ -1405,17 +1409,14 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 None
         | None -> None
 
-    member x.GetUserChamps(uId: UserId) =
-        match getUserIdByUserId uId with
-        | Some userId ->
-            try
-                let roundId' = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
+    member x.GetUserChampsRaw(userId: int64) =
+        try
+            let getChampsInfo(roundId:int64) =
                 use conn = new SqliteConnection(cs)
-                // TODO: cache this for fast lookup
                 let lvls =
                     Db.newCommand SQL.GetLvlsForUserChamps conn
                     |> Db.setParams [
-                        "userId", SqlType.Int64 <| int64 userId
+                        "userId", SqlType.Int64 userId
                     ]
                     |> Db.query(fun r -> {|
                         ChampId = uint64 <| r.GetInt64(0)
@@ -1431,8 +1432,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 let boosts =
                     Db.newCommand SQL.GetBoostsForUserChampsAtRound conn
                     |> Db.setParams [
-                        "userId", SqlType.Int64 <| int64 userId
-                        "roundId", SqlType.Int64 roundId'
+                        "userId", SqlType.Int64 userId
+                        "roundId", SqlType.Int64 roundId
                     ]
                     |> Db.query(fun r -> {|
                         ChampId = uint64 <| r.GetInt64(0)
@@ -1448,7 +1449,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         v
                         |> List.map(fun r -> r.RoundBoost)
                         |> List.fold(fun stat boost ->
-                                Battle.processShopItem stat boost roundId') Stat.Zero)
+                                Battle.processShopItem stat boost roundId) Stat.Zero)
                     |> Map.ofList
 
                 Db.newCommand SQL.GetUserChamps conn
@@ -1471,14 +1472,59 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             Defense = r.GetInt64(9)
                             MagicDefense = r.GetInt64(10)
                         }
+                    let xp = uint64 (r.GetInt64(11))
                     let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
                     let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
-                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), bStat + lStat + bsStat))
-                |> Ok
-            with exn ->
-                Log.Error(exn, $"GetActiveUserChamps {uId}")
-                Error("Unexpected error")
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat))
+
+            let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
+            
+            // remove all outdated records
+            for key in userChampsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
+                userChampsInfoByRound.Remove key |> ignore
+
+            match userChampsInfoByRound.TryGetValue roundId with
+            | true, dct ->
+                match dct.TryGetValue userId with
+                | true, champs -> champs
+                | false, _ ->
+                    let info = getChampsInfo roundId
+                    dct.Add (userId, info)
+                    info
+            | false, _ ->
+                let info = getChampsInfo roundId
+                let d = Dictionary<int64, ChampInfoWithStat list>()
+                d.Add (userId, info)
+                userChampsInfoByRound.TryAdd(roundId, d) |> ignore
+                info
+            |> Ok
+        with exn ->
+            Log.Error(exn, $"GetUserChampsRaw {userId}")
+            Error("Unexpected error")
+    
+    member x.GetUserChamps(uId: UserId) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            x.GetUserChampsRaw userId
         | None -> Error("Unable to find user")
+
+    member _.GetUserInfoRaw(userId:int64) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetUserInfo conn
+            |> Db.setParams [
+                "userId", SqlType.Int64 userId
+            ]
+            |> Db.querySingle(fun r ->
+                if r.IsDBNull(0) |> not then
+                    UserType.Discord(r.GetInt64(0) |> uint64)
+                elif r.IsDBNull(1) |> not then
+                    UserType.Custom(r.GetString(1))
+                else
+                    UserType.Web3(r.GetString(2)))
+        with exn ->
+            Log.Error(exn, $"GetUserInfoRaw {userId}")
+            None
 
     member _.GetUserChampsInfo(uId: UserId) =
         match getUserIdByUserId uId with
@@ -1565,9 +1611,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             Defense = r.GetInt64(9)
                             MagicDefense = r.GetInt64(10)
                         }
+                    let xp = uint64 (r.GetInt64(11))
                     let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
                     let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
-                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), bStat + lStat + bsStat))
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetActiveUserChamps {uId}")
@@ -1699,108 +1746,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 None
         | None -> None 
 
-    member _.GetChampInfo(assetId: uint64): ChampInfo option =
-        try
-            use conn = new SqliteConnection(cs)
-            let champIdO =
-                Db.newCommand SQL.GetChampIdByAssetId conn
-                |> Db.setParams [
-                    "assetId", SqlType.Int64 <| int64 assetId
-                ]
-                |> Db.querySingle (fun r -> r.GetInt64(0))
-            match champIdO with
-            | Some champId ->
-                let lvledChars =
-                    Db.newCommand SQL.GetLvledCharsForChamp conn
-                    |> Db.setParams [
-                        "champId", SqlType.Int64 champId
-                    ]
-                    |> Db.scalar (fun v -> unbox<int64> v)
-                let baseChampInfoOpt =
-                    Db.newCommand SQL.GetChampInfo conn
-                    |> Db.setParams [
-                        "assetId", SqlType.Int64 <| int64 assetId
-                    ]
-                    |> Db.querySingle (fun r ->
-                    {
-                        ID = uint64 <| r.GetInt64(0)
-                        Name = r.GetString(1)
-                        Ipfs = r.GetString(2)
-                        Balance = Math.Round(r.GetDecimal(3), 6)
-                        XP = r.GetInt64(4) |> uint64
-
-                        Stat = {
-                            Health = r.GetInt64(5)
-                            Magic = r.GetInt64(6)
-
-                            Accuracy = r.GetInt64(7)
-                            Luck = r.GetInt64(8)
-
-                            Attack = r.GetInt64(9)
-                            MagicAttack = r.GetInt64(10)
-
-                            Defense = r.GetInt64(11)
-                            MagicDefense = r.GetInt64(12)
-                        }
-
-                        Traits = {
-                            Background = r.GetInt32(13) |> enum<Background>
-                            Skin = r.GetInt32(14) |> enum<Skin>
-                            Weapon = r.GetInt32(15) |> enum<Weapon>
-                            Magic = r.GetInt32(16) |> enum<Magic>
-                            Head = r.GetInt32(17) |> enum<Head>
-                            Armour = r.GetInt32(18) |> enum<Armour>
-                            Extra = r.GetInt32(19) |> enum<Extra>
-                        }
-
-                        BoostStat = None
-                        LevelsStat = None
-                        LeveledChars = uint64 lvledChars
-                    })
-            
-                match baseChampInfoOpt with
-                | Some baseChampInfo ->
-                    Db.newCommand SQL.GetLastRound conn
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
-                    |> Option.map(fun roundId ->
-                        let boosts =
-                            Db.newCommand SQL.GetBoostsForChampAtRound conn
-                            |> Db.setParams [
-                                "champId", SqlType.Int64 champId
-                                "roundId", SqlType.Int64 <| int64 roundId
-                            ]
-                            |> Db.query(fun r -> {
-                                StartRoundId = r.GetInt64(0)
-                                Boost = enum<ShopItem> <| r.GetInt32(1)
-                                Duration = r.GetInt32(2)
-                                })
-                            |> List.fold(fun stat boost ->
-                                Battle.processShopItem stat boost (int64 roundId)) Stat.Zero
-
-                        let lvls = 
-                            Db.newCommand SQL.GetLvlsForChamp conn
-                            |> Db.setParams [
-                                "champId", SqlType.Int64 champId
-                            ]
-                            |> Db.query(fun r -> enum<Characteristic> <| r.GetInt32(0))
-                            |> List.countBy(id)
-                            |> dict
-                            |> Levels.statFromCharacteristics
-                
-                        {
-                            baseChampInfo with
-                                BoostStat = Some boosts
-                                LevelsStat = Some lvls
-                        })
-                | None -> None
-            | None ->
-                Log.Error($"Unable to find champ with {assetId}")
-                None
-        with exn ->
-            Log.Error(exn, $"GetChampInfo {assetId}")
-            None
-
-    member _.GetChampInfoById(champId: int64): ChampInfo option =
+    member _.GetChampInfo(champId: int64): ChampInfo option =
         try
             use conn = new SqliteConnection(cs)
             let lvledChars =
@@ -1815,41 +1761,34 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     "champId", SqlType.Int64 champId
                 ]
                 |> Db.querySingle (fun r ->
-                {
-                    ID = uint64 <| r.GetInt64(0)
-                    Name = r.GetString(1)
-                    Ipfs = r.GetString(2)
-                    Balance = Math.Round(r.GetDecimal(3), 6)
-                    XP = r.GetInt64(4) |> uint64
+                    ChampInfo(
+                        uint64 <| r.GetInt64(0),
+                        r.GetString(1),
+                        r.GetString(2),
+                        Math.Round(r.GetDecimal(3), 6),
+                        r.GetInt64(4) |> uint64,
+                        {
+                            Health = r.GetInt64(5)
+                            Magic = r.GetInt64(6)
 
-                    Stat = {
-                        Health = r.GetInt64(5)
-                        Magic = r.GetInt64(6)
+                            Accuracy = r.GetInt64(7)
+                            Luck = r.GetInt64(8)
 
-                        Accuracy = r.GetInt64(7)
-                        Luck = r.GetInt64(8)
+                            Attack = r.GetInt64(9)
+                            MagicAttack = r.GetInt64(10)
 
-                        Attack = r.GetInt64(9)
-                        MagicAttack = r.GetInt64(10)
-
-                        Defense = r.GetInt64(11)
-                        MagicDefense = r.GetInt64(12)
-                    }
-
-                    Traits = {
-                        Background = r.GetInt32(13) |> enum<Background>
-                        Skin = r.GetInt32(14) |> enum<Skin>
-                        Weapon = r.GetInt32(15) |> enum<Weapon>
-                        Magic = r.GetInt32(16) |> enum<Magic>
-                        Head = r.GetInt32(17) |> enum<Head>
-                        Armour = r.GetInt32(18) |> enum<Armour>
-                        Extra = r.GetInt32(19) |> enum<Extra>
-                    }
-
-                    BoostStat = None
-                    LevelsStat = None
-                    LeveledChars = uint64 lvledChars
-                })
+                            Defense = r.GetInt64(11)
+                            MagicDefense = r.GetInt64(12)
+                        },
+                        {
+                            Background = r.GetInt32(13) |> enum<Background>
+                            Skin = r.GetInt32(14) |> enum<Skin>
+                            Weapon = r.GetInt32(15) |> enum<Weapon>
+                            Magic = r.GetInt32(16) |> enum<Magic>
+                            Head = r.GetInt32(17) |> enum<Head>
+                            Armour = r.GetInt32(18) |> enum<Armour>
+                            Extra = r.GetInt32(19) |> enum<Extra>
+                        }, None, None, uint64 lvledChars, uint64 <| r.GetInt64(20)))
             
             match baseChampInfoOpt with
             | Some baseChampInfo ->
@@ -1879,15 +1818,10 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         |> List.countBy(id)
                         |> dict
                         |> Levels.statFromCharacteristics
-                
-                    {
-                        baseChampInfo with
-                            BoostStat = Some boosts
-                            LevelsStat = Some lvls
-                    })
+                    baseChampInfo.WithFullStats(lvls, boosts))
             | None -> None
         with exn ->
-            Log.Error(exn, $"GetChampInfoById {champId}")
+            Log.Error(exn, $"GetChampInfo {champId}")
             None
 
     member _.GetBalances() =
@@ -2179,11 +2113,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.setParams [
                     "roundId", SqlType.Int64 <| int64 roundId
                 ]
-                |> Db.query (fun v -> v.GetInt64(0), not <| v.IsDBNull(1))
+                |> Db.query (fun r ->
+                    let ownerId =
+                        if r.IsDBNull(1) then None
+                        else r.GetInt64(1) |> uint64 |> Some
+                    r.GetInt64(0), ownerId)
                 |> Ok
             | None ->
                 Db.newCommand SQL.GetMonsters conn
-                |> Db.query (fun v -> v.GetInt64(0), not <| v.IsDBNull(1))
+                |> Db.query (fun r -> 
+                    let ownerId =
+                        if r.IsDBNull(1) then None
+                        else r.GetInt64(1) |> uint64 |> Some
+                    r.GetInt64(0), ownerId)
                 |> Ok
         with exn ->
             Log.Error(exn, "GetAliveMonsters")
@@ -2958,7 +2900,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     "reserve", SqlType.Decimal sRoundRewards.Reserve
                     "devs", SqlType.Decimal sRoundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
-                    "staking", SqlType.Decimal sRoundRewards.Staking
                 ]
                 |> Db.exec
 
@@ -3003,13 +2944,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.exec
 
-                tn
-                |> Db.newCommandForTransaction SQL.AddToKeyNum
-                |> Db.setParams [
-                    "amount", SqlType.Decimal sRoundRewards.Staking
-                    "key", SqlType.String (DbKeysNum.Staking.ToString())
-                ]
-                |> Db.exec
                 // rewards data inserted to ChampAction table is handled elsewhere
      
             let updateMonsterStat (tn:Data.IDbTransaction) (monsterId:uint64) (stat:Stat) =
@@ -3351,28 +3285,32 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             |> Db.setParams [
                 "monsterId", SqlType.Int64 monsterId
             ]
-            |> Db.querySingle(fun r -> {
-                XP = uint64 <| r.GetInt64(0)
-                Name = r.GetString(1)
-                Description = r.GetString(2)
-                Picture = JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 3, jsOptions)
-                Stat = {
+            |> Db.querySingle(fun r ->
+                let ownerId =
+                    if r.IsDBNull(14) then None
+                    else r.GetInt64(14) |> uint64 |> Some
+                MonsterInfo(
+                    uint64 <| monsterId,
+                    uint64 <| r.GetInt64(0),
+                    r.GetString(1),
+                    r.GetString(2),
+                    JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 3, jsOptions),
+                    {
+                        Health = r.GetInt64(4)
+                        Magic = r.GetInt64(5)
 
-                    Health = r.GetInt64(4)
-                    Magic = r.GetInt64(5)
+                        Accuracy = r.GetInt64(6)
+                        Luck = r.GetInt64(7)
 
-                    Accuracy = r.GetInt64(6)
-                    Luck = r.GetInt64(7)
+                        Attack = r.GetInt64(8)
+                        MagicAttack = r.GetInt64(9)
 
-                    Attack = r.GetInt64(8)
-                    MagicAttack = r.GetInt64(9)
-
-                    Defense = r.GetInt64(10)
-                    MagicDefense = r.GetInt64(11)
-                }
-                MType = enum<MonsterType> <| r.GetInt32(12)
-                MSubType = enum<MonsterSubType> <| r.GetInt32(13)
-            })
+                        Defense = r.GetInt64(10)
+                        MagicDefense = r.GetInt64(11)
+                    },
+                    enum<MonsterType> <| r.GetInt32(12),
+                    enum<MonsterSubType> <| r.GetInt32(13),
+                    ownerId))
         with exn ->
             Log.Error(exn, $"GetMonsterById: {monsterId}")
             None       
@@ -3630,14 +3568,14 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         "id", SqlType.Int64 reqId
                     ]
                     |> Db.exec
-                    true
+                    Ok mid
                 | None ->
                     tn.Rollback()
-                    false
+                    Error "Unexpected error"
             ) conn
         with exn ->
             Log.Error(exn, $"CreateNewMonster: {monster}")
-            false
+            Error "Unexpected error"
     
     member _.IsMonsterDescriptionExists(description:string) =
         try
@@ -3803,16 +3741,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             let cbi =
                 Db.newCommand SQL.GetLastBattleInfo conn
                 |> Db.querySingle (fun r ->
+                    let ownerId =
+                        if r.IsDBNull(17) then None
+                        else r.GetInt64(17) |> uint64 |> Some
                     CurrentBattleInfo(
                         uint64 <| r.GetInt64(0),
                         r.GetInt32(1) |> enum<BattleStatus>,
-                        {
-                            Name = r.GetString(3)
-                            Description = r.GetString(4)
-                            Picture = System.Text.Json.JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 5, jsOptions)
-                            XP = uint64 <| r.GetInt32(6)
-                            Stat = {
-
+                        MonsterInfo(
+                            uint64 <| r.GetInt32(2),
+                            uint64 <| r.GetInt32(6),
+                            r.GetString(3),
+                            r.GetString(4),
+                            JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 5, jsOptions),
+                            {
                                 Health = r.GetInt64(7)
                                 Magic = r.GetInt64(8)
 
@@ -3824,19 +3765,16 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
 
                                 Defense = r.GetInt64(13)
                                 MagicDefense = r.GetInt64(14)
-                            }
-                            MType = enum<MonsterType> <| r.GetInt32(15)
-                            MSubType = enum<MonsterSubType> <| r.GetInt32(16)
-                        },
-                        r.GetInt64(2) |> uint64
-                    )
-                )
+                            },
+                            enum<MonsterType> <| r.GetInt32(15),
+                            enum<MonsterSubType> <| r.GetInt32(16),
+                            ownerId)))
                 |> function
                     | Some v ->
                         let monster = v.Monster
                         let monsterLvl = Levels.getLvlByXp monster.XP
                         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
-                        v.WithMonsterInfo({ v.Monster with Stat = v.Monster.Stat + monsterLvlStats })
+                        v.WithMonsterInfo(v.Monster.WithStat(monster.Stat + monsterLvlStats))
                         |> Ok
                     | None -> Error("Unknown error")
             match cbi with
@@ -3899,7 +3837,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.query (fun r ->
                     uint64 <| r.GetInt64(0),
-                    RoundReward(SpecialReward(r.GetDecimal(2), r.GetDecimal(3), r.GetDecimal(1), r.GetDecimal(4), r.GetDecimal(5)), r.GetDecimal(6)))
+                    RoundReward(SpecialReward(r.GetDecimal(2), r.GetDecimal(3), r.GetDecimal(1), r.GetDecimal(4)), r.GetDecimal(5)))
                 |> readOnlyDict
 
             let defeatedChamps =
@@ -3955,7 +3893,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let rRewards =
                         match mRewards.TryGetValue rId with
                         | true, r -> r
-                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M, 0M, 0M), 0M)
+                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M, 0M), 0M)
 
                     let dChamps =
                         match defeatedChamps.TryGetValue rId with
@@ -4052,15 +3990,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, "UpdateDCPrice")
             false
-
-    member _.GetChampsNames() =
-        try
-            use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetChampsNames conn
-            |> Db.query(fun r -> r.GetString(0))
-        with exn ->
-            Log.Error(exn, "GetChampsNames")
-            []
 
     member _.GetFailedGen() =
         try
