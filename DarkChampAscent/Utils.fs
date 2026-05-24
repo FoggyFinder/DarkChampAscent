@@ -185,7 +185,7 @@ module Cache =
                         | UserType.Custom nickname ->
                             return UserLink(uint64 dbId, nickname) |> Some
                         | UserType.Web3 wallet ->
-                            return UserLink(uint64 dbId, wallet) |> Some
+                            return UserLink(uint64 dbId, wallet.Substring(0, 5) + "...") |> Some
                     | None -> return None
                 with exn ->
                     Log.Error("Attempt to get user info", exn)
