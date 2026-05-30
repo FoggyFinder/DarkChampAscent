@@ -51,7 +51,7 @@ module Monster =
         match mtype with
         | MonsterType.Zombie ->
             {
-                Health = 800L
+                Health = 2000L
                 Magic = 0L
                 Accuracy = 1L
                 Luck = 1L
@@ -62,7 +62,7 @@ module Monster =
             }            
         | MonsterType.Demon ->
             {
-                Health = 1500L
+                Health = 3500L
                 Magic = 550L
                 Accuracy = 2L
                 Luck = 4L
@@ -73,7 +73,7 @@ module Monster =
             }
         | MonsterType.Necromancer ->
             {
-                Health = 600L
+                Health = 1500L
                 Magic = 2500L
                 Accuracy = 3L
                 Luck = 2L

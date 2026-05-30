@@ -8,6 +8,12 @@ type IFormCollection with
         | true, s -> Some s
         | false, _ -> None
 
+type IQueryCollection with
+    member x.tryGetQueryValue (key: string) =
+        match x.TryGetValue key with
+        | true, s -> Some s
+        | false, _ -> None
+
 open System
 open System.Threading.Tasks
 open Types

@@ -339,6 +339,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 | TxStatus.Confirmed(tx, _) ->
                     return Some(tx, true)
                 | TxStatus.Unconfirmed tx ->
+                    Log.Error $"Unconfirmed tx: {tx}"
                     return Some(tx, false)
                 | TxStatus.Error exn ->
                     Log.Error(exn, $"unable to send to {wallet}")
@@ -346,17 +347,25 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             } |> Async.RunSynchronously
         match db.GetChampWithBalances() with
         | Ok champs ->
-            for ar in champs do
-                match Blockchain.getAssetHolder ar.AssetId with
-                | Ok wallet ->
-                    match db.SendToWallet(ar.ID, ar.Balance, battleId, send wallet) with
-                    | Some tx ->
-                        let tnComponent = ChainComponent.tnSend $"{ar.Balance} {Emoj.Coin} was send to {ar.Name} ({ar.AssetId})" tx
-                        let mp = DUtils.v2ComponentMessage [tnComponent]
+            let champsAndWallet =
+                champs
+                |> List.choose (fun ar -> 
+                    match Blockchain.getAssetHolder ar.AssetId with
+                    | Ok wallet -> {| Wallet = wallet; ChampId = ar.ID; Balance = ar.Balance |} |> Some
+                    | Error err ->
+                        Log.Error err
+                        None)
+                |> List.groupBy (fun ar -> ar.Wallet)
+            for (wallet, champs) in champsAndWallet do
+                let champs' = champs |> List.map(fun ar -> ar.ChampId, ar.Balance)
+                let sum = champs |> List.sumBy(fun ar -> ar.Balance)
+                match db.SendToWallet(champs', battleId, fun () -> send wallet sum) with
+                | Some tx ->
+                    let tnComponent = ChainComponent.tnSend $"{sum} {Emoj.Coin} was sent to {wallet.Substring(0, 5)}..." tx
+                    let mp = DUtils.v2ComponentMessage [tnComponent]
                                                 
-                        do! DUtils.sendMsgToLogChannel gclient mp
-                    | None -> () 
-                | Error err -> Log.Error(err)
+                    do! DUtils.sendMsgToLogChannel gclient mp
+                | None -> () 
         | Error _ -> ()
             
         for wt in Enum.GetValues<WalletType>() do
@@ -597,7 +606,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             match db.GetActiveUserChamps(userId, cRound) with
             | Ok champs when champs.Length > 0 ->
                 let moves = champs |> List.map(fun r -> r.ID, r.Stat) |> ActionSelector.selectActions
-                let results = moves |> List.map(fun rar -> joinRound(userId, rar, false))
+                let results = moves |> List.map(fun rar -> joinRound(userId, rar, moves.Length = 1))
                 if results |> List.forall(fun r -> r.IsOk) then
                     Ok (moves.Length)
                 else Error("Unexpected error")
@@ -748,6 +757,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     
                 with exn ->
                     Log.Error(exn, "BattleService")
+                    do! Task.Delay(TimeSpan.FromHours(1), cancellationToken)
         }
 
 type RefundFailedGenService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfiguration>, walletOpt: IOptions<Conf.WalletConfiguration>) =

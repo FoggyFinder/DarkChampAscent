@@ -73,8 +73,6 @@ let withRateLimit (maxAttempts: int) (window: TimeSpan) (getKey: HttpContext -> 
         else
             (Response.withStatusCode 429 >> ofJson (Error "Too many requests. Please try again later.")) ctx
 
-open GameLogic.Monsters
-
 let builder = WebApplication.CreateBuilder()
 
 let getAccount (result: AuthenticateResult) : Account option =
@@ -759,6 +757,32 @@ let myRequestsHandler : HttpHandler =
             return! response ctx
         }
 
+let myEarningsHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+
+            let response =
+                match ao with
+                | Some user ->
+                    let db = ctx.Plug<SqliteStorage>()
+                    let startRound =
+                        ctx.Request.Query.tryGetQueryValue("startRound")
+                        |> Option.bind (fun s -> match UInt64.TryParse s with true, v -> Some v | _ -> None)
+                    let endRound =
+                        ctx.Request.Query.tryGetQueryValue("endRound")
+                        |> Option.bind (fun s -> match UInt64.TryParse s with true, v -> Some v | _ -> None)
+                    match startRound, endRound with
+                    | Some start, Some end' ->
+                        match db.GetUserEarnings (user.ID, start, end') with
+                        | Some v -> Ok v
+                        | None -> Error "Unexpected error"
+                    | _, _ -> Error "Either startRound or endRound is missing"
+                    |> apiResult
+                | None -> apiUnauthorized
+            return! response ctx
+        }
+
 [<RequireQualifiedAccess>]
 module LeaderboardHandlers =
     let champsHandler : HttpHandler =
@@ -817,8 +841,8 @@ module LeaderboardHandlers =
                                             match Cache.names.TryGetValue(uint64 dId) with
                                             | true, n -> n
                                             | _ -> string dId
-                                        | Donater.Unknown wallet  -> wallet
-                                        | Donater.Custom (_, n)   -> n
+                                        | Donater.Unknown wallet -> wallet.Substring(0, 5) + "..."
+                                        | Donater.Custom (_, n)  -> n
                                     DonationDTO(name, d.Amount))
                             let latest' =
                                 latest |> List.map (fun d ->
@@ -828,7 +852,7 @@ module LeaderboardHandlers =
                                             match Cache.names.TryGetValue(uint64 dId) with
                                             | true, n -> n
                                             | _ -> string dId
-                                        | Donater.Unknown wallet  -> wallet
+                                        | Donater.Unknown wallet  -> wallet.Substring(0, 5) + "..."
                                         | Donater.Custom (_, n)   -> n
                                     LatestDonationDTO(name, d.Amount, d.Tx))
                             return apiOk (TopDonatersDTO(leaderboard, latest'))
@@ -1233,6 +1257,7 @@ let endpoints =
         Pattern.MonstersDetail None, monstrHandler
 
         Pattern.Requests, myRequestsHandler
+        Pattern.Earnings, myEarningsHandler
 
         Pattern.LeaderboardChamps, LeaderboardHandlers.champsHandler
         Pattern.LeaderboardMonsters, LeaderboardHandlers.monstersHandler

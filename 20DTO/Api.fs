@@ -101,6 +101,7 @@ type Pattern =
    | UsersDetail of id:uint64 option
 
    | Requests
+   | Earnings
 
    | LeaderboardChamps
    | LeaderboardMonsters
@@ -162,6 +163,7 @@ type Pattern =
             | None -> "/api/users/{id:long}"
 
        | Pattern.Requests -> "/api/requests/my"
+       | Pattern.Earnings -> "/api/earnings"
 
        | Pattern.LeaderboardChamps -> "/api/leaderboard/champs"
        | Pattern.LeaderboardMonsters -> "/api/leaderboard/monsters"
@@ -193,6 +195,7 @@ type Pattern =
        | Pattern.MonstersDefeated
        | Pattern.MonstersDetail _
        | Pattern.Requests
+       | Pattern.Earnings
 
        | Pattern.UsersDetail _
 

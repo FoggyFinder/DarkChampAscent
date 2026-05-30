@@ -312,7 +312,7 @@ module internal SQL =
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             ChampId INT NOT NULL,
             BattleId INT NOT NULL,
-            Tx TEXT NOT NULL UNIQUE,
+            Tx TEXT NOT NULL,
             Rewards NUMERIC NOT NULL,
             UNIQUE(ChampId, BattleId),
             FOREIGN KEY (ChampId)
@@ -979,19 +979,19 @@ module internal SQL =
         WHERE RoundId >= @roundId AND RoundId + Duration <= @roundId AND MonsterId = @monsterId AND IsActive = 1
     """
 
-    let GetChampsLeaderBoard10 = """
+    let GetChampsLeaderBoard25 = """
         SELECT Name, AssetId, IPFS, Xp, cs.ChampId FROM Champ
         JOIN ChampStat cs ON cs.ChampId = Champ.ID
         ORDER BY
             Xp DESC
-        LIMIT 10
+        LIMIT 25
     """
 
-    let GetMonsterLeaderBoard10 = """
+    let GetMonsterLeaderBoard25 = """
         SELECT ID, Name, Type, Subtype, Picture, Xp FROM Monster
         ORDER BY
             Xp DESC
-        LIMIT 10
+        LIMIT 25
     """
 
     let GetTopDonaters = """

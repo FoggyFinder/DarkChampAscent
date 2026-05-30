@@ -312,6 +312,54 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
 
+    let removeUniqueTxFromRewardsPayed(conn:SqliteConnection) = 
+        let sql = """
+        PRAGMA foreign_keys = OFF;
+
+        CREATE TABLE IF NOT EXISTS RewardsPayedNew (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            ChampId INT NOT NULL,
+            BattleId INT NOT NULL,
+            Tx TEXT NOT NULL,
+            Rewards NUMERIC NOT NULL,
+            UNIQUE(ChampId, BattleId),
+            FOREIGN KEY (ChampId)
+               REFERENCES Champ (ID),
+            FOREIGN KEY (BattleId)
+               REFERENCES Battle (ID),
+            CHECK (Rewards > 0)
+        );
+
+        INSERT INTO RewardsPayedNew SELECT * FROM RewardsPayed;
+
+        DROP TABLE RewardsPayed;
+
+        ALTER TABLE RewardsPayedNew RENAME TO RewardsPayed;
+
+        PRAGMA foreign_keys = ON;
+        """
+
+        let rewardsPayedTxIsUniqueConstrIsRemoved = """
+            SELECT CASE 
+                WHEN sql LIKE '%Tx TEXT NOT NULL UNIQUE%' 
+                THEN 1
+                ELSE 0
+            END AS result
+            FROM sqlite_master 
+            WHERE type='table' AND name='RewardsPayed'
+        """
+        try
+            Db.newCommand rewardsPayedTxIsUniqueConstrIsRemoved  conn
+            |> Db.scalar(fun v -> tryUnbox<int64> v)
+            |> Option.iter(fun i ->
+                if i = 1L then
+                    Db.newCommand sql conn
+                    |> Db.exec)
+            true
+        with exn ->
+            Log.Error(exn, $"removeUniqueTxFromRewardsPayed")
+            false
+
     let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
 
@@ -322,6 +370,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
+    do removeUniqueTxFromRewardsPayed(_conn) |> ignore
     do _conn.Dispose()
 
     do Log.Information("Db init is finished")
@@ -3199,7 +3248,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.GetChampLeaderboard() =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetChampsLeaderBoard10 conn
+            Db.newCommand SQL.GetChampsLeaderBoard25 conn
             |> Db.query(fun r ->
                 ChampShortInfo(uint64 <| r.GetInt64(4), r.GetString(0), 
                     r.GetString(2), uint64 <| r.GetInt64(3)))
@@ -3211,7 +3260,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.GetMonsterLeaderboard() =
         try
             use conn = new SqliteConnection(cs)
-            Db.newCommand SQL.GetMonsterLeaderBoard10 conn
+            Db.newCommand SQL.GetMonsterLeaderBoard25 conn
             |> Db.query(fun r ->
                 MonsterShortInfo(
                    uint64 <| r.GetInt64(0), r.GetString(1),
@@ -3279,6 +3328,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Error("Unexpected error")
 
     member _.GetMonsterById(monsterId:int64) =
+        // TODO: return full stats
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterStats conn
@@ -3347,44 +3397,49 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, "FinalizeBattle")
             false
 
-    member _.SendToWallet(champId:uint64, balance: decimal, battleId:uint64, send:(decimal -> (string * bool) option)) =
+    member _.SendToWallet(champs:(uint64 * decimal) list, battleId:uint64, send:(unit -> (string * bool) option)) =
         try 
             use conn = new SqliteConnection(cs)
             Db.batch(fun tn ->
-                Db.newCommandForTransaction SQL.WinthdrawFromBalance tn
-                |> Db.setParams [
-                    "champId", SqlType.Int64 <| int64 champId
-                ]
-                |> Db.exec
-                let r = send balance
+                for (champId, _) in champs do
+                    Db.newCommandForTransaction SQL.WinthdrawFromBalance tn
+                    |> Db.setParams [
+                        "champId", SqlType.Int64 <| int64 champId
+                    ]
+                    |> Db.exec
+                let r = send()
                 match r with
                 // ToDo: fix unconfirmed case
                 | Some (tx, b) ->
-                    Db.newCommandForTransaction SQL.InsertRewardsPayed tn
-                    |> Db.setParams [
-                        "champId", SqlType.Int64 <| int64 champId
-                        "battleId", SqlType.Int64 <| int64 battleId
-                        "tx", SqlType.String <| tx
-                        "rewards", SqlType.Decimal balance
-                    ]
-                    |> Db.exec
+                    for (champId, balance) in champs do
+                        Db.newCommandForTransaction SQL.InsertRewardsPayed tn
+                        |> Db.setParams [
+                            "champId", SqlType.Int64 <| int64 champId
+                            "battleId", SqlType.Int64 <| int64 battleId
+                            "tx", SqlType.String <| tx
+                            "rewards", SqlType.Decimal balance
+                        ]
+                        |> Db.exec
 
-                    Db.newCommandForTransaction SQL.SetChampActionRewardsStatusToSend tn
-                    |> Db.setParams [
-                        "champId", SqlType.Int64 <| int64 champId
-                        "battleId", SqlType.Int64 <| int64 battleId
-                        "tx", SqlType.String <| tx
-                        "rewards", SqlType.Decimal balance
-                    ]
-                    |> Db.exec
+                        Db.newCommandForTransaction SQL.SetChampActionRewardsStatusToSend tn
+                        |> Db.setParams [
+                            "champId", SqlType.Int64 <| int64 champId
+                            "battleId", SqlType.Int64 <| int64 battleId
+                            "tx", SqlType.String <| tx
+                            "rewards", SqlType.Decimal balance
+                        ]
+                        |> Db.exec
                     Some(tx)
                 | None ->
                     tn.Rollback()
-                    None
-            ) conn
+                    None) conn
 
         with exn ->
-            Log.Error(exn, "SendToWallet")
+            let errors = StringBuilder()
+            errors.AppendLine($"SendToWallet {battleId}") |> ignore
+            for (champId, balance) in champs do
+                errors.AppendLine($"{champId} -> {balance}") |> ignore
+            Log.Error(exn, errors.ToString())
             None
 
     member _.SendToSpecialWallet(wt:WalletType, battleId:uint64, send:(decimal -> (string * bool) option)) =
