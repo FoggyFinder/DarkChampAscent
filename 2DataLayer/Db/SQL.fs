@@ -578,7 +578,7 @@ module internal SQL =
 
     let UpsertChampAndUser = "
         INSERT INTO UserChamp(ChampId, UserId) VALUES((SELECT ID FROM Champ WHERE AssetId = @assetId LIMIT 1), @userId)
-        ON CONFLICT(ChampId, UserId) DO UPDATE SET UserId = @userId;"
+        ON CONFLICT (ChampId) DO UPDATE SET UserId = @userId;"
     
     let ConnectChampToUser = "INSERT INTO UserChamp(ChampId, UserId) VALUES(@champId, @userId)"
     
