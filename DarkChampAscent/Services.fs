@@ -20,6 +20,7 @@ open System.IO
 open DiscordBot.Components
 open Utils
 open Helpers
+open FSharp.Control
 
 type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguration>) =
     inherit BackgroundService()
@@ -56,6 +57,46 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
                     Log.Error(exn, "BackupService")
         }
 
+type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
+    inherit BackgroundService()
+
+    override _.ExecuteAsync(cancellationToken) =
+        task {
+            do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
+            while cancellationToken.IsCancellationRequested |> not do
+                try
+                    // TODO: remove a role if user is no longer hold a Champ NFT
+                    for kv in client.Cache.Guilds do
+                        let guild = kv.Value
+                        let rO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
+                        match rO with
+                        | Some role ->
+                            do! 
+                                guild.GetUsersAsync()
+                                |> TaskSeq.iterAsync(fun u ->
+                                    match db.ConfirmedUserByDiscordId u.Id with
+                                    | Ok b ->
+                                        if b then
+                                            task {
+                                                if u.RoleIds |> Seq.exists(fun r -> r = role.Key) |> not then
+                                                    try
+                                                        do! guild.AddUserRoleAsync(u.Id, role.Key)
+                                                        Log.Information($"Role added to a {u.Id} user")
+                                                    with exn ->
+                                                        Log.Error(exn, $"Unable to add role to user inside {guild.Name} guild")
+                                            }
+                                        else task { () }
+                                    | Error err ->
+                                        task { Log.Error(err) })
+                        | None ->
+                            Log.Error($"Unable to find a role to user inside {guild.Name} guild")
+
+                    do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
+                with exn ->
+                    Log.Error(exn, "DiscordRoleCheckService")
+                    do! Task.Delay(TimeSpan.FromHours(24), cancellationToken)
+        }
+
 type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOptions<Conf.WalletConfiguration>) =
     inherit BackgroundService()
 
@@ -86,7 +127,7 @@ type ConfirmationService(db:SqliteStorage, client: GatewayClient, options: IOpti
                                         elif db.ConfirmWallet(wallet, code) then
                                             match db.FindDiscordIdByWallet wallet with
                                             | Some discordId ->
-                                                DUtils.addDiscordRole client (uint64 discordId)
+                                                do! DUtils.addDiscordRole client (uint64 discordId)
                                             | None -> ()
                                             match db.FindUserIdByWallet wallet with
                                             | Some userId ->

@@ -1044,7 +1044,7 @@ module TxHandlers =
                                         match db.FindDiscordIdByWallet sender with
                                         | Some discordId ->
                                             let client = ctx.Plug<GatewayClient>()
-                                            DUtils.addDiscordRole client (uint64 discordId)
+                                            do! DUtils.addDiscordRole client (uint64 discordId)
                                         | None -> ()
                                         // ignore errors here, users can re-scan their champs later
                                         CommonHelpers.updateChamps (db, user.ID, [sender]) |> ignore
@@ -1185,6 +1185,7 @@ builder
         .AddHostedService<RefundFailedGenService>()
         .AddHostedService<ConfirmationService>()
         .AddHostedService<RescanChampsService>()
+        .AddHostedService<DiscordRoleCheckService>()
         .AddAuthorization()
         .AddAuthentication(fun options ->
             options.DefaultScheme          <- CookieAuthenticationDefaults.AuthenticationScheme

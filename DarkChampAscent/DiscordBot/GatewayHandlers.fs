@@ -118,15 +118,13 @@ type GuildCreateHandler(db:SqliteStorage, rclient:RestClient) =
                                 task {
                                     if u.RoleIds |> Seq.exists(fun r -> r = playerRole.Id) |> not then
                                         try
-                                            let! v = arg.Guild.AddUserRoleAsync(u.Id, playerRole.Id)
-                                            ()
+                                            do! arg.Guild.AddUserRoleAsync(u.Id, playerRole.Id)
                                         with exn ->
                                             Log.Error(exn, $"Unable to add role to user inside {arg.Guild.Name} guild")
                                 }
                             else task { () }
                         | Error err ->
-                            task { Log.Error(err) }
-                    )
+                            task { Log.Error(err) })
 
                 return null
             } |> ValueTask
