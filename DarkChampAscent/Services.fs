@@ -59,6 +59,17 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
 
 type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
     inherit BackgroundService()
+    
+    let fixRoleHierarchy (guild: Guild) (pRole:Role) (bRole:Role) =
+        task {
+            try
+                if pRole.Position >= bRole.Position then
+                    let modification = RolePositionProperties(pRole.Id).WithPosition(bRole.Position - 1)
+                    let! r = guild.ModifyRolePositionsAsync([| modification |])
+                    Log.Information($"Fixed role hierarchy in {guild.Name}: {r.Count}")
+            with exn ->
+                Log.Error(exn, $"fixRoleHierarchy")
+        }
 
     override _.ExecuteAsync(cancellationToken) =
         task {
@@ -68,9 +79,11 @@ type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
                     // TODO: remove a role if user is no longer hold a Champ NFT
                     for kv in client.Cache.Guilds do
                         let guild = kv.Value
-                        let rO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
-                        match rO with
-                        | Some role ->
+                        let playerRoleO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
+                        let botRoleO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentBotRole)
+                        match playerRoleO, botRoleO with
+                        | Some pRole, Some bRole ->
+                            do! fixRoleHierarchy guild pRole.Value bRole.Value
                             do! 
                                 guild.GetUsersAsync()
                                 |> TaskSeq.iterAsync(fun u ->
@@ -78,9 +91,9 @@ type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
                                     | Ok b ->
                                         if b then
                                             task {
-                                                if u.RoleIds |> Seq.exists(fun r -> r = role.Key) |> not then
+                                                if u.RoleIds |> Seq.exists(fun r -> r = pRole.Key) |> not then
                                                     try
-                                                        do! guild.AddUserRoleAsync(u.Id, role.Key)
+                                                        do! guild.AddUserRoleAsync(u.Id, pRole.Key)
                                                         Log.Information($"Role added to a {u.Id} user")
                                                     with exn ->
                                                         Log.Error(exn, $"Unable to add role to user inside {guild.Name} guild")
@@ -88,8 +101,8 @@ type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
                                         else task { () }
                                     | Error err ->
                                         task { Log.Error(err) })
-                        | None ->
-                            Log.Error($"Unable to find a role to user inside {guild.Name} guild")
+                        | _ ->
+                            Log.Error($"Unable to find a role to user inside {guild.Name} guild | {playerRoleO.IsSome} | {botRoleO.IsSome}")
 
                     do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
                 with exn ->
