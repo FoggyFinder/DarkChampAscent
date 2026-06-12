@@ -212,7 +212,7 @@ module Channels =
     let [<Literal>] LogChannel = "dark-champs-ascent-logs"
     let [<Literal>] ChatChannel = "dark-champs-ascent-chat"
     let [<Literal>] EntryChannel = "dark-champs-ascent-entry"
-    let [<Literal>] Category = "Dark Champs Ascent"
+    let [<Literal>] Category = "DARK CHAMPS ASCENT"
 
     let [<Literal>] DarkAscentPlayerRole = "DarkChampAscent Player"
     let [<Literal>] DarkAscentBotRole = "DarkChampAscent"
