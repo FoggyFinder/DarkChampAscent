@@ -82,6 +82,7 @@ module DisplayEnum =
         | Background.Valley -> "Valley"
         | Background.RedMoon -> "Red Moon"
         | Background.Waves -> "Waves"
+        | Background.GoldenMoon -> "Golden Moon"
         | Background.Unknown -> "Unknown"
 
     let Skin (s: Skin) =
@@ -111,6 +112,13 @@ module DisplayEnum =
         | Weapon.DragonStaff -> "Dragon Staff"
         | Weapon.DarkSword -> "Dark Sword"
         | Weapon.ElfBow -> "Elf Bow"
+        | Weapon.WoodenClub -> "Wooden Club"
+        | Weapon.SketonianSword -> "Ske'tonian Sword"
+        | Weapon.FireWings -> "Fire Wings"
+        | Weapon.ElderWings -> "Elder Wings"
+        | Weapon.ChameleonWings -> "Chameleon Wings"
+        | Weapon.ArcticDualKatana -> "Arctic Dual Katana"
+        | Weapon.SnakeWings -> "Snake Wings"
         | Weapon.Unknown -> "Unknown"
 
     let Magic (m: Magic) =
@@ -121,6 +129,7 @@ module DisplayEnum =
         | Magic.IceDaggers -> "Ice Daggers"
         | Magic.Lightning -> "Lightning"
         | Magic.Dark -> "Dark"
+        | Magic.PoisonCloud -> "Poison Cloud"
         | Magic.Unknown -> "Unknown"
 
     let Head (h: Head) =
@@ -144,6 +153,9 @@ module DisplayEnum =
         | Head.PirateBandana -> "Pirate Bandana"
         | Head.GoldHermesHelm -> "Gold Hermes Helm"
         | Head.Barbarian -> "Barbarian"
+        | Head.SkeltonianMask -> "Skel'tonian Mask"
+        | Head.Cyclops -> "Cyclops"
+        | Head.Frost -> "Frost"
         | Head.Unknown -> "Unknown"
 
     let Armour (a: Armour) =
@@ -164,6 +176,8 @@ module DisplayEnum =
         | Armour.LeatherGarb -> "Leather Garb"
         | Armour.PirateCoat -> "Pirate Coat"
         | Armour.Emperor -> "Emperor"
+        | Armour.Rogue -> "Rogue"
+        | Armour.ArcticShinobi -> "Arctic Shinobi"
         | Armour.Unknown -> "Unknown"
 
     let Extra (e: Extra) =
@@ -174,6 +188,8 @@ module DisplayEnum =
         | Extra.DragonFangsEarring -> "Dragon Fangs Earring"
         | Extra.TentacleEarring -> "Tentacle Earring"
         | Extra.HoopEarring -> "Hoop Earring"
+        | Extra.GoldenFeathers -> "Golden Feathers"
+        | Extra.BattleWound -> "Battle Wound"
         | Extra.Unknown -> "Unknown"
 
     let Characteristic (c: Characteristic) =
@@ -250,26 +266,26 @@ module AllEnums =
         ]
 
     let Backgrounds = 
-        [ Background.Blood; Background.Aqua; Background.Noir; Background.Toxic; Background.Midnight; Background.Golden; Background.Forest; Background.Sunset; Background.Cosmos; Background.Dungeon; Background.Valley; Background.RedMoon; Background.Waves ]
+        [ Background.Blood; Background.Aqua; Background.Noir; Background.Toxic; Background.Midnight; Background.Golden; Background.Forest; Background.Sunset; Background.Cosmos; Background.Dungeon; Background.Valley; Background.RedMoon; Background.Waves; Background.GoldenMoon ]
     
     let Skins =
         [ Skin.Light; Skin.Dark; Skin.TribalLight; Skin.TribalDark; Skin.Undead; Skin.Snake; Skin.ElderDragon; Skin.FireDragon; Skin.Chameleon ]
     
     let Weapons = 
-        [ Weapon.None; Weapon.Trident; Weapon.ExecutionerAxe; Weapon.Spear; Weapon.Shield; Weapon.DualKatana; Weapon.Sickle; Weapon.Scythe; Weapon.DragonLongSword; Weapon.DragonStaff; Weapon.DarkSword; Weapon.ElfBow ]
+        [ Weapon.None; Weapon.Trident; Weapon.ExecutionerAxe; Weapon.Spear; Weapon.Shield; Weapon.DualKatana; Weapon.Sickle; Weapon.Scythe; Weapon.DragonLongSword; Weapon.DragonStaff; Weapon.DarkSword; Weapon.ElfBow; Weapon.WoodenClub; Weapon.SketonianSword; Weapon.FireWings; Weapon.ElderWings; Weapon.ChameleonWings; Weapon.ArcticDualKatana; Weapon.SnakeWings ]
     
     let Heads =
-        [ Head.Dragon; Head.Purity; Head.Snake; Head.UniHorn; Head.Elder; Head.Scarred; Head.DarkKnightHelm; Head.Undead; Head.Bone; Head.AllKnowing; Head.GladiatorHelm; Head.DragonKnightHelm; Head.CrownOfHorns; Head.Samurai; Head.Farmer; Head.SilverHermesHelm; Head.PirateBandana; Head.GoldHermesHelm; Head.Barbarian ]
+        [ Head.Dragon; Head.Purity; Head.Snake; Head.UniHorn; Head.Elder; Head.Scarred; Head.DarkKnightHelm; Head.Undead; Head.Bone; Head.AllKnowing; Head.GladiatorHelm; Head.DragonKnightHelm; Head.CrownOfHorns; Head.Samurai; Head.Farmer; Head.SilverHermesHelm; Head.PirateBandana; Head.GoldHermesHelm; Head.Barbarian; Head.SkeltonianMask; Head.Cyclops; Head.Frost ]
 
     let Armours =
-        [ Armour.None; Armour.Rags; Armour.HiddenOne; Armour.Unchained; Armour.MagiciansRobe; Armour.Shinobi; Armour.Pharaoh; Armour.DragonHunter; Armour.Gladiator; Armour.DarkKnight; Armour.DragonKnight; Armour.ElfRobe; Armour.ExecutionerRobe; Armour.LeatherGarb; Armour.PirateCoat; Armour.Emperor ]
+        [ Armour.None; Armour.Rags; Armour.HiddenOne; Armour.Unchained; Armour.MagiciansRobe; Armour.Shinobi; Armour.Pharaoh; Armour.DragonHunter; Armour.Gladiator; Armour.DarkKnight; Armour.DragonKnight; Armour.ElfRobe; Armour.ExecutionerRobe; Armour.LeatherGarb; Armour.PirateCoat; Armour.Emperor; Armour.Rogue; Armour.ArcticShinobi ]
     
     let Magic =
-        [ Magic.None; Magic.Water; Magic.Fire; Magic.IceDaggers; Magic.Lightning; Magic.Dark ]
+        [ Magic.None; Magic.Water; Magic.Fire; Magic.IceDaggers; Magic.Lightning; Magic.Dark; Magic.PoisonCloud ]
     
     let Extras =
-        [ Extra.None; Extra.CrescentMoonEarring; Extra.FusionPearlEarring; Extra.DragonFangsEarring; Extra.TentacleEarring; Extra.HoopEarring ]
-
+        [ Extra.None; Extra.CrescentMoonEarring; Extra.FusionPearlEarring; Extra.DragonFangsEarring; Extra.TentacleEarring; Extra.HoopEarring; Extra.GoldenFeathers; Extra.BattleWound ]
+    
     let Moves =
         [ 
             Move.Attack

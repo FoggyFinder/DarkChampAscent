@@ -60,17 +60,6 @@ type BackupService(db:SqliteStorage, backupOpt: IOptions<Conf.BackupConfiguratio
 type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
     inherit BackgroundService()
     
-    let fixRoleHierarchy (guild: Guild) (pRole:Role) (bRole:Role) =
-        task {
-            try
-                if pRole.Position >= bRole.Position then
-                    let modification = RolePositionProperties(pRole.Id).WithPosition(bRole.Position - 1)
-                    let! r = guild.ModifyRolePositionsAsync([| modification |])
-                    Log.Information($"Fixed role hierarchy in {guild.Name}: {r.Count}")
-            with exn ->
-                Log.Error(exn, $"fixRoleHierarchy")
-        }
-
     override _.ExecuteAsync(cancellationToken) =
         task {
             do! Task.Delay(TimeSpan.FromMinutes(1.0), cancellationToken)
@@ -80,10 +69,8 @@ type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
                     for kv in client.Cache.Guilds do
                         let guild = kv.Value
                         let playerRoleO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentPlayerRole)
-                        let botRoleO = guild.Roles |> Seq.tryFind(fun r -> r.Value.Name = Channels.DarkAscentBotRole)
-                        match playerRoleO, botRoleO with
-                        | Some pRole, Some bRole ->
-                            do! fixRoleHierarchy guild pRole.Value bRole.Value
+                        match playerRoleO with
+                        | Some pRole ->
                             do! 
                                 guild.GetUsersAsync()
                                 |> TaskSeq.iterAsync(fun u ->
@@ -102,7 +89,7 @@ type DiscordRoleCheckService(client: GatewayClient, db:SqliteStorage) =
                                     | Error err ->
                                         task { Log.Error(err) })
                         | _ ->
-                            Log.Error($"Unable to find a role to user inside {guild.Name} guild | {playerRoleO.IsSome} | {botRoleO.IsSome}")
+                            Log.Error($"Unable to find a role to user inside {guild.Name} guild")
 
                     do! Task.Delay(TimeSpan.FromHours(12), cancellationToken)
                 with exn ->

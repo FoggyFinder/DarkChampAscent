@@ -14,6 +14,7 @@ type Background =
     | Valley = 10
     | RedMoon = 11
     | Waves = 12
+    | GoldenMoon = 13
     | Unknown = 1000
 
 type Skin =
@@ -41,6 +42,13 @@ type Weapon =
     | DragonStaff = 9
     | DarkSword = 10
     | ElfBow = 11
+    | WoodenClub = 12
+    | SketonianSword = 13
+    | FireWings = 14
+    | ElderWings = 15
+    | ChameleonWings = 16
+    | ArcticDualKatana = 17
+    | SnakeWings = 18
     | Unknown = 1000
 
 type Magic =
@@ -50,6 +58,7 @@ type Magic =
     | IceDaggers = 3
     | Lightning = 4
     | Dark = 5
+    | PoisonCloud = 6
     | Unknown = 1000
 
 type Head =
@@ -72,6 +81,9 @@ type Head =
     | PirateBandana = 16
     | GoldHermesHelm = 17
     | Barbarian = 18
+    | SkeltonianMask = 19
+    | Cyclops = 20
+    | Frost = 21
     | Unknown = 1000
 
 type Armour =
@@ -91,6 +103,8 @@ type Armour =
     | LeatherGarb = 13
     | PirateCoat = 14
     | Emperor = 15
+    | Rogue = 16
+    | ArcticShinobi = 17
     | Unknown = 1000
 
 type Extra =
@@ -100,6 +114,8 @@ type Extra =
     | DragonFangsEarring = 3
     | TentacleEarring = 4
     | HoopEarring = 5
+    | GoldenFeathers = 6
+    | BattleWound = 7
     | Unknown = 1000
 
 [<RequireQualifiedAccess>]
@@ -123,6 +139,24 @@ type Traits = {
 }
 
 module Trait =
+    let parseBackground str =
+        match str with
+        | "Blood Background" -> Background.Blood
+        | "Aqua Background" -> Background.Aqua
+        | "Noir Background" -> Background.Noir
+        | "Toxic Background" -> Background.Toxic
+        | "Midnight Background" -> Background.Midnight
+        | "Golden Background" -> Background.Golden
+        | "Forest Background" -> Background.Forest
+        | "Sunset Background" -> Background.Sunset
+        | "Cosmos Background" -> Background.Cosmos
+        | "Dungeon Background" -> Background.Dungeon
+        | "Valley Background" -> Background.Valley
+        | "Red Moon Background" -> Background.RedMoon
+        | "Waves Background" -> Background.Waves
+        | "Golden Moon Background" -> Background.GoldenMoon
+        | _ -> Background.Unknown
+
     let parseArmour str =
         match str with
         | "None" -> Armour.None
@@ -141,33 +175,20 @@ module Trait =
         | "Leather Garb" -> Armour.LeatherGarb
         | "Pirate Coat" -> Armour.PirateCoat
         | "Emperor Armour" -> Armour.Emperor
+        | "Rogue" -> Armour.Rogue
+        | "Arctic Shinobi" -> Armour.ArcticShinobi
         | _ -> Armour.Unknown
-
-    let parseBackground str =
-        match str with
-        | "Blood Background" -> Background.Blood
-        | "Aqua Background" -> Background.Aqua
-        | "Noir Background" -> Background.Noir
-        | "Toxic Background" -> Background.Toxic
-        | "Midnight Background" -> Background.Midnight
-        | "Golden Background" -> Background.Golden
-        | "Forest Background" -> Background.Forest
-        | "Sunset Background" -> Background.Sunset
-        | "Cosmos Background" -> Background.Cosmos
-        | "Dungeon Background" -> Background.Dungeon
-        | "Valley Background" -> Background.Valley
-        | "Red Moon Background" -> Background.RedMoon
-        | "Waves Background" -> Background.Waves
-        | _ -> Background.Unknown
 
     let parseExtra str =
         match str with
         | "None" -> Extra.None
-        | "Crescent Moon Earring" -> Extra.CrescentMoonEarring 
+        | "Crescent Moon Earring" -> Extra.CrescentMoonEarring
         | "Fusion Pearl Earring" -> Extra.FusionPearlEarring
         | "Dragon Fangs Earring" -> Extra.DragonFangsEarring
         | "Tentacle Earring" -> Extra.TentacleEarring
         | "Hoop Earring" -> Extra.HoopEarring
+        | "Golden Feathers" -> Extra.GoldenFeathers
+        | "Battle Wound" -> Extra.BattleWound
         | _ -> Extra.Unknown
 
     let parseHead str =
@@ -187,10 +208,13 @@ module Trait =
         | "Crown of Horns" -> Head.CrownOfHorns
         | "Samurai" -> Head.Samurai
         | "Farmer" -> Head.Farmer
-        | "Silver Hermes Helm" -> Head.SilverHermesHelm 
+        | "Silver Hermes Helm" -> Head.SilverHermesHelm
         | "Pirate Bandana" -> Head.PirateBandana
         | "Gold Hermes Helm" -> Head.GoldHermesHelm
         | "Barbarian" -> Head.Barbarian
+        | "Skel'tonian Mask" -> Head.SkeltonianMask
+        | "Cyclops" -> Head.Cyclops
+        | "Frost" -> Head.Frost
         | _ -> Head.Unknown
         
     let parseMagic str =
@@ -201,6 +225,7 @@ module Trait =
         | "Ice Daggers" -> Magic.IceDaggers
         | "Lightning Magic" -> Magic.Lightning
         | "Dark Magic" -> Magic.Dark
+        | "Poison Cloud Magic" -> Magic.PoisonCloud
         | _ -> Magic.Unknown
 
     let parseSkin str =
@@ -230,6 +255,13 @@ module Trait =
         | "Dragon Staff" -> Weapon.DragonStaff
         | "Dark Sword" -> Weapon.DarkSword
         | "Elf Bow" -> Weapon.ElfBow
+        | "Wooden Club" -> Weapon.WoodenClub
+        | "Ske'tonian Sword" -> Weapon.SketonianSword
+        | "Fire Wings" -> Weapon.FireWings
+        | "Elder Wings" -> Weapon.ElderWings
+        | "Chameleon Wings" -> Weapon.ChameleonWings
+        | "Arctic Dual Katana" -> Weapon.ArcticDualKatana
+        | "Snake Wings" -> Weapon.SnakeWings
         | _ -> Weapon.Unknown
 
 (*              Health Magic Accuracy Luck Attack MAttack Defense MDefense
@@ -396,6 +428,7 @@ module Champ =
             | Background.Valley -> 3L
             | Background.RedMoon -> 5L
             | Background.Waves -> 4L
+            | Background.GoldenMoon -> 5L
             | _ -> 1L
         
         let luck =
@@ -413,6 +446,7 @@ module Champ =
             | Background.Valley -> 3L
             | Background.RedMoon -> 2L
             | Background.Waves -> 2L
+            | Background.GoldenMoon -> 3L 
             | _ -> 1L
 
         let defense =
@@ -430,6 +464,7 @@ module Champ =
             | Background.Valley -> 2L
             | Background.RedMoon -> 1L
             | Background.Waves -> 3L
+            | Background.GoldenMoon -> 2L
             | _ -> 1L
 
         {
@@ -501,6 +536,13 @@ module Champ =
             | Weapon.DragonStaff -> 3L
             | Weapon.DarkSword -> 3L
             | Weapon.ElfBow -> 3L
+            | Weapon.WoodenClub -> 1L
+            | Weapon.SketonianSword -> 2L
+            | Weapon.FireWings -> 3L
+            | Weapon.ElderWings -> 3L
+            | Weapon.ChameleonWings -> 2L
+            | Weapon.ArcticDualKatana -> 2L
+            | Weapon.SnakeWings -> 2L
             | _ -> 1L
 
         let accuracy =
@@ -517,6 +559,13 @@ module Champ =
             | Weapon.DragonStaff -> 3L
             | Weapon.DarkSword -> 2L
             | Weapon.ElfBow -> 5L
+            | Weapon.WoodenClub -> 1L
+            | Weapon.SketonianSword -> 2L
+            | Weapon.FireWings -> 2L
+            | Weapon.ElderWings -> 3L
+            | Weapon.ChameleonWings -> 4L
+            | Weapon.ArcticDualKatana -> 4L
+            | Weapon.SnakeWings -> 3L
             | _ -> 1L
 
         let attack =
@@ -533,6 +582,13 @@ module Champ =
             | Weapon.DragonStaff -> 2L
             | Weapon.DarkSword -> 5L
             | Weapon.ElfBow -> 3L
+            | Weapon.WoodenClub -> 4L
+            | Weapon.SketonianSword -> 3L
+            | Weapon.FireWings -> 2L
+            | Weapon.ElderWings -> 2L
+            | Weapon.ChameleonWings -> 2L
+            | Weapon.ArcticDualKatana -> 4L
+            | Weapon.SnakeWings -> 3L
             | _ -> 1L
 
         let mattack =
@@ -548,7 +604,14 @@ module Champ =
             | Weapon.DragonLongSword -> 2L
             | Weapon.DragonStaff -> 3L
             | Weapon.DarkSword -> 4L
-            | Weapon.ElfBow -> 0L
+            | Weapon.ElfBow -> 4L
+            | Weapon.WoodenClub -> 1L
+            | Weapon.SketonianSword -> 3L
+            | Weapon.FireWings -> 4L
+            | Weapon.ElderWings -> 4L
+            | Weapon.ChameleonWings -> 2L
+            | Weapon.ArcticDualKatana -> 2L
+            | Weapon.SnakeWings -> 3L
             | _ -> 1L
 
         {
@@ -581,6 +644,9 @@ module Champ =
             | Head.PirateBandana
             | Head.GoldHermesHelm -> 30L
             | Head.Barbarian -> 35L
+            | Head.SkeltonianMask -> 25L
+            | Head.Cyclops -> 30L
+            | Head.Frost -> 28L
             | _ -> 1L
 
         let accuracy =
@@ -604,6 +670,9 @@ module Champ =
             | Head.PirateBandana -> 2L
             | Head.GoldHermesHelm -> 4L
             | Head.Barbarian -> 3L
+            | Head.SkeltonianMask -> 2L
+            | Head.Cyclops -> 2L
+            | Head.Frost -> 3L
             | _ -> 1L
 
         let attack =
@@ -627,6 +696,9 @@ module Champ =
             | Head.PirateBandana -> 3L
             | Head.GoldHermesHelm -> 4L
             | Head.Barbarian -> 5L
+            | Head.SkeltonianMask -> 3L
+            | Head.Cyclops -> 4L
+            | Head.Frost -> 2L
             | _ -> 1L
 
         let mattack =
@@ -650,6 +722,9 @@ module Champ =
             | Head.PirateBandana -> 3L
             | Head.GoldHermesHelm -> 4L
             | Head.Barbarian -> 4L
+            | Head.SkeltonianMask -> 3L
+            | Head.Cyclops -> 2L
+            | Head.Frost -> 4L
             | _ -> 1L
 
         {
@@ -679,6 +754,8 @@ module Champ =
             | Armour.LeatherGarb -> 25L
             | Armour.PirateCoat -> 25L
             | Armour.Emperor -> 30L
+            | Armour.Rogue -> 25L
+            | Armour.ArcticShinobi -> 27L
             | _ -> 1L
 
         let luck =
@@ -699,6 +776,8 @@ module Champ =
             | Armour.LeatherGarb
             | Armour.PirateCoat
             | Armour.Emperor -> 3L
+            | Armour.Rogue -> 3L
+            | Armour.ArcticShinobi -> 2L
             | _ -> 1L
 
         let defense =
@@ -719,6 +798,8 @@ module Champ =
             | Armour.LeatherGarb -> 2L
             | Armour.PirateCoat -> 2L
             | Armour.Emperor -> 2L
+            | Armour.Rogue -> 1L
+            | Armour.ArcticShinobi -> 2L
             | _ -> 1L
 
         let magicDefense =
@@ -738,7 +819,9 @@ module Champ =
             | Armour.ExecutionerRobe -> 2L
             | Armour.LeatherGarb -> 1L
             | Armour.PirateCoat -> 2L
-            | Armour.Emperor -> 2L    
+            | Armour.Emperor -> 2L
+            | Armour.Rogue -> 2L
+            | Armour.ArcticShinobi -> 3L
             | _ -> 1L
 
         {
@@ -758,6 +841,8 @@ module Champ =
             | Extra.DragonFangsEarring -> 1L
             | Extra.TentacleEarring -> 2L
             | Extra.HoopEarring -> 2L
+            | Extra.GoldenFeathers -> 3L
+            | Extra.BattleWound -> 1L
             | _ -> 1L
 
         let luck =
@@ -768,6 +853,8 @@ module Champ =
             | Extra.DragonFangsEarring -> 1L
             | Extra.TentacleEarring -> 2L
             | Extra.HoopEarring -> 2L
+            | Extra.GoldenFeathers -> 3L
+            | Extra.BattleWound -> 1L
             | _ -> 1L  
             
         let attack =
@@ -778,6 +865,8 @@ module Champ =
             | Extra.DragonFangsEarring -> 2L
             | Extra.TentacleEarring -> 2L
             | Extra.HoopEarring -> 3L
+            | Extra.GoldenFeathers -> 2L
+            | Extra.BattleWound -> 4L
             | _ -> 1L 
 
         { Stat.Zero with
@@ -795,6 +884,7 @@ module Champ =
             | Magic.IceDaggers -> 20L
             | Magic.Lightning -> 20L
             | Magic.Dark -> 20L
+            | Magic.PoisonCloud -> 25L
             | _ -> 1L
 
         let mattack =
@@ -805,6 +895,7 @@ module Champ =
             | Magic.IceDaggers -> 5L
             | Magic.Lightning -> 7L
             | Magic.Dark -> 10L
+            | Magic.PoisonCloud -> 9L
             | _ -> 1L
 
         let mdefense =
@@ -815,6 +906,7 @@ module Champ =
             | Magic.IceDaggers -> 10L
             | Magic.Lightning -> 7L
             | Magic.Dark -> 5L
+            | Magic.PoisonCloud -> 4L
             | _ -> 1L
 
         { Stat.Zero with
