@@ -10,10 +10,10 @@ open DarkChampAscent.Api
 
 type DbKeys =
     | LastTrackedChampCfg = 0
-    | LastProcessedDeposit = 1
     | LastTimePriceIsUpdated = 2
     | LastTimeConfirmationCodeChecked = 3
     | LastTimeBackupPerformed = 4
+    | LastTimeTxsAreScanned = 5
 
 type DbKeysNum =
     | Rewards = 0
@@ -37,6 +37,7 @@ type DbKeysBool =
     | LockedKeyIsSet = 2
     | StakingKeyIsSet = 3
     | ProcessingKeyIsSet = 4
+    | MonsterImgIPFSAdded = 5
 
 type TxType =
     | Unknown = 0
@@ -44,6 +45,14 @@ type TxType =
     | BuyItem = 2
     | RenameChamp = 3
     | CreateCustomMonster = 4
+    | CreateNFTBasedCustomMonster = 5
+
+[<RequireQualifiedAccess>]
+type MonsterImgOld =
+    | File of filepath:string
+    member x.ToMonsterImg =
+        match x with
+        | MonsterImgOld.File fp -> MonsterImg.File fp
 
 [<RequireQualifiedAccess>]
 module TxType =
@@ -54,6 +63,7 @@ module TxType =
         | Tx.Donate _ -> TxType.Donate
         | Tx.CreateCustomMonster _ -> TxType.CreateCustomMonster
         | Tx.BuyItem _ -> TxType.BuyItem
+        | Tx.CreateNFTBasedCustomMonster _ -> TxType.CreateNFTBasedCustomMonster
 
 type NewChampDb = {
     Name: string
@@ -136,15 +146,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, "updateEffects")
             false
 
-    let getKeyDateTime (conn:SqliteConnection) (key:DbKeys) =
-        try
-            Db.newCommand SQL.GetKey conn
-            |> Db.setParams [ "key", SqlType.String (key.ToString()) ]
-            |> Db.querySingle (fun rd -> rd.ReadDateTime "Value")
-        with exn ->
-            Log.Error(exn, $"getKeyDateTime: {key}")
-            None
-    
     let setKeyDateTime (conn:SqliteConnection) (key:DbKeys, dt:DateTime) =
         try
             Db.newCommand SQL.SetKey conn
@@ -157,6 +158,30 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, $"setKeyDateTime: {key}={dt}")
             false
+
+    let getKeyDateTime (conn:SqliteConnection) (key:DbKeys) =
+        try
+            Db.batch (fun tn ->
+                let exists =
+                    Db.newCommandForTransaction SQL.KeyExists tn
+                    |> Db.setParams [ "key", SqlType.String (key.ToString()) ]
+                    |> Db.scalar (fun v -> (unbox<int64> v) = 1L)
+                if exists then
+                    Db.newCommandForTransaction SQL.GetKey tn
+                    |> Db.setParams [ "key", SqlType.String (key.ToString()) ]
+                    |> Db.querySingle (fun rd -> rd.ReadDateTime "Value")
+                else
+                    let dt = DateTime.UtcNow
+                    Db.newCommand SQL.SetKey conn
+                    |> Db.setParams [
+                        "key", SqlType.String (key.ToString())
+                        "value", SqlType.DateTime dt
+                    ]
+                    |> Db.exec
+                    Some dt) conn
+        with exn ->
+            Log.Error(exn, $"getKeyDateTime: {key}")
+            None
 
     let getKeyNum(conn:SqliteConnection) (key:DbKeysNum) =
         try
@@ -218,7 +243,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     Db.newCommandForTransaction SQL.GetKeyBool tn
                     |> Db.setParams [
                         "key", SqlType.String (DbKeysBool.InitBalanceIsSet.ToString())
-                        "value", SqlType.Boolean false
                     ]
                     |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
                     |> Option.defaultValue false
@@ -255,7 +279,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     Db.newCommandForTransaction SQL.GetKeyBool tn
                     |> Db.setParams [
                         "key", SqlType.String (DbKeysBool.StakingKeyIsSet.ToString())
-                        "value", SqlType.Boolean false
                     ]
                     |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
                     |> Option.defaultValue false
@@ -287,8 +310,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.setParams [ "name", SqlType.String monster.Name ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
             if monsterExists |> not then
-                let img = Utils.MonsterImg.DefaultFile monster.Monster
-                let bytes = JsonSerializer.SerializeToUtf8Bytes(img, jsOptions)
+                let bytes = JsonSerializer.SerializeToUtf8Bytes(monster.Img, jsOptions)
                 Db.newCommand SQL.CreateMonster conn
                 |> Db.setParams [
                     "name", SqlType.String monster.Name
@@ -312,70 +334,108 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
 
-    let removeUniqueTxFromRewardsPayed(conn:SqliteConnection) = 
-        let sql = """
-        PRAGMA foreign_keys = OFF;
-
-        CREATE TABLE IF NOT EXISTS RewardsPayedNew (
-            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-            ChampId INT NOT NULL,
-            BattleId INT NOT NULL,
-            Tx TEXT NOT NULL,
-            Rewards NUMERIC NOT NULL,
-            UNIQUE(ChampId, BattleId),
-            FOREIGN KEY (ChampId)
-               REFERENCES Champ (ID),
-            FOREIGN KEY (BattleId)
-               REFERENCES Battle (ID),
-            CHECK (Rewards > 0)
-        );
-
-        INSERT INTO RewardsPayedNew SELECT * FROM RewardsPayed;
-
-        DROP TABLE RewardsPayed;
-
-        ALTER TABLE RewardsPayedNew RENAME TO RewardsPayed;
-
-        PRAGMA foreign_keys = ON;
-        """
-
-        let rewardsPayedTxIsUniqueConstrIsRemoved = """
-            SELECT CASE 
-                WHEN sql LIKE '%Tx TEXT NOT NULL UNIQUE%' 
-                THEN 1
-                ELSE 0
-            END AS result
-            FROM sqlite_master 
-            WHERE type='table' AND name='RewardsPayed'
-        """
+    let addIPFSImg(conn:SqliteConnection) =
         try
-            Db.newCommand rewardsPayedTxIsUniqueConstrIsRemoved  conn
-            |> Db.scalar(fun v -> tryUnbox<int64> v)
-            |> Option.iter(fun i ->
-                if i = 1L then
-                    Db.newCommand sql conn
-                    |> Db.exec)
+            Db.batch(fun tn ->
+                let isInit =
+                    Db.newCommandForTransaction SQL.GetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
+                    ]
+                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
+                    |> Option.defaultValue false
+                
+                if isInit |> not then
+                    let dbParams =
+                        Db.newCommandForTransaction "SELECT ID, Picture FROM Monster" tn
+                        |> Db.query(fun r -> 
+                            r.GetInt32(0),
+                            JsonSerializer.Deserialize<MonsterImgOld>(Utils.getBytesData r 1, jsOptions))
+                        |> List.map(fun (mId, pic) ->
+                            let img = pic.ToMonsterImg
+                            let bytes = JsonSerializer.SerializeToUtf8Bytes(img, jsOptions)
+                            [
+                                "img", SqlType.Bytes bytes
+                                "mId", SqlType.Int64 mId
+                            ] : RawDbParams)
+
+                    Db.newCommandForTransaction "UPDATE Monster SET Picture = @img WHERE ID = @mId" tn
+                    |> Db.execMany dbParams
+
+                    Db.newCommandForTransaction SQL.SetKeyBool tn
+                    |> Db.setParams [
+                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
+                        "value", SqlType.Boolean true
+                    ]
+                    |> Db.exec
+            ) conn
+            
             true
         with exn ->
-            Log.Error(exn, $"removeUniqueTxFromRewardsPayed")
+            Log.Error(exn, "addIPFSImg")
             false
 
+    let addNFTMonsterIdColumn(conn:SqliteConnection) =
+        let balanceColumnCount = """
+                SELECT COUNT(*) FROM
+                pragma_table_info('UserMonster')
+                WHERE name='NFTMonsterId'
+            """
+        let sql = """
+            PRAGMA foreign_keys = OFF;
+
+            CREATE TABLE IF NOT EXISTS UserMonsterNew (
+                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                MonsterId INTEGER NOT NULL UNIQUE,
+                UserId INTEGER NOT NULL,
+                RequestId INTEGER,
+                NFTMonsterId INTEGER,
+                FOREIGN KEY (MonsterId)
+                   REFERENCES Monster (ID),
+                FOREIGN KEY (UserId)
+                   REFERENCES User (ID),
+                FOREIGN KEY (RequestId)
+                   REFERENCES UserGenMonsterRequest (ID),
+                FOREIGN KEY (NFTMonsterId)
+                   REFERENCES NFTMonster (ID),
+                CHECK (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
+            );
+
+            INSERT INTO UserMonsterNew(MonsterId, UserId, RequestId, NFTMonsterId)
+            SELECT MonsterId, UserId, RequestId, NULL
+            FROM UserMonster;
+
+            DROP TABLE UserMonster;
+
+            ALTER TABLE UserMonsterNew RENAME TO UserMonster;
+
+            PRAGMA foreign_keys = ON;
+            """
+
+        Db.newCommand balanceColumnCount conn
+        |> Db.scalar(fun v -> tryUnbox<int64> v)
+        |> Option.iter(fun i ->
+            if i = 0L then
+                Db.newCommand sql conn
+                |> Db.exec)
     let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
 
     let _conn = new SqliteConnection(cs)
-    do Db.newCommand SQL.createTablesSQL _conn |> Db.exec
+    do Db.newCommand SQLTables.createTablesSQL _conn |> Db.exec
     
     do updateShop(_conn) |> ignore
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
     do setStakingKey(_conn) |> ignore
-    do removeUniqueTxFromRewardsPayed(_conn) |> ignore
+    do addIPFSImg(_conn) |> ignore
+    do addNFTMonsterIdColumn(_conn) |> ignore
+
     do _conn.Dispose()
 
     do Log.Information("Db init is finished")
 
-    do Monster.DefaultsMonsters |> List.iter(fun mr -> createNewMonster(cs, mr) |> ignore)
+    do Utils.DefaultData.DefaultsMonsters |> List.iter(fun mr -> createNewMonster(cs, mr) |> ignore)
 
     let walletExists(wallet: string) =
         try 
@@ -391,6 +451,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
     let dbIdByWallet = ConcurrentDictionary<string, int64>()
     let userChampsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, ChampInfoWithStat list>>()
+    let userMonstrsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, MonsterInfo list>>()
 
     let getUserIdByWallet(wallet: string) =
         try 
@@ -793,6 +854,89 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Error($"Unexpected error: {exn.Message}")
         | None -> Error("User not found")
 
+    let createNFTBasedMonster(sender:string, tx:string, note:string, amount:decimal, requestId:uint64) =
+        match getUserIdByWallet sender with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+
+                Db.batch (fun tn ->
+                    tn
+                    |> Db.newCommandForTransaction SQL.FinishNFTMonsterCreationRequest
+                    |> Db.setParams [
+                        "rId", SqlType.Int64 <| int64 requestId
+                    ]
+                    |> Db.exec
+
+                    let nftMonsterId =
+                        tn
+                        |> Db.newCommandForTransaction SQL.CreateNFTMonsterFromRequest
+                        |> Db.setParams [
+                            "rId", SqlType.Int64 <| int64 requestId
+                        ]
+                        |> Db.scalar (fun v -> unbox<int64> v)
+                    
+                    let monsterId =
+                        let monster = Monster.Universal()
+                        let stats = Monster.getStats monster
+                        
+                        Db.newCommandForTransaction SQL.CreateMonsterWithDataFromRequest tn
+                        |> Db.setParams [
+                            "rId", SqlType.Int64 <| int64 requestId
+
+                            "health", SqlType.Int64 <| int64 stats.Health
+                            "magic", SqlType.Int64 <| int64 stats.Magic
+                            
+                            "accuracy", SqlType.Int64 <| int64 stats.Accuracy
+                            "luck", SqlType.Int64 <| int64 stats.Luck
+                            "attack", SqlType.Int64 <| int64 stats.Attack
+                            "mattack", SqlType.Int64 <| int64 stats.MagicAttack
+                            "defense", SqlType.Int64 <| int64 stats.Defense
+                            "mdefense", SqlType.Int64 <| int64 stats.MagicDefense
+                            "type", SqlType.Int <| int monster.MType
+                            "subtype", SqlType.Int <| int monster.MSubType
+                        ]
+                        |> Db.scalar (fun v -> unbox<int64> v)
+                    
+                    tn
+                    |> Db.newCommandForTransaction SQL.ConnectMonsterToUser
+                    |> Db.setParams [ 
+                        "monsterId", SqlType.Int64 monsterId
+                        "userId", SqlType.Int64 userId
+                        "requestId", SqlType.Null
+                        "nftMonsterId", SqlType.Int64 nftMonsterId
+                    ]
+                    |> Db.exec
+
+                    tn
+                    |> Db.newCommandForTransaction SQL.AddToKeyNum
+                    |> Db.setParams [
+                        "amount", SqlType.Decimal amount
+                        "key", SqlType.String (DbKeysNum.Rewards.ToString())
+                    ]
+                    |> Db.exec
+
+                    tn
+                    |> Db.newCommandForTransaction SQL.InsertTx
+                    |> Db.setParams [
+                        "tx", SqlType.String tx
+                        "wallet", SqlType.String sender
+                        "note", SqlType.String note
+                        "amount", SqlType.Decimal amount
+                        "type", SqlType.Int <| int TxType.BuyItem
+                        "isValid", SqlType.Boolean true
+                        "isFinished", SqlType.Boolean true
+                        "comment", SqlType.String ""
+                    ]
+                    |> Db.exec
+                       
+                    Ok(())
+                ) conn
+            with exn ->
+                Log.Error(exn, $"createNFTBasedMonster {requestId}")
+                Error($"Unexpected error: {exn.Message}")
+        | None -> Error("User not found")
+
     member _.FindUserIdByWallet(wallet: string) = getUserIdByWallet wallet
     
     member _.FindUserIdByUserId = getUserIdByUserId
@@ -1144,26 +1288,79 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     "tx", SqlType.String ptx.TxId
                 ]
                 |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
-            if txExists then true
+            if txExists then Ok(None)
             else
-                Db.newCommand SQL.InsertTx conn
-                |> Db.setParams [
-                    "tx", SqlType.String ptx.TxId
-                    "wallet", SqlType.String ptx.Sender
-                    "note", SqlType.String ptx.Note
-                    "amount", SqlType.Decimal ptx.Amount
-                    "type", SqlType.Int <| int TxType.Unknown
-                    "isValid", SqlType.Boolean false
-                    "isFinished", SqlType.Boolean false
-                    "comment", SqlType.String ""
-                ]
-                |> Db.exec
-                true          
+                // edge case: donation, explicit intentions
+                let isDonation =
+                    let note = ptx.Note
+                    note.Contains "donate" || note.Contains "dnt" || note.Contains "donation" ||
+                    note.Contains "gift"
+                if isDonation then
+                    Db.batch (fun tn ->
+                        Db.newCommandForTransaction SQL.InsertTx tn
+                        |> Db.setParams [
+                            "tx", SqlType.String ptx.TxId
+                            "wallet", SqlType.String ptx.Sender
+                            "note", SqlType.String ptx.Note
+                            "amount", SqlType.Decimal ptx.Amount
+                            "type", SqlType.Int <| int TxType.Donate
+                            "isValid", SqlType.Boolean true
+                            "isFinished", SqlType.Boolean true
+                            "comment", SqlType.String ""
+                        ]
+                        |> Db.exec
+
+                        tn
+                        |> Db.newCommandForTransaction SQL.AddToKeyNum
+                        |> Db.setParams [
+                            "amount", SqlType.Decimal ptx.Amount
+                            "key", SqlType.String (DbKeysNum.Rewards.ToString())
+                        ]
+                        |> Db.exec
+
+                        Some TxType.Donate
+                    ) conn
+                else
+                    Db.newCommand SQL.InsertTx conn
+                    |> Db.setParams [
+                        "tx", SqlType.String ptx.TxId
+                        "wallet", SqlType.String ptx.Sender
+                        "note", SqlType.String ptx.Note
+                        "amount", SqlType.Decimal ptx.Amount
+                        "type", SqlType.Int <| int TxType.Unknown
+                        "isValid", SqlType.Boolean false
+                        "isFinished", SqlType.Boolean false
+                        "comment", SqlType.String ""
+                    ]
+                    |> Db.exec
+                    Some TxType.Unknown
+                |> Ok
             with exn ->
                 Log.Error(exn, $"ProcessParsedValidTx: {ptx}")
-                false
+                Error "Unexpected error"
 
     member _.IsTxValid(uId:UserId, tx:Tx, ?amountO:decimal) =
+        let validatePrice (conn:SqliteConnection) (price:decimal) =
+            match amountO with
+            | Some amount ->
+                let darkCoinPriceO = getKeyNum conn DbKeysNum.DarkCoinPrice
+                let darkCoinPriceOldO =
+                    getKeyNum conn DbKeysNum.DarkCoinPriceOld
+                    |> Option.orElse darkCoinPriceO
+                match darkCoinPriceO, darkCoinPriceOldO with
+                | Some cPrice, Some oPrice ->
+                    let expectedAmount = Math.Round(price / cPrice, 6)
+                    let fallbackAmount = Math.Round(price / oPrice, 6)
+                    let isValidAmount =
+                        Utils.isCloseEnough expectedAmount amount ||
+                        Utils.isCloseEnough fallbackAmount amount
+
+                    if isValidAmount then
+                        Ok(())
+                    else
+                        Error("Amount not valid")
+                | _ -> Error("Unexpected error")
+            | None -> Ok(())            
         if tx.IsConfirm then Ok (())
         else
             match getUserIdByUserId uId with
@@ -1203,27 +1400,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                             ]
                                             |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
                                         if isNameAlreadyTaken then Error("Name isn't unique, try something else")
-                                        else
-                                            match amountO with
-                                            | Some amount ->
-                                                let darkCoinPriceO = getKeyNum conn DbKeysNum.DarkCoinPrice
-                                                let darkCoinPriceOldO =
-                                                    getKeyNum conn DbKeysNum.DarkCoinPriceOld
-                                                    |> Option.orElse darkCoinPriceO
-                                                match darkCoinPriceO, darkCoinPriceOldO with
-                                                | Some cPrice, Some oPrice ->
-                                                    let expectedAmount = Math.Round(Shop.RenamePrice / cPrice, 6)
-                                                    let fallbackAmount = Math.Round(Shop.RenamePrice / oPrice, 6)
-                                                    let isValidAmount =
-                                                        Utils.isCloseEnough expectedAmount amount ||
-                                                        Utils.isCloseEnough fallbackAmount amount
-
-                                                    if isValidAmount then
-                                                        Ok(())
-                                                    else
-                                                        Error("Amount not valid")
-                                                | _ -> Error("Unexpected error")
-                                            | None -> Ok(())
+                                        else validatePrice conn Shop.RenamePrice
                                     else Error("Doesn't belong to you")
                                 | None -> Error("Unexpected error")
                         | Tx.Donate(_, amount) ->
@@ -1236,7 +1413,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                 let pendingRequestsR = unfinishedRequestsByUser(userId)
                                 match monstersCreatedR, pendingRequestsR with
                                 | Ok m, Ok r when m < Limits.CustomMonstersPerTypeSubtype && r < Limits.UnfinishedRequests ->
-                                    Ok (())
+                                    validatePrice conn Shop.GenMonsterPrice
                                 | Ok m, Ok r ->
                                     let sb = StringBuilder()
                     
@@ -1252,7 +1429,20 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                 | Error err, _ 
                                 | _, Error err -> Error err
                         | Tx.BuyItem _ ->
+                            // TODO: validate price
                             Ok (())
+                        | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
+                            let requestBelongsToAUser =
+                                Db.newCommand SQL.NFTMonsterCreationRequestBelongsToAUser conn
+                                |> Db.setParams [
+                                    "userId", SqlType.Int64 userId
+                                    "rId", SqlType.Int64 <| int64 requestId
+                                ]
+                                |> Db.scalar (fun v -> (unbox<int64> v) = 1L)
+                            if requestBelongsToAUser then
+                                validatePrice conn Shop.GenMonsterPrice
+                            else
+                                Error ("Invalid wallet or requestId")
                     else
                         Error("Invalid wallet")
                     with exn ->
@@ -1286,6 +1476,8 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             createGenRequest(wallet, ptx.TxId, ptx.Note, ptx.Amount, mtype, msubtype)
                         | Tx.BuyItem(wallet, item, amount) ->
                             buyItem(wallet, ptx.TxId, ptx.Note, ptx.Amount, item, amount)
+                        | Tx.CreateNFTBasedCustomMonster(wallet, requestId) ->
+                            createNFTBasedMonster(wallet, ptx.TxId, ptx.Note, ptx.Amount, requestId)
                     match res with
                     | Ok () -> res
                     | Error err ->
@@ -1556,6 +1748,74 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         | Some userId ->
             x.GetUserChampsRaw userId
         | None -> Error("Unable to find user")
+
+    member x.GetUserMonstrsRaw(userId: int64) =
+        try
+            let getMonstrsInfo() =
+                use conn = new SqliteConnection(cs)
+                
+                Db.newCommand SQL.GetUserMonstersFull conn
+                |> Db.setParams [
+                    "userId", SqlType.Int64 userId
+                ]
+                |> Db.query (fun r ->
+                    let gtype =
+                        if r.IsDBNull(15) then MonsterGenType.Generative
+                        else
+                            MonsterGenType.NFTBased(
+                                r.GetInt64(15) |> uint64,
+                                r.GetString(16))
+                    let mi =
+                        MonsterInfo(
+                            uint64 <| r.GetInt64(0),
+                            uint64 <| r.GetInt64(1),
+                            r.GetString(2),
+                            r.GetString(3),
+                            JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 4, jsOptions),
+                            {
+                                Health = r.GetInt64(5)
+                                Magic = r.GetInt64(6)
+
+                                Accuracy = r.GetInt64(7)
+                                Luck = r.GetInt64(8)
+
+                                Attack = r.GetInt64(9)
+                                MagicAttack = r.GetInt64(10)
+
+                                Defense = r.GetInt64(11)
+                                MagicDefense = r.GetInt64(12)
+                            },
+                            enum<MonsterType> <| r.GetInt32(13),
+                            enum<MonsterSubType> <| r.GetInt32(14),
+                            Some (uint64 userId), gtype)
+                    let monsterLvl = Levels.getLvlByXp mi.XP
+                    let monsterLvlStats = Monster.getMonsterStatsByLvl(mi.MType, mi.MSubType, monsterLvl)
+                    mi.WithStat(mi.Stat + monsterLvlStats))
+
+            let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
+            
+            // remove all outdated records
+            for key in userMonstrsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
+                userMonstrsInfoByRound.Remove key |> ignore
+
+            match userMonstrsInfoByRound.TryGetValue roundId with
+            | true, dct ->
+                match dct.TryGetValue userId with
+                | true, monstrs -> monstrs
+                | false, _ ->
+                    let info = getMonstrsInfo()
+                    dct.Add (userId, info)
+                    info
+            | false, _ ->
+                let info = getMonstrsInfo()
+                let d = Dictionary<int64, MonsterInfo list>()
+                d.Add (userId, info)
+                userMonstrsInfoByRound.TryAdd(roundId, d) |> ignore
+                info
+            |> Ok
+        with exn ->
+            Log.Error(exn, $"GetUserMonstrsRaw {userId}")
+            Error("Unexpected error")
 
     member _.GetUserInfoRaw(userId:int64) =
         try
@@ -2886,6 +3146,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             Xp = r.GetInt64(0)
                             Name = r.GetString(1)
                             Description = r.GetString(2)
+                            Img = JsonSerializer.Deserialize<MonsterImg>(Utils.getBytesData r 3, jsOptions)
                             Stat = {
 
                                 Health = r.GetInt64(4)
@@ -2920,7 +3181,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         {|
                             MonsterId = uint64 monsterId
                             MonsterRecord = MonsterRecord(rdb.Name, rdb.Description,
-                                Monster.TryCreate(rdb.MType, rdb.MSubType).Value, rdb.Stat, uint64 rdb.Xp)
+                                Monster.TryCreate(rdb.MType, rdb.MSubType).Value, rdb.Stat, uint64 rdb.Xp, rdb.Img)
                             MonsterEffects = monsterEffects
                         |}
                         |> Ok
@@ -3284,10 +3545,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     elif r.IsDBNull(1) |> not then
                         Donater.Custom(r.GetInt64(1) |> uint64, r.GetString(2))
                     else
-                        Donater.Unknown(r.GetString(3))
-                let amount = r.GetDecimal(4)
-                Donation(donater, amount)
-            )
+                        let wallet =
+                            if r.IsDBNull(3) |> not then
+                                r.GetString(3)
+                            elif r.IsDBNull(4) |> not then
+                                r.GetString(4)
+                            else "unknown"
+                        Donater.Unknown wallet
+                let amount = r.GetDecimal(5)
+                Donation(donater, amount))
             |> Ok
         with exn ->
             Log.Error(exn, "GetTopInGameDonaters")
@@ -3304,9 +3570,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     elif r.IsDBNull(1) |> not then
                         Donater.Custom(r.GetInt64(1) |> uint64, r.GetString(2))
                     else
-                        Donater.Unknown(r.GetString(3))
-                let amount = r.GetDecimal(4)
-                let tx = r.GetString(5)
+                        let wallet =
+                            if r.IsDBNull(3) |> not then
+                                r.GetString(3)
+                            elif r.IsDBNull(4) |> not then
+                                r.GetString(4)
+                            else "unknown"
+                        Donater.Unknown(wallet)
+                let amount = r.GetDecimal(5)
+                let tx = r.GetString(6)
                 LatestDonation(donater, amount, tx)
             )
             |> Ok
@@ -3328,7 +3600,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Error("Unexpected error")
 
     member _.GetMonsterById(monsterId:int64) =
-        // TODO: return full stats
         try
             use conn = new SqliteConnection(cs)
             Db.newCommand SQL.GetMonsterStats conn
@@ -3339,6 +3610,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 let ownerId =
                     if r.IsDBNull(14) then None
                     else r.GetInt64(14) |> uint64 |> Some
+                let gtype =
+                    if r.IsDBNull(15) then MonsterGenType.Generative
+                    else
+                        MonsterGenType.NFTBased(
+                            r.GetInt64(15) |> uint64,
+                            r.GetString(16))
                 MonsterInfo(
                     uint64 <| monsterId,
                     uint64 <| r.GetInt64(0),
@@ -3360,10 +3637,30 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     },
                     enum<MonsterType> <| r.GetInt32(12),
                     enum<MonsterSubType> <| r.GetInt32(13),
-                    ownerId))
+                    ownerId, gtype))
+                |> function
+                    | Some monster ->
+                        let monsterLvl = Levels.getLvlByXp monster.XP
+                        let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
+                        monster.WithStat(monster.Stat + monsterLvlStats)
+                        |> Some
+                    | None -> None
         with exn ->
             Log.Error(exn, $"GetMonsterById: {monsterId}")
-            None       
+            None
+            
+    member x.GetMonsterInfoByRequestId(requestId:int64) =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetUserMonsterInfoByRequestId conn
+            |> Db.setParams [
+                "rId", SqlType.Int64 requestId
+            ]
+            |> Db.scalar(fun v -> unbox<int64> v)
+            |> x.GetMonsterById     
+        with exn ->
+            Log.Error(exn, $"GetMonsterInfoByRequestId: {requestId}")
+            None   
 
     member _.GetChampWithBalances() =
         try 
@@ -3599,6 +3896,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         "monsterId", SqlType.Int64 mid
                         "userId", SqlType.Int64 uid
                         "requestId", SqlType.Int64 reqId
+                        "nftMonsterId", SqlType.Null
                     ]
                     |> Db.exec
                     
@@ -3799,6 +4097,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let ownerId =
                         if r.IsDBNull(17) then None
                         else r.GetInt64(17) |> uint64 |> Some
+                    let gtype =
+                        if r.IsDBNull(18) then MonsterGenType.Generative
+                        else
+                            MonsterGenType.NFTBased(
+                                r.GetInt64(18) |> uint64,
+                                r.GetString(19))
                     CurrentBattleInfo(
                         uint64 <| r.GetInt64(0),
                         r.GetInt32(1) |> enum<BattleStatus>,
@@ -3823,7 +4127,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             },
                             enum<MonsterType> <| r.GetInt32(15),
                             enum<MonsterSubType> <| r.GetInt32(16),
-                            ownerId)))
+                            ownerId, gtype)))
                 |> function
                     | Some v ->
                         let monster = v.Monster
@@ -4170,7 +4474,73 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, $"GetAllConfirmedWallets")
             []
-            
+
+    member _.AddCreateNFTBasedMonsterRequest(uId:UserId, assetId: uint64, name: string, description:string, ipfs:string, eLink:string) =
+        match getUserIdByUserId uId with
+        | Some userId ->
+            try
+                use conn = new SqliteConnection(cs)
+                
+                // if there is a Monster with this AssetId - return Error
+                // if there is a request from another user - return Error
+                // if there is a request from the same user - update
+
+                let monsterExists =
+                    Db.newCommand SQL.NFTBasedMonsterExists conn
+                    |> Db.setParams [ "assetId",  SqlType.Int64 <| int64 assetId ]
+                    |> Db.scalar (fun v -> (unbox<int64> v) = 1L)
+
+                if monsterExists then Error("Monster based on this NFT already exists")
+                else
+                    let requestExists =
+                        Db.newCommand SQL.NFTBasedMonsterExists conn
+                        |> Db.setParams [ 
+                            "assetId",  SqlType.Int64 <| int64 assetId
+                            "userId",  SqlType.Int64 <| int64 userId
+                        ]
+                        |> Db.scalar (fun v -> (unbox<int64> v) = 1L)                    
+
+                    if requestExists then Error("There is pending request to create a monster based on this NFT")
+                    else
+                        let userRequestID =
+                            Db.newCommand SQL.GetUserNFTBasedMonsterRequestID conn
+                            |> Db.setParams [ 
+                                "assetId",  SqlType.Int64 <| int64 assetId
+                                "userId",  SqlType.Int64 <| int64 userId
+                            ]
+                            |> Db.querySingle (fun r ->
+                                if r.IsDBNull(0) then None else Some(r.GetInt64(0)))
+                            |> Option.flatten
+                        let bytes = JsonSerializer.SerializeToUtf8Bytes(MonsterImg.Ipfs ipfs, jsOptions)
+                        match userRequestID with
+                        | Some rId ->
+                            Db.newCommand SQL.UpdateNFTMonsterCreationRequest conn
+                            |> Db.setParams [
+                                "name", SqlType.String name
+                                "description", SqlType.String description
+                                "picture", SqlType.Bytes bytes
+                                "eLink", SqlType.String eLink
+                                "rId",  SqlType.Int64 rId
+                            ]
+                            |> Db.exec
+                            rId
+                        | None ->
+                            Db.newCommand SQL.CreateNFTMonsterCreationRequest conn
+                            |> Db.setParams [
+                                "userId",  SqlType.Int64 <| int64 userId
+                                "assetId",  SqlType.Int64 <| int64 assetId
+                                "name", SqlType.String name
+                                "description", SqlType.String description
+                                "picture", SqlType.Bytes bytes
+                                "eLink", SqlType.String eLink
+                            ]
+                            |> Db.scalar (fun v -> unbox<int64> v)
+                        |> Ok
+            with exn ->
+                Log.Error(exn, $"AddCreateNFTBasedMonsterRequest")
+                Error exn.Message
+        | None -> Error("Unable to find user")
+        
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)
         getKeyDateTime conn key

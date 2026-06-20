@@ -7,6 +7,12 @@ type IFormCollection with
         match x.TryGetValue key with
         | true, s -> Some s
         | false, _ -> None
+    member x.tryGetUInt64 (key: string) =
+        x.tryGetFormValue key
+        |> Option.bind (fun s ->
+            match System.UInt64.TryParse s with
+            | true, v -> Some v
+            | false, _ -> None)
 
 type IQueryCollection with
     member x.tryGetQueryValue (key: string) =
@@ -47,31 +53,36 @@ module Parser =
 module FileUtils =
     open GameLogic.Monsters
     open System.IO
+    open System.Collections.Concurrent
     let private monstrsDir = "monstrs"
     let private wwwroot = "wwwroot"
-    
-    // TODO: add cacher
+
+    let filepathes = ConcurrentDictionary<string, string>()
     let mapToLocalImg (mpic:MonsterImg) =
+        match mpic with
+        | MonsterImg.File fullpath ->
+            match filepathes.TryGetValue fullpath with
+            | true, filename -> filename |> MonsterImg.File
+            | false, _ ->
+                let imgDir = Path.Combine(wwwroot, monstrsDir)
 
-        let imgDir = Path.Combine(wwwroot, monstrsDir)
+                if Directory.Exists(imgDir) |> not then
+                    Directory.CreateDirectory(imgDir) |> ignore
 
-        if Directory.Exists(imgDir) |> not then
-            Directory.CreateDirectory(imgDir) |> ignore
+                let filename =
+                    Path.Combine(monstrsDir, Path.GetFileName(fullpath))
 
-        let fullpath = (match mpic with | MonsterImg.File fn -> fn)
-
-        let filename =
-            Path.Combine(monstrsDir, Path.GetFileName(fullpath))
-
-        let destFileName = Path.Combine(wwwroot, filename)
-        if File.Exists destFileName |> not then
-            try
-                File.Copy(fullpath, destFileName)
-            with
-            | _ -> () // Ignore if source file doesn't exist
-
-        if File.Exists destFileName then filename else ""
-        |> MonsterImg.File
+                let destFileName = Path.Combine(wwwroot, filename)
+                if File.Exists destFileName |> not then
+                    try
+                        File.Copy(fullpath, destFileName)
+                    with
+                    | _ -> () // Ignore if source file doesn't exist
+                
+                let v = if File.Exists destFileName then filename else ""
+                filepathes.TryAdd(fullpath, v) |> ignore
+                v |> MonsterImg.File
+        | MonsterImg.Ipfs _ -> mpic
 
 [<RequireQualifiedAccess>]
 module RateLimiting =

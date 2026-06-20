@@ -12,13 +12,15 @@ type Tx =
     | BuyItem of wallet:string * item:ShopItem * amount:uint
     | RenameChamp of wallet:string * champid:uint64 * newName:string
     | CreateCustomMonster of wallet:string * mtype:MonsterType * msubtype:MonsterSubType
+    | CreateNFTBasedCustomMonster of wallet: string * requestId: uint64
     member x.Wallet =
         match x with
         | Donate (wallet, _)
         | Confirm (wallet, _)
         | BuyItem (wallet, _, _)
         | RenameChamp (wallet, _, _)
-        | CreateCustomMonster (wallet, _, _) -> wallet
+        | CreateCustomMonster (wallet, _, _) 
+        | CreateNFTBasedCustomMonster (wallet, _) -> wallet
     member x.Note =
         match x with
         | Donate (_, amount) -> $"donate:{amount}"
@@ -26,6 +28,7 @@ type Tx =
         | BuyItem (_, item, amount) -> $"buyItem:{int item}:{amount}"
         | RenameChamp (_, champid, newName) -> $"rename:{champid}:{newName}"
         | CreateCustomMonster (_, mtype, msubtype) -> $"create:{int mtype}:{int msubtype}"
+        | CreateNFTBasedCustomMonster (_, requestId) -> $"ncreate:{requestId}"
     static member TryParse (wallet:string) (str:string) =
         try
             if(String.IsNullOrWhiteSpace(str)) then None
@@ -51,6 +54,10 @@ type Tx =
                     match Int32.TryParse mtypeS, Int32.TryParse msubtypeS with
                     | (true, mtype), (true, msubtype) -> 
                         Tx.CreateCustomMonster(wallet, enum<MonsterType> mtype, enum<MonsterSubType> msubtype) |> Some
+                    | _ -> None
+                | [| "ncreate"; requestIdS |] ->
+                    match UInt64.TryParse requestIdS with
+                    | (true, assetId) -> Tx.CreateNFTBasedCustomMonster(wallet, assetId) |> Some
                     | _ -> None
                 | _ -> None
         with _ -> None
@@ -102,6 +109,9 @@ type Pattern =
 
    | Requests
    | Earnings
+
+   | AssetInfo of assetId: uint64 option
+   | CreateNFTBasedMonster
 
    | LeaderboardChamps
    | LeaderboardMonsters
@@ -165,6 +175,12 @@ type Pattern =
        | Pattern.Requests -> "/api/requests/my"
        | Pattern.Earnings -> "/api/earnings"
 
+       | Pattern.AssetInfo aio ->
+            match aio with
+            | Some id -> $"/api/assets/{id}"
+            | None -> "/api/assets/{id:long}"
+       | Pattern.CreateNFTBasedMonster -> "/api/monsters/ncreate"
+
        | Pattern.LeaderboardChamps -> "/api/leaderboard/champs"
        | Pattern.LeaderboardMonsters -> "/api/leaderboard/monsters"
        | Pattern.LeaderboardDonaters -> "/api/leaderboard/donaters"
@@ -205,6 +221,7 @@ type Pattern =
 
        | Pattern.Home
        | Pattern.Stats
+       | Pattern.AssetInfo _
            -> Method.Get
 
        | Pattern.AuthLogin
@@ -222,4 +239,5 @@ type Pattern =
        | Pattern.CreateTx
        | Pattern.SubmitTx
        | Pattern.VerifyTx
+       | Pattern.CreateNFTBasedMonster
            -> Method.Post

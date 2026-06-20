@@ -94,7 +94,7 @@ let LoginPage (onLogin: Account -> unit) =
                                 Html.p [ prop.className "wallet-address"
                                          prop.text $"Connected: {addr[..5]}...{addr[addr.Length-4..]}" ]
                                 
-                                Html.p [ prop.className "notice"; prop.text "It's not web3 app so you have to sign-in txn to verify your wallet, it's only submitted to the server and doesn't go to blockchain." ]
+                                Html.p [ prop.className "notice"; prop.text "It's not a web3 app, so you sign an off-chain transaction to verify your wallet — it's only submitted to our server, not the blockchain." ]
 
                                 Html.div [
                                     prop.className "wallet-action-row"

@@ -99,7 +99,6 @@ let private ipfsFromACFG(acfg:Model.TransactionAssetConfig) =
 
 let tryGetIpfs (assetId: uint64) =
     async {
-        let! d = lookUpApi.lookupAssetByIDAsync(assetId) |> Async.AwaitTask
         let! tr = lookUpApi.lookupAssetTransactionsAsync(assetId, txType = "acfg") |> Async.AwaitTask
         return
             tr.Transactions
@@ -107,7 +106,6 @@ let tryGetIpfs (assetId: uint64) =
             |> Option.map(fun tx -> ipfsFromACFG tx.AssetConfigTransaction)
     } |> Async.RunSynchronously
 
-open GameLogic
 let tryGetChampInfo(assetId:uint64) =
     async {
         let! tr = lookUpApi.lookupAssetTransactionsAsync(assetId, txType = "acfg") |> Async.AwaitTask
@@ -213,6 +211,21 @@ let getNotesForWallet(wallet:string, afterTimeOpt:DateTime option) =
         if tx.PaymentTransaction <> null && tx.PaymentTransaction.Amount = 0UL then
             Some(tx.Sender, tx.Note)
         else None)
+
+let walletContainsAsset(wallet:string, assetId:uint64) =
+    task {
+        do! Async.Sleep(TimeSpan.FromSeconds(1L))
+        try
+            let! r = lookUpApi.lookupAccountAssetsAsync(wallet, assetId)
+            return
+                r.Assets
+                |> Seq.tryHead
+                |> Option.map(fun v -> v.Amount > 0UL)
+                |> Option.defaultValue false
+                |> Ok
+        with exn ->
+            return Error(exn.ToString())
+    }
 
 open Algorand.Algod.Model
 open Algorand.Utils

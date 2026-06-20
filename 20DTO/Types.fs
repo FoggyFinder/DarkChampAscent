@@ -31,7 +31,11 @@ type ChampInfoWithUserLink(champInfo:ChampInfo, userLink: UserLink) =
     member _.ChampInfo = champInfo
     member _.UserLink = userLink
 
-type MonsterInfo(id: uint64, xp: uint64, name: string, description: string, picture: MonsterImg, stat: Stat, mType: MonsterType, mSubType: MonsterSubType, ownerId: uint64 option) =
+type MonsterGenType =
+    | Generative
+    | NFTBased of assetId: uint64 * website: string
+
+type MonsterInfo(id: uint64, xp: uint64, name: string, description: string, picture: MonsterImg, stat: Stat, mType: MonsterType, mSubType: MonsterSubType, ownerId: uint64 option, genType: MonsterGenType) =
     member _.Id = id
     member _.XP = xp
     member _.Name = name
@@ -41,10 +45,11 @@ type MonsterInfo(id: uint64, xp: uint64, name: string, description: string, pict
     member _.MType = mType
     member _.MSubType = mSubType
     member _.OwnerId = ownerId
+    member _.GenType = genType
     member x.WithPic(pic:MonsterImg) =
-        MonsterInfo(x.Id, x.XP, x.Name, x.Description, pic, x.Stat, x.MType, x.MSubType, x.OwnerId)
+        MonsterInfo(x.Id, x.XP, x.Name, x.Description, pic, x.Stat, x.MType, x.MSubType, x.OwnerId, x.GenType)
     member x.WithStat(stat:Stat) =
-        MonsterInfo(x.Id, x.XP, x.Name, x.Description, x.Picture, stat, x.MType, x.MSubType, x.OwnerId)
+        MonsterInfo(x.Id, x.XP, x.Name, x.Description, x.Picture, stat, x.MType, x.MSubType, x.OwnerId, x.GenType)
 
 type MonsterInfoWithUserLink(monsterInfo:MonsterInfo, userLinkO:UserLink option) =
     member _.MonsterInfo = monsterInfo
@@ -268,7 +273,13 @@ type MonsterUnderEffect(id:int64, name:string, mtype:MonsterType, msubtype:Monst
     member x.WithMonsterImg(img:MonsterImg) =
         MonsterUnderEffect(x.ID, x.Name, x.MType, x.MSubType, x.EndsAt, x.Effect, x.RoundsLeft, img)
 
-// TODO: include monsters info
-type UserInfo(nickname:string, champs:ChampInfoWithStat list) =
-    member _.Champs = champs
+type UserInfo(nickname:string, champs:ChampInfoWithStat list, monsters: MonsterInfo list) =
     member _.Nickname = nickname
+    member _.Champs = champs
+    member _.Monsters = monsters
+
+type AssetInfo(assetId:uint64, name:string, ipfs:string, externalUrl:string) =
+    member _.AssetId = assetId
+    member _.Name = name
+    member _.IPFS = ipfs
+    member _.ExternalUrl = externalUrl

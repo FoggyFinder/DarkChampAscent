@@ -399,16 +399,49 @@ let MyMonstersPage () =
     let selType, setSelType       = React.useState MonsterType.Zombie
     let selSubType, setSelSubType = React.useState MonsterSubType.None
     let msg, setMsg               = React.useState<string option> None
-    
-    let wallet = useWallet ()
 
-    React.useEffect((fun () ->
+    let isNftMode, setIsNftMode   = React.useState true
+    let assetIdInput, setAssetIdInput = React.useState ""
+    let assetInfo, setAssetInfo   = React.useState<Types.AssetInfo option> None
+    let nftName, setNftName       = React.useState ""
+    let nftDesc, setNftDesc       = React.useState ""
+    let nftExtUrl, setNftExtUrl   = React.useState ""
+
+    let wallet = useWallet ()
+    let load() =
         async {
             let! r = Api.getMyMonsters ()
             match r with
-            | Ok d  -> setData (Loaded d)
+            | Ok d    -> 
+                setData (Loaded d)
             | Error e -> setData (Failed e)
-        } |> Async.StartImmediate), [||])
+            setMsg None
+            setAssetInfo None
+            setNftName ""
+            setNftDesc ""
+            setNftExtUrl ""
+        }
+
+    let fetch() =
+        async {
+            match System.UInt64.TryParse(assetIdInput) with
+            | false, _ -> setMsg (Some "Enter a valid asset ID")
+            | true, aid ->
+                setMsg (Some "Fetching...")
+                let! r = Api.getAssetInfo aid
+                match r with
+                | Ok ai ->
+                    setAssetInfo (Some ai)
+                    setNftName ai.Name
+                    setNftDesc ""
+                    setNftExtUrl ai.ExternalUrl
+                    setMsg None
+                | Error e ->
+                    setAssetInfo None
+                    setMsg (Some $"Error: {e}")
+        }
+
+    React.useEffect((fun () -> load() |> Async.StartImmediate), [||])
 
     deferred data (fun d ->
         Html.div [
@@ -416,27 +449,150 @@ let MyMonstersPage () =
             prop.children [
                 match msg with
                 | Some m -> Html.p [ prop.className "action-msg"; prop.text m ]
-                | None -> Html.none
+                | None   -> Html.none
 
                 let amount = Math.Round(Shop.GenMonsterPrice / d.Price, 6)
                 Html.div [
                     prop.className "create-monster"
                     prop.children [
                         Html.p [ prop.dangerouslySetInnerHTML (sprintf "Create custom monster: %s %s DarkCoins" (string amount) WebEmoji.DarkCoin) ]
-                            
-                        CustomSelectInput (DisplayEnum.MonsterType selType)
-                            (fun (s: string) ->
-                                AllEnums.MonsterTypes
-                                |> List.tryFind (fun t -> DisplayEnum.MonsterType t = s)
-                                |> Option.iter setSelType)
-                            [ for t in AllEnums.MonsterTypes -> DisplayEnum.MonsterType t, DisplayEnum.MonsterType t, None ]
-                            
-                        CustomSelectInput (DisplayEnum.MonsterSubType selSubType)
-                            (fun (s: string) ->
-                                AllEnums.MonsterSubTypes
-                                |> List.tryFind (fun t -> DisplayEnum.MonsterSubType t = s)
-                                |> Option.iter setSelSubType)
-                            [ for t in AllEnums.MonsterSubTypes -> DisplayEnum.MonsterSubType t, DisplayEnum.MonsterSubType t, None ]
+
+                        Html.div [
+                            prop.className "nft-mode-toggle"
+                            prop.children [
+                                Html.button [
+                                    prop.className (if not isNftMode then "toggle-btn active" else "toggle-btn")
+                                    prop.onClick (fun _ -> setIsNftMode false; setMsg None)
+                                    prop.text "Generate"
+                                ]
+                                Html.button [
+                                    prop.className (if isNftMode then "toggle-btn active" else "toggle-btn")
+                                    prop.onClick (fun _ -> setIsNftMode true; setMsg None)
+                                    prop.text "From NFT"
+                                ]
+                            ]
+                        ]
+
+                        if not isNftMode then
+                            CustomSelectInput (DisplayEnum.MonsterType selType)
+                                (fun (s: string) ->
+                                    AllEnums.MonsterTypes
+                                    |> List.tryFind (fun t -> DisplayEnum.MonsterType t = s)
+                                    |> Option.iter setSelType)
+                                [ for t in AllEnums.MonsterTypes -> DisplayEnum.MonsterType t, DisplayEnum.MonsterType t, None ]
+
+                            CustomSelectInput (DisplayEnum.MonsterSubType selSubType)
+                                (fun (s: string) ->
+                                    AllEnums.MonsterSubTypes
+                                    |> List.tryFind (fun t -> DisplayEnum.MonsterSubType t = s)
+                                    |> Option.iter setSelSubType)
+                                [ for t in AllEnums.MonsterSubTypes -> DisplayEnum.MonsterSubType t, DisplayEnum.MonsterSubType t, None ]
+
+                        else
+                            // --- NFT flow ---
+                            Html.div [
+                                prop.className "nft-section"
+                                prop.children [
+
+                                Html.div [
+                                    prop.className "notice"
+                                    prop.children [
+                                        Html.p [ 
+                                            Html.text "You can only create monster based on NFT from your wallet"
+                                        ]
+                                    ]
+                                ]
+
+                                Html.div [
+                                    prop.className "nft-fetch-row"
+                                    prop.children [
+                                        Html.input [
+                                            prop.className "input-assetid"
+                                            prop.type' "text"
+                                            prop.placeholder "Asset ID"
+                                            prop.value assetIdInput
+                                            prop.onChange (fun (v: string) ->
+                                                let digits = v |> Seq.filter System.Char.IsDigit |> System.String.Concat
+                                                setAssetIdInput digits)
+                                        ]
+                                        Html.button [
+                                            prop.className "btn btn-secondary"
+                                            prop.onClick (fun _ -> fetch() |> Async.StartImmediate)
+                                            prop.text "Fetch"
+                                        ]
+                                    ]
+                                ]
+
+                                Html.div [
+                                    prop.className "pera-attribution"
+                                    prop.children [
+                                        Html.img [ prop.src "pera-logo-white.png"; prop.alt "Pera" ]
+                                        Html.span [
+                                            prop.children [
+                                                Html.text "Data provided by "
+                                                Html.a [
+                                                    prop.href "https://docs.perawallet.app/references/public-api#get-public-assets-asset_id"
+                                                    prop.target "_blank"
+                                                    prop.rel "noreferrer"
+                                                    prop.text "Pera"
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+
+                                match assetInfo with
+                                | None -> Html.none
+                                | Some ai ->
+                                    Html.div [
+                                        prop.className "nft-card"
+                                        prop.children [
+                                            Html.img [
+                                                prop.className "nft-card-img"
+                                                prop.src $"https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/{ai.IPFS}"
+                                                prop.alt ai.Name
+                                            ]
+                                            Html.div [
+                                                prop.className "nft-card-fields"
+                                                prop.children [
+                                                    Html.div [
+                                                        prop.className "nft-field"
+                                                        prop.children [
+                                                            Html.label [ prop.text "Name" ]
+                                                            Html.input [ prop.type' "text"; prop.value nftName; prop.onChange setNftName ]
+                                                        ]
+                                                    ]
+                                                    Html.div [
+                                                        prop.className "nft-field"
+                                                        prop.children [
+                                                            Html.label [ prop.text "Description" ]
+                                                            Html.textarea [ prop.value nftDesc; prop.onChange setNftDesc; prop.placeholder "Description" ]
+                                                        ]
+                                                    ]
+                                                    Html.div [
+                                                        prop.className "nft-field"
+                                                        prop.children [
+                                                            Html.label [ prop.text "External link" ]
+                                                            Html.input [ prop.type' "text"; prop.value nftExtUrl; prop.onChange setNftExtUrl ]
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+
+                                Html.div [
+                                    prop.className "notice"
+                                    prop.children [
+                                        Html.p [ 
+                                            Html.text "Keep in mind: if you sell or transfer the NFT out of a confirmed wallet, the monster will eventually be deactivated"
+                                        ]
+                                    ]
+                                ]
+
+                            ]
+                        ]
+                        // --- wallet / action ---
                         match wallet.activeAddress with
                         | Some awallet ->
                             Html.button [
@@ -444,19 +600,47 @@ let MyMonstersPage () =
                                 prop.onClick (fun _ ->
                                     async {
                                         "" |> Some |> setMsg
-                                        let tx = Tx.CreateCustomMonster (awallet, selType, selSubType) 
-                                        let! r = Api.createTx tx
-                                        match r with
-                                        | Ok txnb64 ->
-                                            let! sr =
-                                                UseWallet.signTx (Api.submitTx tx) wallet txnb64
-                                                    (fun () -> "Processing request..." |> Some |> setMsg)
-                                            match sr with
-                                            | Ok m -> m
-                                            | Error err -> $"Error: {err}"
-                                            |> Some |> setMsg 
-                                        | Error err ->
-                                            setMsg (Some err)
+                                        if isNftMode then
+                                            match assetInfo with
+                                            | None -> do! fetch()
+                                            | Some ai ->
+                                                let! r = Api.createNFTBasedMonster (ai.AssetId, nftName, nftDesc, ai.IPFS, nftExtUrl)
+                                                match r with
+                                                | Ok reqId ->
+                                                    let tx = Tx.CreateNFTBasedCustomMonster (awallet, reqId)
+                                                    let! r = Api.createTx tx
+                                                    match r with
+                                                    | Ok txnb64 ->
+                                                        let! sr =
+                                                            UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                                (fun () -> "Processing request..." |> Some |> setMsg)
+                                                        match sr with
+                                                        | Ok m ->
+                                                            match UInt64.TryParse m with
+                                                            | true, mId ->
+                                                                Nav.navigateTo (Page.MonsterDetail mId).Route
+                                                            | false, _ ->
+                                                                m + " reloading..."  |> Some |> setMsg
+                                                                do! Async.Sleep(TimeSpan.FromSeconds(5.))
+                                                                do! load()
+                                                        | Error e -> $"Error: {e}" |> Some |> setMsg
+                                                        
+                                                    | Error err -> setMsg (Some err)                                                    
+                                                | Error err ->
+                                                    setMsg (Some $"Error: {err}")
+                                        else
+                                            let tx = Tx.CreateCustomMonster (awallet, selType, selSubType)
+                                            let! r = Api.createTx tx
+                                            match r with
+                                            | Ok txnb64 ->
+                                                let! sr =
+                                                    UseWallet.signTx (Api.submitTx tx) wallet txnb64
+                                                        (fun () -> "Processing request..." |> Some |> setMsg)
+                                                match sr with
+                                                | Ok m    -> m
+                                                | Error e -> $"Error: {e}"
+                                                |> Some |> setMsg
+                                            | Error err -> setMsg (Some err)
                                     } |> Async.StartImmediate)
                                 prop.text "Create monster"
                             ]

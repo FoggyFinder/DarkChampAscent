@@ -187,7 +187,8 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                             th < 3.
                         | None -> false
                     if isPriceUpToDate |> not then
-                        match External.API.getDarkCoinPrice() with
+                        let! priceO = External.API.getDarkCoinPrice()
+                        match priceO with
                         | Some price ->
                             if db.UpdateDCPrice price then
                                 let mp = MessageProperties(Content = $"In-game DarkCoin price was updated to {price}")
@@ -209,14 +210,14 @@ type TxTrackerService(db:SqliteStorage, options: IOptions<Conf.WalletConfigurati
             while cancellationToken.IsCancellationRequested |> not do
                 try
                     let dt = DateTime.UtcNow
-                    let lpd = db.GetDateTimeKey(DbKeys.LastProcessedDeposit)
+                    let lpd = db.GetDateTimeKey(DbKeys.LastTimeTxsAreScanned)
                     let txs = Blockchain.getDarkCoinTxForWallet(options.Value.GameWallet, lpd) |> Seq.toArray
                     // delay before processing so give time to handle tx properly if it was created from the app
-                    do! Task.Delay(TimeSpan.FromHours(3.0), cancellationToken)
+                    do! Task.Delay(TimeSpan.FromMinutes(30.0), cancellationToken)
                     
                     let statuses = txs |> Array.map(fun ptx -> db.ProcessParsedRawTx ptx)
-                    if statuses |> Array.forall id then
-                        db.SetDateTimeKey(DbKeys.LastProcessedDeposit, dt) |> ignore
+                    if statuses |> Array.forall Result.isOk then
+                        db.SetDateTimeKey(DbKeys.LastTimeTxsAreScanned, dt) |> ignore
                     
                 with exn ->
                     Log.Error(exn, "TxTrackerService")
@@ -297,7 +298,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         | 1 ->
                             let! _ = pinnedMsgs.[0].ModifyAsync(fun options ->
                                 let name = "image.png"
-                                let uri = $"attachment://{name}"
+                                let uri = 
+                                    match cbi.Monster.Picture with
+                                    | MonsterImg.File _ -> $"attachment://{name}"
+                                    | MonsterImg.Ipfs ipfs -> "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + ipfs
                                 let components =
                                     ComponentContainerProperties([
                                         TextDisplayProperties($"{Emoj.Battle} Battle # {cbi.BattleNum}")
@@ -320,7 +324,11 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     ])
      
                                 options.Components <- [components]
-                                options.Attachments <- [MonstersComponent.monsterAttachnment name cbi.Monster.Picture])
+                                match cbi.Monster.Picture with
+                                | MonsterImg.File filepath ->
+                                    options.Attachments <- [MonstersComponent.monsterAttachnment name filepath]
+                                | MonsterImg.Ipfs _ -> ()
+                            )
                             ()
                         | _ -> Log.Error($"{pinnedMsgs.Count} pinned messages in {Channels.EntryChannel} channel")
                     | None ->
@@ -471,14 +479,21 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                 ])
                             
                             let name = "image.png"
-                            let uri = $"attachment://{name}"
+                            let uri = 
+                                match monster.Picture with
+                                | MonsterImg.File _ -> $"attachment://{name}"
+                                | MonsterImg.Ipfs ipfs -> "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + ipfs
                             let monsterCard = MonstersComponent.monsterComponent monster "Info" uri createdByStr
                         
-                            MessageProperties()
-                                .WithComponents([battleCard; monsterCard])
-                                .WithAttachments([MonstersComponent.monsterAttachnment name monster.Picture])
-                                .WithFlags(MessageFlags.IsComponentsV2)
-                                                
+                            let mp =
+                                MessageProperties()
+                                  .WithComponents([battleCard; monsterCard])
+                                  .WithFlags(MessageFlags.IsComponentsV2)
+
+                            match monster.Picture with
+                            | MonsterImg.File filepath ->
+                                mp.WithAttachments([MonstersComponent.monsterAttachnment name filepath])
+                            | MonsterImg.Ipfs _ -> mp          
                         do! DUtils.createAndSendMsgToChannel Channels.LogChannel gclient createMP true
 
                         let roundCard = BattleComponent.roundCard ar.RoundId ar.RoundRewards
@@ -1019,23 +1034,26 @@ type GenService(db:SqliteStorage, gclient:GatewayClient, options:IOptions<Conf.G
                                     | None -> None
                                 match Monster.TryCreate(req.MType, req.MSubType) with
                                 | Some monster ->
-                                    let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL)
+                                    let monsterRecord = MonsterRecord(tp.Name, tp.Description, monster, Monster.getStats(monster), 0UL, mi)
                                     match db.CreateCustomMonster(monsterRecord, mi, req.ID, req.UserId, req.Cost) with
                                     | Ok mId ->
                                         try
                                            let minfo = MonsterInfo(uint64 mId, monsterRecord.Xp, monsterRecord.Name, monsterRecord.Description,
-                                                mi, monsterRecord.Stats, monsterRecord.Monster.MType, monsterRecord.Monster.MSubType, Some (uint64 req.UserId))
+                                                mi, monsterRecord.Stats, monsterRecord.Monster.MType, monsterRecord.Monster.MSubType, Some (uint64 req.UserId), MonsterGenType.Generative)
 
                                            let name = "image.png"
-                                           let uri = $"attachment://{name}"
+                                           let uri = 
+                                                match minfo.Picture with
+                                                | MonsterImg.File _ -> $"attachment://{name}"
+                                                | MonsterImg.Ipfs _ -> ""
                                            let monsterCard = MonstersComponent.monsterComponent minfo $"is {Format.createMsg monster.MType}!" uri createdByStr
                         
                                            let createMP() =
-                                              MessageProperties()
-                                                .WithComponents([monsterCard])
-                                                .WithAttachments([MonstersComponent.monsterAttachnment name mi])
-                                                .WithFlags(MessageFlags.IsComponentsV2)
-                                           
+                                              let mp = MessageProperties().WithComponents([monsterCard]).WithFlags(MessageFlags.IsComponentsV2)
+                                              match minfo.Picture with
+                                              | MonsterImg.File filepath ->
+                                                mp.WithAttachments([MonstersComponent.monsterAttachnment name filepath])
+                                              | MonsterImg.Ipfs _ -> mp   
                                            do! DUtils.createAndSendMsgToChannel Channels.LogChannel gclient createMP false
 
                                         with ex ->

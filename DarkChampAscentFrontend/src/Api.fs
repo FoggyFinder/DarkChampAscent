@@ -284,6 +284,31 @@ let getStats () =
         return parseResult decodeStats json
     }
 
+let getAssetInfo(assetId: uint64) =
+    async {
+        let p = Pattern.AssetInfo (Some assetId)
+        let! json = fetchJson p.Str p.Method None
+        return parseResult decodeAssetInfo json
+    }
+
+/// returns requestId or error
+let createNFTBasedMonster (assetId: uint64, name: string, description:string, ipfs:string, eLink:string) =
+    async {
+        let p = Pattern.CreateNFTBasedMonster
+        let! json =
+            formBody [
+                "assetId", string assetId
+                "name", name
+                "description", description
+                "ipfs", ipfs
+                "eLink", eLink
+            ]
+            |> Some
+            |> fetchJson p.Str p.Method
+        
+        return parseUInt64 json
+    }
+
 open Fable.SimpleJson
 let serializeTx (tx: Tx) =
     match tx with
@@ -311,6 +336,11 @@ let serializeTx (tx: Tx) =
         JObject (Map.ofList [
             "Case", JString "CreateCustomMonster"
             "Fields", JArray [ JString wallet; JNumber (float (int mtype)); JNumber (float (int msubtype)) ]
+        ])
+    | Tx.CreateNFTBasedCustomMonster (wallet, requestId) ->
+        JObject (Map.ofList [
+            "Case", JString "CreateNFTBasedCustomMonster"
+            "Fields", JArray [ JString wallet; JNumber (float requestId)]
         ])
     |> SimpleJson.toString
 

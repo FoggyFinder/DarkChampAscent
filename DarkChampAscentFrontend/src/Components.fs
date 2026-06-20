@@ -494,7 +494,9 @@ module Utils =
     let srcMonsterImg (mimg:MonsterImg)=
         match mimg with
         | MonsterImg.File f -> prop.src (Api.baseUrl + "/" + f)
-
+        | MonsterImg.Ipfs v ->
+            // prop.src ("https://ipfs.io/ipfs/" + v)
+            prop.src ("https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + v)
     let formatValue (d:decimal) =
         match d with
         | _ when abs d >= 1_000_000.0M -> sprintf "%.2fM" (d / 1_000_000.0M)

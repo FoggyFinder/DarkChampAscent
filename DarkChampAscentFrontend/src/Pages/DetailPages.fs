@@ -283,7 +283,7 @@ let MonsterDetailPage (monsterId: uint64) =
 
         let bs = Stat.Zero
         let ls = Monster.getMonsterStatsByLvl(m.MType, m.MSubType, lvl)
-        let fs = FullStat(m.Stat, bs, ls)
+        let fs = FullStat(m.Stat - ls, bs, ls)
         Html.div [
             prop.className "monstr-card"
             prop.children [
@@ -310,7 +310,7 @@ let MonsterDetailPage (monsterId: uint64) =
                             ]
                         ]
                     ]
-
+                
                 Html.div [
                     prop.className "champ-body"
                     prop.children [
@@ -334,6 +334,31 @@ let MonsterDetailPage (monsterId: uint64) =
 
                                 Html.p [ prop.className "center muted"; prop.text m.Description ]
                                 Html.p [ prop.className "center muted"; prop.text (Display.monsterClass(m.MType, m.MSubType)) ]
+                                
+                                match m.GenType with
+                                | MonsterGenType.Generative -> ()
+                                | MonsterGenType.NFTBased(assetId, website) ->
+                                    Html.div [
+                                        prop.className "nft-info"
+                                        prop.children [
+                                            Html.p [ prop.className "muted"; prop.text "Type: NFT Based" ]
+                                            Html.p [
+                                                Html.a [
+                                                    prop.href $"https://explorer.perawallet.app/asset/{assetId}"
+                                                    prop.target.blank
+                                                    prop.text $"ASA: {assetId}"
+                                                ]
+                                            ]
+                                            if String.IsNullOrWhiteSpace(website) |> not then
+                                                Html.p [
+                                                    Html.a [
+                                                        prop.href website
+                                                        prop.target.blank
+                                                        prop.text "Project website"
+                                                    ]
+                                                ]
+                                        ]
+                                    ]
                             ]
                         ]
                         Html.div [
@@ -365,9 +390,14 @@ let MonsterDetailPage (monsterId: uint64) =
             ]
         ])
 
+type private EntityTab =
+    | ChampsTab
+    | MonstersTab
+
 [<ReactComponent>]
 let UserDetailPage (userId: uint64) =
     let data, setData = React.useState<Deferred<UserInfo>> Loading
+    let activeTab, setActiveTab = React.useState ChampsTab
     let selectedIdx, setSelectedIdx = React.useState<int option> None
 
     let load () =
@@ -377,18 +407,29 @@ let UserDetailPage (userId: uint64) =
             | Ok d  ->
                 setData (Loaded d)
                 if d.Champs.Length > 0 then setSelectedIdx (Some 0)
+                elif d.Monsters.Length > 0 then
+                    setActiveTab MonstersTab
+                    setSelectedIdx (Some 0)
             | Error e -> setData (Failed e)
         } |> Async.StartImmediate
 
     React.useEffect((fun () -> load ()), [| box userId |])
 
+    let selectTab (tab: EntityTab) (count: int) =
+        setActiveTab tab
+        setSelectedIdx (if count > 0 then Some 0 else None)
+
     deferred data (fun d ->
         let champs = d.Champs
-        let count  = champs.Length
+        let champsCount = champs.Length
 
-        let selectedChamp =
-            selectedIdx |> Option.bind (fun i ->
-                if i >= 0 && i < count then Some (i, champs.[i]) else None)
+        let monstrs = d.Monsters
+        let monstrsCount = monstrs.Length
+
+        let itemCount =
+            match activeTab with
+            | ChampsTab -> champsCount
+            | MonstersTab -> monstrsCount
 
         Html.div [
             prop.className "user-card"
@@ -398,16 +439,40 @@ let UserDetailPage (userId: uint64) =
                     prop.className "user-card-header"
                     prop.children [
                         Html.h2 [ prop.text d.Nickname ]
-                        Html.p [
-                            prop.className "muted"
-                            prop.text $"Champs: {count}"
+                    ]
+                ]
+
+                Html.div [
+                    prop.className "entity-tabs"
+                    prop.children [
+                        Html.button [
+                            prop.className (
+                                if activeTab = ChampsTab
+                                then "entity-tab entity-tab--active"
+                                else "entity-tab")
+                            prop.onClick (fun _ -> selectTab ChampsTab champsCount)
+                            prop.children [
+                                Html.span [ prop.className "entity-tab-label"; prop.text "Champs" ]
+                                Html.span [ prop.className "entity-tab-count"; prop.text (string champsCount) ]
+                            ]
+                        ]
+                        Html.button [
+                            prop.className (
+                                if activeTab = MonstersTab
+                                then "entity-tab entity-tab--active"
+                                else "entity-tab")
+                            prop.onClick (fun _ -> selectTab MonstersTab monstrsCount)
+                            prop.children [
+                                Html.span [ prop.className "entity-tab-label"; prop.text "Monsters" ]
+                                Html.span [ prop.className "entity-tab-count"; prop.text (string monstrsCount) ]
+                            ]
                         ]
                     ]
                 ]
 
                 Html.div [
                     prop.className (
-                        if count <= 3
+                        if itemCount <= 3
                         then "user-card-body user-card-body--centered"
                         else "user-card-body")
                     prop.children [
@@ -418,20 +483,41 @@ let UserDetailPage (userId: uint64) =
                                 Html.div [
                                     prop.className "participants-grid"
                                     prop.children [
-                                        for i, c in champs |> List.indexed do
-                                            let isActive =
-                                                selectedIdx |> Option.map ((=) i) |> Option.defaultValue false
-                                            Html.div [
-                                                prop.className (
-                                                    if isActive
-                                                    then "participant-avatar participant-avatar--active"
-                                                    else "participant-avatar")
-                                                prop.title c.Name
-                                                prop.onClick (fun _ -> setSelectedIdx (Some i))
-                                                prop.children [
-                                                    ipfsImg c.IPFS "participant-img"
+                                        match activeTab with
+                                        | ChampsTab ->
+                                            for i, c in champs |> List.indexed do
+                                                let isActive =
+                                                    selectedIdx |> Option.map ((=) i) |> Option.defaultValue false
+                                                Html.div [
+                                                    prop.className (
+                                                        if isActive
+                                                        then "participant-avatar participant-avatar--active"
+                                                        else "participant-avatar")
+                                                    prop.title c.Name
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some i))
+                                                    prop.children [
+                                                        ipfsImg c.IPFS "participant-img"
+                                                    ]
                                                 ]
-                                            ]
+                                        | MonstersTab ->
+                                            for i, m in monstrs |> List.indexed do
+                                                let isActive =
+                                                    selectedIdx |> Option.map ((=) i) |> Option.defaultValue false
+                                                Html.div [
+                                                    prop.className (
+                                                        if isActive
+                                                        then "participant-avatar participant-avatar--active"
+                                                        else "participant-avatar")
+                                                    prop.title m.Name
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some i))
+                                                    prop.children [
+                                                        Html.img [
+                                                            prop.className "participant-img"
+                                                            Utils.srcMonsterImg m.Picture
+                                                            prop.alt m.Name
+                                                        ]
+                                                    ]
+                                                ]
                                     ]
                                 ]
                             ]
@@ -440,85 +526,192 @@ let UserDetailPage (userId: uint64) =
                         Html.div [
                             prop.className "user-card-detail"
                             prop.children [
-                                match selectedChamp with
-                                | None ->
-                                    if champs.Length > 0 then
-                                        Html.p [
-                                            prop.className "muted"
-                                            prop.text "Select a champ"
-                                        ]
-                                    else
-                                        Html.none
-                                | Some (idx, c) ->
-                                    let isNavBackDisabled = idx = 0
-                                    let isNavForwardDisabled = idx = count - 1
-                                    
-                                    Html.div [
-                                        prop.className "champ-nav"
-                                        prop.children [
-                                            Html.button [
-                                                prop.className "btn champ-nav-btn"
-                                                prop.disabled isNavBackDisabled
-                                                prop.onClick (fun _ -> setSelectedIdx (Some (idx - 1)))
-                                                prop.text "‹"
-                                            ]
-                                            Html.a [
-                                                prop.href (Page.ChampDetail c.ID).Route
-                                                prop.onClick (Nav.navTo (Page.ChampDetail c.ID).Route)
-                                                prop.className "champ-nav-name"
-                                                prop.text c.Name
-                                            ]
-                                            Html.button [
-                                                prop.className "btn champ-nav-btn"
-                                                prop.disabled isNavForwardDisabled
-                                                prop.onClick (fun _ -> setSelectedIdx (Some (idx + 1)))
-                                                prop.text "›"
-                                            ]
-                                        ]
-                                    ]
+                                match activeTab with
+                                | ChampsTab ->
+                                    match selectedIdx |> Option.bind (fun i -> if i >= 0 && i < champsCount then Some (i, champs.[i]) else None) with
+                                    | None ->
+                                        if champsCount > 0 then
+                                            Html.p [ prop.className "muted"; prop.text "Select a champ" ]
+                                        else
+                                            Html.p [ prop.className "muted"; prop.text "No champs yet" ]
+                                    | Some (idx, c) ->
+                                        let isNavBackDisabled = idx = 0
+                                        let isNavForwardDisabled = idx = champsCount - 1
 
-                                    let lvl = Levels.getLvlByXp c.XP
+                                        Html.div [
+                                            prop.className "champ-nav"
+                                            prop.children [
+                                                Html.button [
+                                                    prop.className "btn champ-nav-btn"
+                                                    prop.disabled isNavBackDisabled
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some (idx - 1)))
+                                                    prop.text "‹"
+                                                ]
+                                                Html.a [
+                                                    prop.href (Page.ChampDetail c.ID).Route
+                                                    prop.onClick (Nav.navTo (Page.ChampDetail c.ID).Route)
+                                                    prop.className "champ-nav-name"
+                                                    prop.text c.Name
+                                                ]
+                                                Html.button [
+                                                    prop.className "btn champ-nav-btn"
+                                                    prop.disabled isNavForwardDisabled
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some (idx + 1)))
+                                                    prop.text "›"
+                                                ]
+                                            ]
+                                        ]
 
-                                    Html.div [
-                                        prop.className "champ-body"
-                                        prop.children [
-                                            Html.div [
-                                                prop.className "champ-left"
-                                                prop.children [
-                                                    ipfsImg c.IPFS "picNormal"
-                                                    Html.table [
-                                                        prop.className "stats-table"
-                                                        prop.children [
-                                                            Html.tbody [
-                                                                statRow WebEmoji.Gem "XP" (string c.XP)
-                                                                statRow WebEmoji.Level "Level" (string lvl)
+                                        let lvl = Levels.getLvlByXp c.XP
+
+                                        Html.div [
+                                            prop.className "champ-body"
+                                            prop.children [
+                                                Html.div [
+                                                    prop.className "champ-left"
+                                                    prop.children [
+                                                        ipfsImg c.IPFS "picNormal"
+                                                        Html.table [
+                                                            prop.className "stats-table"
+                                                            prop.children [
+                                                                Html.tbody [
+                                                                    statRow WebEmoji.Gem "XP" (string c.XP)
+                                                                    statRow WebEmoji.Level "Level" (string lvl)
+                                                                ]
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                                Html.div [
+                                                    prop.className "champ-right"
+                                                    prop.children [
+                                                        Html.table [
+                                                            prop.className "stats-table"
+                                                            prop.children [
+                                                                Html.tbody [
+                                                                    statRow WebEmoji.Health      "Health"       (string c.Stat.Health)
+                                                                    statRow WebEmoji.Magic       "Magic"        (string c.Stat.Magic)
+                                                                    statRow WebEmoji.Luck        "Luck"         (string c.Stat.Luck)
+                                                                    statRow WebEmoji.Accuracy    "Accuracy"     (string c.Stat.Accuracy)
+                                                                    statRow WebEmoji.Attack      "Attack"       (string c.Stat.Attack)
+                                                                    statRow WebEmoji.MagicAttack "MagicAttack"  (string c.Stat.MagicAttack)
+                                                                    statRow WebEmoji.Shield      "Defense"      (string c.Stat.Defense)
+                                                                    statRow WebEmoji.MagicShield "MagicDefense" (string c.Stat.MagicDefense)
+                                                                ]
                                                             ]
                                                         ]
                                                     ]
                                                 ]
                                             ]
-                                            Html.div [
-                                                prop.className "champ-right"
-                                                prop.children [
-                                                    Html.table [
-                                                        prop.className "stats-table"
-                                                        prop.children [
-                                                            Html.tbody [
-                                                                statRow WebEmoji.Health      "Health"       (string c.Stat.Health)
-                                                                statRow WebEmoji.Magic       "Magic"        (string c.Stat.Magic)
-                                                                statRow WebEmoji.Luck        "Luck"         (string c.Stat.Luck)
-                                                                statRow WebEmoji.Accuracy    "Accuracy"     (string c.Stat.Accuracy)
-                                                                statRow WebEmoji.Attack      "Attack"       (string c.Stat.Attack)
-                                                                statRow WebEmoji.MagicAttack "MagicAttack"  (string c.Stat.MagicAttack)
-                                                                statRow WebEmoji.Shield      "Defense"      (string c.Stat.Defense)
-                                                                statRow WebEmoji.MagicShield "MagicDefense" (string c.Stat.MagicDefense)
+                                        ]
+                                | MonstersTab ->
+                                    match selectedIdx |> Option.bind (fun i -> if i >= 0 && i < monstrsCount then Some (i, monstrs.[i]) else None) with
+                                    | None ->
+                                        if monstrsCount > 0 then
+                                            Html.p [ prop.className "muted"; prop.text "Select a monster" ]
+                                        else
+                                            Html.p [ prop.className "muted"; prop.text "No monsters yet" ]
+                                    | Some (idx, m) ->
+                                        let isNavBackDisabled = idx = 0
+                                        let isNavForwardDisabled = idx = monstrsCount - 1
+
+                                        Html.div [
+                                            prop.className "champ-nav"
+                                            prop.children [
+                                                Html.button [
+                                                    prop.className "btn champ-nav-btn"
+                                                    prop.disabled isNavBackDisabled
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some (idx - 1)))
+                                                    prop.text "‹"
+                                                ]
+                                                Html.a [
+                                                    prop.href (Page.MonsterDetail m.Id).Route
+                                                    prop.onClick (Nav.navTo (Page.MonsterDetail m.Id).Route)
+                                                    prop.className "champ-nav-name"
+                                                    prop.text m.Name
+                                                ]
+                                                Html.button [
+                                                    prop.className "btn champ-nav-btn"
+                                                    prop.disabled isNavForwardDisabled
+                                                    prop.onClick (fun _ -> setSelectedIdx (Some (idx + 1)))
+                                                    prop.text "›"
+                                                ]
+                                            ]
+                                        ]
+
+                                        let lvl = Levels.getLvlByXp m.XP
+
+                                        Html.div [
+                                            prop.className "champ-body"
+                                            prop.children [
+                                                Html.div [
+                                                    prop.className "champ-left"
+                                                    prop.children [
+                                                        Html.img [
+                                                            prop.className "picNormal"
+                                                            Utils.srcMonsterImg m.Picture
+                                                            prop.alt m.Name
+                                                        ]
+
+                                                        Html.p [ prop.className "center muted"; prop.text (Display.monsterClass(m.MType, m.MSubType)) ]
+                                
+                                                        match m.GenType with
+                                                        | MonsterGenType.Generative -> ()
+                                                        | MonsterGenType.NFTBased(assetId, website) ->
+                                                            Html.div [
+                                                                prop.className "nft-info"
+                                                                prop.children [
+                                                                    Html.p [
+                                                                        Html.a [
+                                                                            prop.href $"https://explorer.perawallet.app/asset/{assetId}"
+                                                                            prop.target.blank
+                                                                            prop.text $"ASA: {assetId}"
+                                                                        ]
+                                                                    ]
+                                                                    if String.IsNullOrWhiteSpace(website) |> not then
+                                                                        Html.p [
+                                                                            Html.a [
+                                                                                prop.href website
+                                                                                prop.target.blank
+                                                                                prop.text "Project website"
+                                                                            ]
+                                                                        ]
+                                                                ]
+                                                            ]
+
+                                                        Html.table [
+                                                            prop.className "stats-table"
+                                                            prop.children [
+                                                                Html.tbody [
+                                                                    statRow WebEmoji.Gem "XP" (string m.XP)
+                                                                    statRow WebEmoji.Level "Level" (string lvl)
+                                                                ]
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                                Html.div [
+                                                    prop.className "champ-right"
+                                                    prop.children [
+                                                        Html.table [
+                                                            prop.className "stats-table"
+                                                            prop.children [
+                                                                Html.tbody [
+                                                                    statRow WebEmoji.Health      "Health"       (string m.Stat.Health)
+                                                                    statRow WebEmoji.Magic       "Magic"        (string m.Stat.Magic)
+                                                                    statRow WebEmoji.Luck        "Luck"         (string m.Stat.Luck)
+                                                                    statRow WebEmoji.Accuracy    "Accuracy"     (string m.Stat.Accuracy)
+                                                                    statRow WebEmoji.Attack      "Attack"       (string m.Stat.Attack)
+                                                                    statRow WebEmoji.MagicAttack "MagicAttack"  (string m.Stat.MagicAttack)
+                                                                    statRow WebEmoji.Shield      "Defense"      (string m.Stat.Defense)
+                                                                    statRow WebEmoji.MagicShield "MagicDefense" (string m.Stat.MagicDefense)
+                                                                ]
                                                             ]
                                                         ]
                                                     ]
                                                 ]
                                             ]
                                         ]
-                                    ]
                             ]
                         ]
                     ]

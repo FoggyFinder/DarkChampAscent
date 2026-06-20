@@ -3800,3 +3800,258 @@ body > .ts-dropdown.ts-nightshade-dropdown-body .option.active {
     cursor: default;
     transform: none;
 }
+
+
+/* ── UserDetailPage: Champs / Monsters tab toggle ──────────────── */
+
+.entity-tabs {
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    margin-block-end: var(--space-4);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius);
+    width: fit-content;
+    margin-inline: auto;
+}
+
+.entity-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-2);
+    padding-inline: var(--space-4);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+    .entity-tab:hover {
+        color: var(--color-text);
+        background: var(--color-primary-alpha-06);
+    }
+
+    .entity-tab--active,
+    .entity-tab--active:hover {
+        color: #fff;
+        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+        border-color: transparent;
+        box-shadow: 0 4px 12px rgba(127, 24, 255, 0.3);
+    }
+
+.entity-tab-count {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    padding: 1px var(--space-2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    line-height: 1.4;
+}
+
+.entity-tab--active .entity-tab-count {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+@media (max-width: 400px) {
+    .entity-tabs {
+        width: 100%;
+    }
+
+    .entity-tab {
+        flex: 1 1 0;
+        justify-content: center;
+        padding-inline: var(--space-2);
+    }
+}
+
+
+/* === NFT Monster Creation === */
+
+.nft-mode-toggle {
+    display: flex;
+    gap: 0;
+    background: transparent;
+    border: none;
+    border-block-end: 1px solid var(--color-border);
+    padding: 0;
+    /* take full width even inside row-direction parent */
+    flex: 0 0 100%;
+}
+
+.nft-section {
+    /* always a column, immune to parent row layout */
+    flex: 0 0 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.nft-fetch-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.input-assetid {
+    flex: 1 1 160px;
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface);   /* #15121a — solid dark */
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.input-assetid:focus {
+    outline: none;
+    border-color: var(--color-primary-light);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-12);
+}
+
+.input-assetid::placeholder {
+    color: var(--color-text-muted);
+    opacity: 0.5;
+}
+
+.pera-attribution {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+.pera-attribution img {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+
+.nft-card {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+    background: var(--color-primary-alpha-03);
+    border: 1px solid var(--color-primary-alpha-12);
+    border-radius: var(--radius);
+    padding: var(--space-4);
+}
+
+.nft-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.nft-field label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-inline-start: var(--space-1);
+}
+
+.nft-card-img {
+    width: 256px;
+    height: 256px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+    border: 1px solid var(--color-border-strong);
+}
+
+.nft-card-fields {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.nft-card-fields input[type="text"],
+.nft-card-fields textarea {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family);
+    text-align: center;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    resize: vertical;
+}
+
+.nft-card-fields input[type="text"]:focus,
+.nft-card-fields textarea:focus {
+    outline: none;
+    border-color: var(--color-primary-light);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-12);
+}
+
+.nft-card-fields input[type="text"]::placeholder,
+.nft-card-fields textarea::placeholder {
+    color: var(--color-text-muted);
+    opacity: 0.5;
+}
+
+.nft-card-fields textarea {
+    min-height: 72px;
+}
+
+@media (max-width: 480px) {
+    .nft-card {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .nft-card-fields input[type="text"],
+    .nft-card-fields textarea {
+        text-align: start;
+    }
+}
+
+.pera-attribution {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);   /* was xs — bigger text */
+    color: #f5c842;
+}
+
+.pera-attribution img {
+    width: 48px;        /* was 16px */
+    height: 48px;
+    object-fit: contain;
+}
+
+.pera-attribution a,
+.pera-attribution a:visited,
+.pera-attribution a:hover {
+    color: #f5c842 !important;
+    font-weight: 700;
+    text-decoration-line: underline;
+    text-decoration-color: rgba(245, 200, 66, 0.5);
+}
+
+.pera-attribution a:hover {
+    color: #ffd95a !important;
+    text-decoration-color: rgba(245, 200, 66, 0.9);
+    transform: none;   /* suppress the global a:hover translateY */
+}
+

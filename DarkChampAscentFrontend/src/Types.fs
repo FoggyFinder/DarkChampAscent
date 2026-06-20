@@ -6,7 +6,7 @@ module Links =
     let [<Literal>] Discord   = "https://discord.gg/bYPtQhYKwN"
     let [<Literal>] IPFS      = "https://ipfs.dark-coin.io/ipfs/"
     let [<Literal>] DarkCoinIo = "https://dark-coin.io/"
-    let [<Literal>] DarkChampCollection = "https://www.randgallery.com/collections/Dark%20Coin%20Champions?sort=price_asc&buy_now=true"
+    let [<Literal>] DarkChampCollection = "https://www.downbad.farm/collection/dark-coin-champions"
     let [<Literal>] AIPG      = "https://aipowergrid.io/"
 
 [<RequireQualifiedAccess>]

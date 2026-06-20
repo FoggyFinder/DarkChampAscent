@@ -38,7 +38,6 @@ Log.Logger <-
           .WriteTo.File("log.txt", rollingInterval=RollingInterval.Month)
           .CreateLogger()
 
-open System.Collections.Concurrent
 open Helpers
 
 let options = 
@@ -348,6 +347,8 @@ open Services
 open Conf
 open Algorand.Utils
 open Algorand.Algod.Model.Transactions
+open GameLogic.Monsters
+open DiscordBot.Components
 
 [<RequireQualifiedAccess>]
 module SSEHelper =
@@ -482,8 +483,9 @@ let userInfoHandler : HttpHandler =
             let uId = route.GetInt64 "id"
             
             let! userInfo =
-                match db.GetUserInfoRaw uId, db.GetUserChampsRaw uId with
-                | Some uinfo, Ok champs ->
+                match db.GetUserInfoRaw uId, db.GetUserChampsRaw uId, db.GetUserMonstrsRaw uId with
+                | Some uinfo, Ok champs, Ok monstrs ->
+                    let monstrs' = monstrs |> List.map(fun m -> m.WithPic(FileUtils.mapToLocalImg m.Picture))
                     task {
                         let! name =
                             task {
@@ -492,9 +494,9 @@ let userInfoHandler : HttpHandler =
                                 | UserType.Custom name -> return name
                                 | UserType.Web3 wallet -> return wallet
                             }
-                        return UserInfo(name, champs) |> Ok
+                        return UserInfo(name, champs, monstrs') |> Ok
                     }
-                | _, _ -> task { return Error $"Unexpected error, maybe user doesn't exist" }
+                | _, _, _ -> task { return Error $"Unexpected error, maybe user doesn't exist" }
 
             let response = userInfo |> apiResult
             
@@ -910,6 +912,9 @@ module TxHandlers =
                                         | Tx.CreateCustomMonster (_, _, _) ->
                                             db.GetNumKey Db.DbKeysNum.DarkCoinPrice
                                             |> Option.map(fun dcPrice -> Math.Round(Shop.GenMonsterPrice / dcPrice, 6))
+                                        | Tx.CreateNFTBasedCustomMonster (_, _) ->
+                                            db.GetNumKey Db.DbKeysNum.DarkCoinPrice
+                                            |> Option.map(fun dcPrice -> Math.Round(Shop.GenMonsterPrice / dcPrice, 6))
                                     match amountO with
                                     | Some amount ->
                                         let wallet = builder.Configuration.GetSection("Configuration:Wallet").Get<WalletConfiguration>()
@@ -959,8 +964,7 @@ module TxHandlers =
                                 let isValid =
                                     match tx with
                                     | Tx.Confirm _ -> Ok (())
-                                    | _ ->
-                                        db.IsTxValid(user.ID, tx, amount)
+                                    | _ -> db.IsTxValid(user.ID, tx, amount)
                                 match isValid with
                                 | Ok () ->
                                     let! txstatus = Blockchain.sendTX64 txnB64
@@ -975,42 +979,59 @@ module TxHandlers =
                                             Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
                                                 5 (TimeSpan.FromSeconds(5.))
                                         if b then
-                                            match tx with
-                                            | Tx.Confirm _ 
-                                            | Tx.CreateCustomMonster _
-                                            | Tx.RenameChamp _
-                                            | Tx.BuyItem _ -> ()
-                                            | Tx.Donate (_, _) ->
-                                                let sender =
-                                                    match user with
-                                                    | Account.Discord du -> DUtils.mention du.DiscordId
-                                                    | Account.Custom cu -> cu.Nickname
-                                                    | Account.Web3 w3 ->
-                                                        match db.FindDiscordIdByWallet w3.Wallet with
-                                                        | Some dId -> DUtils.mention (uint64 dId)
-                                                        | None -> w3.Wallet
-                                                let sendMsg() = task {
-                                                    let uri = $"https://allo.info/tx/{txId}"
-                                                    let card = Components.donationCard amount sender (Some uri)
-                                                    let newDonationMessage =
-                                                            MessageProperties()
-                                                                .WithComponents([ card ])
-                                                                .WithFlags(MessageFlags.IsComponentsV2)
-                                                                .WithAllowedMentions(AllowedMentionsProperties.None)
-                                                    let gclient = ctx.Plug<GatewayClient>()
-                                                    do! DUtils.sendMsgToLogChannel gclient newDonationMessage
-                                                }
-                                                sendMsg() |> ignore
-
                                             let msg =
                                                 match tx with
-                                                | Tx.Confirm _ -> "Done!"
+                                                | Tx.Confirm _ | Tx.RenameChamp _ -> "Done!"
                                                 | Tx.CreateCustomMonster _ ->
-                                                    "Request created. We use external AIPG API so don't have full control over it. Processing may take up to 5-10 minutes. You can track progress on 'My Requests' page."
-                                                | Tx.RenameChamp _ -> "Done!"
+                                                    "Request created. We use external AIPG API so don't have full control over it. Processing may take up to 5-10 minutes. You can track progress on 'Requests' tab."
                                                 | Tx.BuyItem _ -> "Done! You can check 'Storage' to see all available items"
-                                                | Tx.Donate (_, _) -> "Thank you!"
-                                            return Ok $"{msg} TxId: {txId}"
+                                                | Tx.Donate (_, _) ->
+                                                    let sender =
+                                                        match user with
+                                                        | Account.Discord du -> DUtils.mention du.DiscordId
+                                                        | Account.Custom cu -> cu.Nickname
+                                                        | Account.Web3 w3 ->
+                                                            match db.FindDiscordIdByWallet w3.Wallet with
+                                                            | Some dId -> DUtils.mention (uint64 dId)
+                                                            | None -> w3.Wallet
+                                                    let sendMsg() = task {
+                                                        let uri = $"https://allo.info/tx/{txId}"
+                                                        let card = Components.donationCard amount sender (Some uri)
+                                                        let newDonationMessage =
+                                                                MessageProperties()
+                                                                    .WithComponents([ card ])
+                                                                    .WithFlags(MessageFlags.IsComponentsV2)
+                                                                    .WithAllowedMentions(AllowedMentionsProperties.None)
+                                                        let gclient = ctx.Plug<GatewayClient>()
+                                                        do! DUtils.sendMsgToLogChannel gclient newDonationMessage
+                                                    }
+                                                    sendMsg() |> ignore
+                                                    "Thank you!"
+                                                | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
+                                                    let sendMsg(monsterInfo:MonsterInfo) = task {
+                                                        let gclient = ctx.Plug<GatewayClient>()
+                                                        let! createdBy = Cache.tryGetUserLinkByUserId db gclient.Rest user.ID
+                                                        let uri =
+                                                            match monsterInfo.Picture with
+                                                            | MonsterImg.File _ -> ""
+                                                            | MonsterImg.Ipfs ipfs -> "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + ipfs
+                                                        let createdByStr =
+                                                            match createdBy with
+                                                            | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
+                                                            | None -> None
+                                                        
+                                                        let monsterCard = MonstersComponent.monsterComponent monsterInfo $"is {Format.createMsg monsterInfo.MType}!" uri createdByStr
+                                                        let mp = MessageProperties().WithComponents([monsterCard]).WithFlags(MessageFlags.IsComponentsV2)
+                                                        do! DUtils.sendMsgToLogChannel gclient mp
+                                                    }
+                                                    let monsterInfoO = db.GetMonsterInfoByRequestId (int64 requestId)
+                                                    match monsterInfoO with
+                                                    | Some monsterInfo ->
+                                                        sendMsg(monsterInfo) |> ignore
+                                                        $"{monsterInfo.Id}"
+                                                    | None ->
+                                                        "Thank you. Monster was created!"
+                                            return Ok msg
                                         else
                                             return Error $"Tx ({txId}) was confirmed but unexpected error occured while processing"
                                     | TxStatus.Unconfirmed tx -> return Error ($"Sorry, tx {tx} was recorded but not confirmed in time. Please try again later. Current one will be refunded within 24 hrs.")
@@ -1116,6 +1137,64 @@ let discordCallbackHandler (frontendUrl: string) : HttpHandler =
                 return! response
         }
 
+let assetsInfoHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+
+            match ao with
+            | Some u ->
+                let route = Request.getRoute ctx
+                let assetId = route.GetInt64 "id" |> uint64
+                if Blockchain.allChamps.Value.Contains assetId then
+                    return! apiResult (Error "You can't use Champ as a monster!") ctx
+                else
+                    let db = ctx.Plug<SqliteStorage>()
+                    match db.GetUserWallets(u.ID) with
+                    | Ok wallets ->
+                        let mutable flag = false
+                        for w in wallets |> List.filter(fun w -> w.IsConfirmed) do
+                            if flag then ()
+                            else
+                                let! r = Blockchain.walletContainsAsset(w.Wallet, assetId)
+                                match r with
+                                | Ok b -> flag <- b
+                                | Error err ->
+                                    Log.Error($"walletContainsAsset: {w.Wallet} | {assetId}", err)
+                        if flag then   
+                            let! res = External.API.getAssetInfo assetId
+                            return! apiResult res ctx
+                        else
+                            return! apiResult (Error "Unexpected error. Only NFTs from your confirmed wallets are eligible") ctx
+                    | x ->
+                        return! apiResult x ctx
+            | None -> return! apiUnauthorized ctx
+        }
+
+let createRequestForNFTBasedMonsterHandler : HttpHandler =
+    fun ctx ->
+        task {
+            let! ao = authenticate ctx
+            match ao with
+            | Some u ->
+                let form = ctx.Request.Form
+                let assetIdO = form.tryGetUInt64 "assetId"
+                let nameO = form.tryGetFormValue "name"
+                let descriptionO = form.tryGetFormValue "description"
+                let ipfsO = form.tryGetFormValue "ipfs"
+                let eLink = form.tryGetFormValue "eLink" |> Option.map string |> Option.defaultValue ""
+
+                match assetIdO, nameO, descriptionO, ipfsO with
+                | Some assetId, Some name, Some description, Some ipfs ->
+                    let db = ctx.Plug<SqliteStorage>()
+                    let description' = if String.IsNullOrWhiteSpace(description) then $"Not provided: {assetId}" else (description.ToString())
+                    let r = db.AddCreateNFTBasedMonsterRequest(u.ID, assetId, name, description', ipfs, eLink)
+                    return! apiResult r ctx
+                | _ ->
+                    return! apiBadRequest "Missing required fields" ctx
+            | None -> return! apiUnauthorized ctx
+        }
+
 let onTicketReceived =
     System.Func<_, _>(fun (ctx: TicketReceivedContext) -> System.Threading.Tasks.Task.CompletedTask)
 
@@ -1175,7 +1254,7 @@ builder
     .Services
         .AddSingleton<SqliteStorage>()
         .AddHostedService<UpdatePriceService>()
-        .AddSingleton<TxTrackerService>()
+        .AddHostedService<TxTrackerService>()
         .AddHostedService<TrackChampCfgService>()
         .AddSingleton<BattleService>()
         .AddHostedService(fun sp -> sp.GetRequiredService<BattleService>())
@@ -1270,6 +1349,9 @@ let endpoints =
         Pattern.CreateTx, TxHandlers.createTxHandler
         Pattern.SubmitTx, TxHandlers.submitTxHandler
         Pattern.VerifyTx, TxHandlers.verifyTxHandler
+
+        Pattern.AssetInfo None, assetsInfoHandler
+        Pattern.CreateNFTBasedMonster, createRequestForNFTBasedMonsterHandler
     ]
     |> List.map(fun (pattern, handler) ->
         let f = match pattern.Method with | Method.Get -> get | Method.Post -> post

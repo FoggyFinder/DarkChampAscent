@@ -34,19 +34,33 @@ module MonsterImg =
 module MonstersComponent =
     open Helpers
     let monsterComponents (monster:MonsterInfo) (title:string) (url:string) (createdBy: string option) : IComponentContainerComponentProperties list =
+        let genTypeProp =
+            match monster.GenType with
+            | MonsterGenType.Generative -> TextDisplayProperties("Type: Generative")
+            | MonsterGenType.NFTBased(assetId, website) ->
+                let text =
+                    $"Type: NFT based\n" +
+                    $"ASA: [{assetId}](https://explorer.perawallet.app/asset/{assetId})\n"
+                
+                let text' =
+                    if System.String.IsNullOrWhiteSpace(website) then text
+                    else text + $"Project website: {website}"
+
+                TextDisplayProperties(text')
+        let isDefDesc = monster.Description.TrimStart().StartsWith("Not provided")
         [
             TextDisplayProperties($"**[{monster.Name}]({Links.monsterProfile monster.Id}) {title} **")
             match createdBy with
             | Some s -> TextDisplayProperties(s)
             | None -> ()
+            if isDefDesc |> not then
+                genTypeProp
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
-                            
-            ComponentSectionProperties
-                (ComponentSectionThumbnailProperties(
-                    ComponentMediaProperties(url)),
-                [
-                    TextDisplayProperties(monster.Description)
-                ])
+            let mediaComponent =
+                if isDefDesc then genTypeProp
+                else TextDisplayProperties(monster.Description)
+            ComponentSectionProperties(ComponentSectionThumbnailProperties(ComponentMediaProperties(url)), [ mediaComponent ])
+
             ComponentSeparatorProperties(Divider = true, Spacing = ComponentSeparatorSpacingSize.Small)
             TextDisplayProperties(xp monster.XP)
             TextDisplayProperties(health monster.Stat.Health)
@@ -58,8 +72,7 @@ module MonstersComponent =
     let monsterComponent (monster:MonsterInfo) (title:string) (url:string) (createdBy: string option) =
         ComponentContainerProperties(monsterComponents monster title url createdBy)
 
-    let monsterAttachnment (name:string) (mimg:MonsterImg) =
-        let filename = match mimg with | MonsterImg.File fn -> fn
+    let monsterAttachnment (name:string) (filename:string) =
         let bytes = System.IO.File.ReadAllBytes(filename)
         let imageStream = new System.IO.MemoryStream(bytes)
         AttachmentProperties(name, imageStream)

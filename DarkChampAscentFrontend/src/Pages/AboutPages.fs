@@ -93,7 +93,6 @@ let StatsPage () =
     let optTRow label WebEmoji (v: WalletValue option) =
         let link (w:string) =
             $"https://explorer.perawallet.app/transactions/?transaction_list_address={w}&transaction_list_sender={KnownWallets.DarkChampAscent}"
-            // $"https://allo.info/account/{w}/txns?sender={KnownWallets.DarkChampAscent}"
             |> Some
         match v with
         | Some x -> fullStatRow WebEmoji label (Utils.formatValue x.Value) (link x.Wallet)

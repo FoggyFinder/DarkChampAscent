@@ -101,6 +101,9 @@ let parseString (json: string) : Result<string, string> =
 let parseInt (json: string) : Result<int, string> =
     parseResultRaw (function JNumber f -> Some (int f) | _ -> None) json
 
+let parseUInt64 (json: string) : Result<uint64, string> =
+    parseResultRaw (function JNumber f -> Some (uint64 f) | _ -> None) json
+
 let parseList<'T> (decoder: Map<string, Json> -> 'T option) (json: string) : Result<'T list, string> =
     parseResultRaw (function
         | JArray items -> items |> List.choose (fun j -> j |> asObj |> Option.bind decoder) |> Some
@@ -178,7 +181,11 @@ let private decodeTraits (m: Map<string, Json>) : Traits option =
 
 let private decodeMonsterImg (j: Json) : MonsterImg option =
     match j with
-    | JString path -> Some (MonsterImg.File path)
+    | JObject fields ->
+        match Map.tryFind "File" fields, Map.tryFind "Ipfs" fields with
+        | Some (JString path), _ -> Some (MonsterImg.File path)
+        | _, Some (JString cid)  -> Some (MonsterImg.Ipfs cid)
+        | _ -> None
     | _ -> None
 
 let private decodeDiscordUser (m: Map<string, Json>) : DiscordUser option =
@@ -252,6 +259,18 @@ let decodeUserAccount (m: Map<string, Json>) : UserAccount option =
         Some (UserAccount(user, wallets, asInt champs, asInt monsters, asInt requests))
     | _ -> None
 
+let private decodeMonsterGenType (m: Map<string, Json>) : MonsterGenType option =
+    match field "GenType" m with
+    | None | Some JNull -> Some Generative
+    | Some (JObject fields) ->
+        match Map.tryFind "NFTBased" fields with
+        | Some (JArray [JNumber assetId; JString website]) ->
+            Some (NFTBased(asUInt64 assetId, website))
+        | Some (JArray [JNumber assetId; JNull]) ->
+            Some (NFTBased(asUInt64 assetId, ""))
+        | _ -> None
+    | Some _ -> Some Generative
+
 let decodeMonsterInfo (m: Map<string, Json>) : MonsterInfo option =
     match reqNum "Id" m, reqNum "XP" m, reqStr "Name" m, reqStr "Description" m,
           field "Picture" m |> Option.bind decodeMonsterImg,
@@ -260,7 +279,8 @@ let decodeMonsterInfo (m: Map<string, Json>) : MonsterInfo option =
           field "MSubType" m |> Option.bind decodeMonsterSubType,
           reqNum "OwnerId" m with
     | Some mId, Some xp, Some name, Some desc, Some pic, Some stat, Some mt, Some ms, ownerId ->
-        MonsterInfo(asUInt64 mId, asUInt64 xp, name, desc, pic, stat, mt, ms, ownerId |> Option.map asUInt64) |> Some
+        let genType = decodeMonsterGenType m |> Option.defaultValue Generative
+        MonsterInfo(asUInt64 mId, asUInt64 xp, name, desc, pic, stat, mt, ms, ownerId |> Option.map asUInt64, genType) |> Some
     | _ -> None
 
 let decodeChampInfo (m: Map<string, Json>) : ChampInfo option =
@@ -404,7 +424,10 @@ let decodeUserInfo (m: Map<string, Json>) : UserInfo option =
         let champs =
             reqArr "Champs" m
             |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
-        Some (UserInfo(nickname, champs))
+        let monsters =
+            reqArr "Monsters" m
+            |> List.choose (fun j -> j |> asObj |> Option.bind decodeMonsterInfo)
+        Some (UserInfo(nickname, champs, monsters))
     | _ -> None
 
 let decodeUserMonstersDTO (m: Map<string, Json>) : UserMonstersDTO option =
@@ -714,4 +737,11 @@ let decodeRoundInfoDTO (json:string) =
             | _ ->
                 None
         | _ -> None
+    | _ -> None
+
+let decodeAssetInfo (m: Map<string, Json>) : AssetInfo option =
+    match reqNum "AssetId" m, reqStr "Name" m,
+          reqStr "IPFS" m, reqStr "ExternalUrl" m with
+    | Some id, Some name, Some ipfs, Some extUrl ->
+        Some (AssetInfo(asUInt64 id, name, ipfs, extUrl))
     | _ -> None
