@@ -906,7 +906,7 @@ module internal SQL =
         SELECT b.ID as BattleId, Status, m.*, UserId, AssetId, ExternalLink FROM Battle b
         JOIN Monster m ON m.ID = b.MonsterId
         LEFT JOIN UserMonster um ON um.MonsterId = b.MonsterId
-        LEFT JOIN NFTMonster nm ON um.MonsterId = b.MonsterId
+        LEFT JOIN NFTMonster nm ON nm.ID = um.NFTMonsterId
         WHERE b.ID = (SELECT Max(ID) FROM Battle)
     """
 

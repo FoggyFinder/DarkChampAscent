@@ -858,8 +858,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         match getUserIdByWallet sender with
         | Some userId ->
             try
-                use conn = new SqliteConnection(cs)
+                try
+                    for d in userMonstrsInfoByRound.Values do
+                        if d.ContainsKey userId then
+                            d.Remove userId |> ignore
+                with inner ->
+                    Log.Error(inner, $"remove monstrs from cache for {userId}")
 
+                use conn = new SqliteConnection(cs)
+                
                 Db.batch (fun tn ->
                     tn
                     |> Db.newCommandForTransaction SQL.FinishNFTMonsterCreationRequest
@@ -932,6 +939,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                        
                     Ok(())
                 ) conn
+                
             with exn ->
                 Log.Error(exn, $"createNFTBasedMonster {requestId}")
                 Error($"Unexpected error: {exn.Message}")
