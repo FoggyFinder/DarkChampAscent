@@ -623,8 +623,8 @@ module internal SQL =
     """
 
     let InsertRoundRewards = """
-        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
-        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs, 0)
+        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, Monstr)
+        VALUES(@roundId, @unclaimed, 0, @dao, @reserve, @devs, @champs, 0, @monstr)
     """
 
     let InsertRewardsPayed = """
@@ -931,7 +931,7 @@ module internal SQL =
     """
 
     let GetRewardsForBattle = """
-        SELECT h.RoundId, h.Burn, h.DAO, h.Reserve, h.Devs, h.Champs FROM RewardsHistory h
+        SELECT h.RoundId, h.DAO, h.Reserve, h.Devs, h.Champs, h.Monster FROM RewardsHistory h
         JOIN Round r ON r.ID = h.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         WHERE r.BattleId = @battleId

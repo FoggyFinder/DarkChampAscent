@@ -624,11 +624,11 @@ let private decodePMResult (j: Json) : PMResult option =
     | _ -> None
 
 let private decodeRoundReward (m: Map<string, Json>) : RoundReward option =
-    match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Burn" m,
+    match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Monstr" m,
           reqNum "Dev" m, reqNum "Champs" m with
-    | Some dao, Some reserve, Some burn, Some dev, Some champs ->
-        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal burn, asDecimal dev)
-        RoundReward(sr, asDecimal champs) |> Some
+    | Some dao, Some reserve, Some monstr, Some dev, Some champs ->
+        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal dev)
+        RoundReward(sr, asDecimal champs, asDecimal monstr) |> Some
     | _ -> None
 
 let private decodeRoundInfo (j: Json) : RoundInfo option =

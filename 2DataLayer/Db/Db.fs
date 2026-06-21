@@ -2115,29 +2115,23 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             let reserveO = getKeyNum conn DbKeysNum.Reserve
             let devO = getKeyNum conn DbKeysNum.Dev
             let daoO = getKeyNum conn DbKeysNum.DAO
-            let burnO = getKeyNum conn DbKeysNum.Burn
             let champO =
                 Db.newCommand SQL.GetChampsBalance conn
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-            let stakingO = 
-                Db.newCommand SQL.GetKeyNum conn
-                |> Db.setParams [ "key", SqlType.String (DbKeysNum.Staking.ToString()) ]
-                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-
-            match poolO, reserveO, devO, daoO, burnO, champO, stakingO with
-            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some champ, Some staking->
+            let monstrsO: decimal option = failwith "Not implemented"
+            match poolO, reserveO, devO, daoO, champO, monstrsO with
+            | Some pool, Some reserve, Some dev, Some dao, Some champ, Some monstrs->
                 {
                     DAO = dao
                     Reserve = reserve
                     Dev = dev
-                    Burn = burn
                     Rewards = pool
                     Champs = champ
-                    Staking = staking
+                    Monstrs = monstrs
                 }
                 |> Ok
-            | _, _, _, _, _,_,_ ->
-                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; Champ:{champO.IsSome}; Staking:{stakingO.IsSome}"
+            | _, _, _, _, _,_ ->
+                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Champs:{champO.IsSome}; Monstrs:{monstrsO.IsSome}"
                 Error(err)
 
         with exn ->
@@ -3180,15 +3174,17 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.setParams [ 
                     "roundId", SqlType.Int64 <| int64 roundId
                     "unclaimed", SqlType.Decimal roundRewards.Unclaimed
-                    "burn", SqlType.Decimal sRoundRewards.Burn
                     "dao", SqlType.Decimal sRoundRewards.DAO
                     "reserve", SqlType.Decimal sRoundRewards.Reserve
                     "devs", SqlType.Decimal sRoundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
+                    "monstr", SqlType.Decimal roundRewards.Monster
                 ]
                 |> Db.exec
 
                 // update numeric keys
+                // TODO: subtract from claimed Dark earned by monster if it's default one
+                // TODO: update monster's balance
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
@@ -3218,14 +3214,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.setParams [
                     "amount", SqlType.Decimal sRoundRewards.DAO
                     "key", SqlType.String (DbKeysNum.DAO.ToString())
-                ]
-                |> Db.exec
-
-                tn
-                |> Db.newCommandForTransaction SQL.AddToKeyNum
-                |> Db.setParams [
-                    "amount", SqlType.Decimal sRoundRewards.Burn
-                    "key", SqlType.String (DbKeysNum.Burn.ToString())
                 ]
                 |> Db.exec
 
@@ -3295,7 +3283,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     |> Db.exec
                 | None -> tn.Rollback()
 
-            // ToDo: handle case when rewards is 0
+            // TODO: handle case when rewards is 0
             let updateChampMoves (tn:Data.IDbTransaction) (champId: uint64) (pm:PerformedMove) (xpEarned: uint64) (rewards: decimal) =
                 let bytes = JsonSerializer.SerializeToUtf8Bytes(pm, jsOptions)
                 tn
@@ -4171,7 +4159,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.query (fun r ->
                     uint64 <| r.GetInt64(0),
-                    RoundReward(SpecialReward(r.GetDecimal(2), r.GetDecimal(3), r.GetDecimal(1), r.GetDecimal(4)), r.GetDecimal(5)))
+                    RoundReward(SpecialReward(r.GetDecimal(1), r.GetDecimal(2), r.GetDecimal(3)), r.GetDecimal(4), r.GetDecimal(5)))
                 |> readOnlyDict
 
             let defeatedChamps =
@@ -4227,7 +4215,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let rRewards =
                         match mRewards.TryGetValue rId with
                         | true, r -> r
-                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M, 0M), 0M)
+                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M), 0M, 0M)
 
                     let dChamps =
                         match defeatedChamps.TryGetValue rId with
