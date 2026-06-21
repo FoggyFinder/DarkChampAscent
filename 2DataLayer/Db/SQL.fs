@@ -835,7 +835,11 @@ module internal SQL =
     let ConnectMonsterToUser = "INSERT INTO UserMonster(MonsterId, UserId, RequestId, NFTMonsterId) VALUES(@monsterId, @userId, @requestId, @nftMonsterId)"
     
     let IsMonsterNameExists = """
-        SELECT EXISTS(SELECT 1 FROM Monster WHERE Name = @name);
+        SELECT EXISTS(
+            SELECT 1 FROM Monster WHERE Name = @name
+            UNION ALL
+            SELECT 1 FROM NFTMonsterCreationRequest WHERE Name = @name
+        );
     """
     
     let IsChampNameExists = """

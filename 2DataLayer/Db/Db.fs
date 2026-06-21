@@ -270,38 +270,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, "SetInitBalance")
             false
 
-    // ToDo: move to setInitBalance
-    let setStakingKey(conn:SqliteConnection) =
-        try
-            let sql = "INSERT INTO KeyValueNum(Key, Value) VALUES (@key, 0.000000)"
-            Db.batch(fun tn ->
-                let isInit =
-                    Db.newCommandForTransaction SQL.GetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.StakingKeyIsSet.ToString())
-                    ]
-                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
-                    |> Option.defaultValue false
-                if isInit |> not then
-                    Db.newCommandForTransaction sql tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysNum.Staking.ToString())
-                    ]
-                    |> Db.exec
-
-                    Db.newCommandForTransaction SQL.SetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.StakingKeyIsSet.ToString())
-                        "value", SqlType.Boolean true
-                    ]
-                    |> Db.exec
-            ) conn
-            
-            true
-        with exn ->
-            Log.Error(exn, "setStakingKey")
-            false
-
     let createNewMonster(cs:string, monster:MonsterRecord) =
         try
             use conn = new SqliteConnection(cs)
@@ -427,7 +395,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     do updateShop(_conn) |> ignore
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
-    do setStakingKey(_conn) |> ignore
     do addIPFSImg(_conn) |> ignore
     do addNFTMonsterIdColumn(_conn) |> ignore
 
@@ -4510,6 +4477,25 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
 
                     if requestExists then Error("There is pending request to create a monster based on this NFT")
                     else
+
+                        let isMonsterNameExists =
+                            Db.newCommand SQL.IsMonsterNameExists conn
+                            |> Db.setParams [
+                                "name", SqlType.String name
+                            ]
+                            |> Db.scalar (fun v -> tryUnbox<int64> v |> Option.map(fun v -> v > 0) |> Option.defaultValue false)
+
+                        let name' = 
+                            if isMonsterNameExists then
+                                let count = 
+                                    Db.newCommand SQL.CountMonster conn
+                                    |> Db.scalar (fun v ->
+                                        tryUnbox<int64> v
+                                        |> Option.map(fun v -> v.ToString())
+                                        |> Option.defaultValue (Guid.NewGuid().ToString()))
+                                $"{name} {count}"
+                            else name
+
                         let userRequestID =
                             Db.newCommand SQL.GetUserNFTBasedMonsterRequestID conn
                             |> Db.setParams [ 
@@ -4524,7 +4510,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         | Some rId ->
                             Db.newCommand SQL.UpdateNFTMonsterCreationRequest conn
                             |> Db.setParams [
-                                "name", SqlType.String name
+                                "name", SqlType.String name'
                                 "description", SqlType.String description
                                 "picture", SqlType.Bytes bytes
                                 "eLink", SqlType.String eLink
@@ -4537,7 +4523,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             |> Db.setParams [
                                 "userId",  SqlType.Int64 <| int64 userId
                                 "assetId",  SqlType.Int64 <| int64 assetId
-                                "name", SqlType.String name
+                                "name", SqlType.String name'
                                 "description", SqlType.String description
                                 "picture", SqlType.Bytes bytes
                                 "eLink", SqlType.String eLink
