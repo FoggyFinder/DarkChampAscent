@@ -460,14 +460,15 @@ let private decodeGameStats (m: Map<string, Json>) : GameStats option =
 
 let private decodeTStats (m: Map<string, Json>) : TStats option =
     let optWV key = field key m |> Option.bind asObj |> Option.bind decodeWalletValue
-    Some (TStats(optWV "Burnt", optWV "Dao", optWV "Reserve", optWV "Devs"))
+    Some (TStats(optWV "Dao", optWV "Reserve", optWV "Devs"))
 
 let decodeStats (m: Map<string, Json>) : Stats option =
     match field "GameStats" m |> Option.bind asObj |> Option.bind decodeGameStats,
           field "TStats" m |> Option.bind asObj |> Option.bind decodeTStats with
     | Some gameStats, Some tStats ->
-        let rewards = optNum "Rewards" m |> Option.map asDecimal
-        Some (Stats(gameStats, tStats, rewards))
+        let playersRewards = optNum "PlayersRewards" m |> Option.map asDecimal
+        let monstrsRewards = optNum "MonstrsRewards" m |> Option.map asDecimal
+        Some (Stats(gameStats, tStats, playersRewards, monstrsRewards))
     | _ -> None
 
 let parseChampList (json: string) : Result<(ChampShortInfo * decimal) list, string> =

@@ -346,6 +346,10 @@ module internal SQL =
         SELECT Sum(Balance) FROM Champ
     """
 
+    let GetMonstrsBalance = """
+        SELECT Sum(Balance) FROM UserMonster
+    """
+
     let CreateMonster = """
         INSERT INTO Monster(Name, Description, Picture, Xp, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType)
         VALUES(
@@ -931,7 +935,7 @@ module internal SQL =
     """
 
     let GetRewardsForBattle = """
-        SELECT h.RoundId, h.DAO, h.Reserve, h.Devs, h.Champs, h.Monster FROM RewardsHistory h
+        SELECT h.RoundId, h.DAO, h.Reserve, h.Devs, h.Champs, h.Monstr FROM RewardsHistory h
         JOIN Round r ON r.ID = h.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         WHERE r.BattleId = @battleId
@@ -962,6 +966,8 @@ module internal SQL =
     """
     
     let PlayersEarned = "SELECT Sum(Rewards) FROM RewardsPayed"
+    // TODO: fix
+    let MonstrsEarned = "SELECT Sum(Rewards) FROM RewardsPayed"
 
     let SaveNonce = "INSERT OR REPLACE INTO Web3Nonces (Wallet, Nonce, ExpiresAt) VALUES (@wallet, @nonce, @expiresAt)"
     let GetNonceByWallet = "SELECT Nonce, ExpiresAt FROM Web3Nonces WHERE Wallet = @wallet"

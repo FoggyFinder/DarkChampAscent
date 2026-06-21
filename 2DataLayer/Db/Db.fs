@@ -302,90 +302,112 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
 
-    let addIPFSImg(conn:SqliteConnection) =
-        try
-            Db.batch(fun tn ->
-                let isInit =
-                    Db.newCommandForTransaction SQL.GetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
-                    ]
-                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
-                    |> Option.defaultValue false
-                
-                if isInit |> not then
-                    let dbParams =
-                        Db.newCommandForTransaction "SELECT ID, Picture FROM Monster" tn
-                        |> Db.query(fun r -> 
-                            r.GetInt32(0),
-                            JsonSerializer.Deserialize<MonsterImgOld>(Utils.getBytesData r 1, jsOptions))
-                        |> List.map(fun (mId, pic) ->
-                            let img = pic.ToMonsterImg
-                            let bytes = JsonSerializer.SerializeToUtf8Bytes(img, jsOptions)
-                            [
-                                "img", SqlType.Bytes bytes
-                                "mId", SqlType.Int64 mId
-                            ] : RawDbParams)
-
-                    Db.newCommandForTransaction "UPDATE Monster SET Picture = @img WHERE ID = @mId" tn
-                    |> Db.execMany dbParams
-
-                    Db.newCommandForTransaction SQL.SetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
-                        "value", SqlType.Boolean true
-                    ]
-                    |> Db.exec
-            ) conn
-            
-            true
-        with exn ->
-            Log.Error(exn, "addIPFSImg")
-            false
-
-    let addNFTMonsterIdColumn(conn:SqliteConnection) =
+    let addBalanceToAMonster(conn:SqliteConnection) =
         let balanceColumnCount = """
                 SELECT COUNT(*) FROM
                 pragma_table_info('UserMonster')
-                WHERE name='NFTMonsterId'
-            """
-        let sql = """
-            PRAGMA foreign_keys = OFF;
-
-            CREATE TABLE IF NOT EXISTS UserMonsterNew (
-                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                MonsterId INTEGER NOT NULL UNIQUE,
-                UserId INTEGER NOT NULL,
-                RequestId INTEGER,
-                NFTMonsterId INTEGER,
-                FOREIGN KEY (MonsterId)
-                   REFERENCES Monster (ID),
-                FOREIGN KEY (UserId)
-                   REFERENCES User (ID),
-                FOREIGN KEY (RequestId)
-                   REFERENCES UserGenMonsterRequest (ID),
-                FOREIGN KEY (NFTMonsterId)
-                   REFERENCES NFTMonster (ID),
-                CHECK (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
-            );
-
-            INSERT INTO UserMonsterNew(MonsterId, UserId, RequestId, NFTMonsterId)
-            SELECT MonsterId, UserId, RequestId, NULL
-            FROM UserMonster;
-
-            DROP TABLE UserMonster;
-
-            ALTER TABLE UserMonsterNew RENAME TO UserMonster;
-
-            PRAGMA foreign_keys = ON;
+                WHERE name='Balance'
             """
 
         Db.newCommand balanceColumnCount conn
         |> Db.scalar(fun v -> tryUnbox<int64> v)
         |> Option.iter(fun i ->
             if i = 0L then
-                Db.newCommand sql conn
-                |> Db.exec)
+                Db.batch(fun tn ->
+                    Db.newCommandForTransaction "PRAGMA foreign_keys = OFF" tn
+                    |> Db.exec
+
+                    // changes to UserMonster table
+                    
+                    Db.newCommandForTransaction """
+                        CREATE TABLE IF NOT EXISTS UserMonsterNew (
+                            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            MonsterId INTEGER NOT NULL UNIQUE,
+                            UserId INTEGER NOT NULL,
+                            RequestId INTEGER,
+                            NFTMonsterId INTEGER,
+                            Balance NUMERIC NOT NULL,
+                            TotalEarned NUMERIC NOT NULL,
+                            Withdrawn NUMERIC NOT NULL,
+                            FOREIGN KEY (MonsterId)
+                               REFERENCES Monster (ID),
+                            FOREIGN KEY (UserId)
+                               REFERENCES User (ID),
+                            FOREIGN KEY (RequestId)
+                               REFERENCES UserGenMonsterRequest (ID),
+                            FOREIGN KEY (NFTMonsterId)
+                               REFERENCES NFTMonster (ID),
+                            CHECK (
+                                (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
+                                AND Balance >= 0
+                                AND TotalEarned >= 0
+                                AND Withdrawn >= 0
+                            )
+                        );                    
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction """
+                        INSERT INTO UserMonsterNew(MonsterId, UserId, RequestId, NFTMonsterId, Balance, TotalEarned, Withdrawn)
+                        SELECT MonsterId, UserId, RequestId, NFTMonsterId, 0, 0, 0
+                        FROM UserMonster;
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "DROP TABLE UserMonster" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "ALTER TABLE UserMonsterNew RENAME TO UserMonster" tn
+                    |> Db.exec
+                    
+                    // changes to RewardsHistory table
+                    Db.newCommandForTransaction """
+                        CREATE TABLE IF NOT EXISTS RewardsHistoryNew (
+                            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            RoundId INT NOT NULL,
+                            Unclaimed NUMERIC NOT NULL,
+                            Burn NUMERIC NOT NULL,
+                            DAO NUMERIC NOT NULL,
+                            Reserve NUMERIC NOT NULL,
+                            Devs NUMERIC NOT NULL,
+                            Champs NUMERIC NOT NULL,
+                            Staking NUMERIC NOT NULL,
+                            Monstr NUMERIC NOT NULL,
+                            FOREIGN KEY (RoundId)
+                               REFERENCES Round (ID),
+                            CHECK (
+                                Unclaimed > -0.0001 AND
+                                Burn >= 0 AND
+                                DAO >= 0 AND
+                                Reserve >= 0 AND
+                                Devs >= 0 AND
+                                Champs >= 0 AND
+                                Staking >= 0 AND
+                                Monstr >= 0
+                            )
+                        );                  
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction """
+                        INSERT INTO RewardsHistoryNew(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, Monstr)
+                        SELECT RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, 0
+                        FROM RewardsHistory;
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "DROP TABLE RewardsHistory" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "ALTER TABLE RewardsHistoryNew RENAME TO RewardsHistory" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "PRAGMA foreign_keys = ON" tn
+                    |> Db.exec
+
+                ) conn
+        )
+
     let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
 
@@ -395,8 +417,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     do updateShop(_conn) |> ignore
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
-    do addIPFSImg(_conn) |> ignore
-    do addNFTMonsterIdColumn(_conn) |> ignore
+    do addBalanceToAMonster(_conn) |> ignore
 
     do _conn.Dispose()
 
@@ -2118,7 +2139,9 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             let champO =
                 Db.newCommand SQL.GetChampsBalance conn
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-            let monstrsO: decimal option = failwith "Not implemented"
+            let monstrsO: decimal option =
+                Db.newCommand SQL.GetMonstrsBalance conn
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
             match poolO, reserveO, devO, daoO, champO, monstrsO with
             | Some pool, Some reserve, Some dev, Some dao, Some champ, Some monstrs->
                 {
@@ -4267,8 +4290,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Db.newCommand SQL.PlayersEarned conn
                 |> Db.querySingle (fun r -> r.GetDecimal(0))
 
+            let monstrsEarned =
+                Db.newCommand SQL.MonstrsEarned conn
+                |> Db.querySingle (fun r -> r.GetDecimal(0))
+
             (GameStats(players, confirmedPlayers, champs, cMonsters, battles, rounds),
-                playersEarned, rewards)
+                playersEarned, monstrsEarned, rewards)
             |> Some
         with exn ->
             Log.Error(exn, "GetStats")
