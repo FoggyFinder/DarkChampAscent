@@ -47,7 +47,7 @@ type RoundRewardSplit private (
     member _.Claimed = claimed
     member _.Unclaimed = unclaimed
 
-    static member CalculateRewards (roundRewards:decimal) (monsterDefeater:uint64 option) (actions:(Move * uint64 * Dmg option) list) =
+    static member CalculateRewards (roundRewards:decimal) (isDefaultMonster:bool) (monsterDefeater:uint64 option) (actions:(Move * uint64 * Dmg option) list) =
 
         // 10% - Move.Shield
         // 10% - Move.MagicShield
@@ -146,7 +146,7 @@ type RoundRewardSplit private (
         let reserve = Math.Round(6M * x, 6)
         let sRewards = SpecialReward(dao, reserve, devs)
         let champsTotal = champs |> List.sumBy(fun cer -> cer.Reward)
-        let monstr = Math.Round(5M * x, 6)
+        let monstr = if isDefaultMonster then 0M else Math.Round(5M * x, 6)
         
         let unclaimed = roundRewards - (champs |> List.sumBy(fun cer -> cer.Reward)) - dao - devs - reserve - monstr
         // rounding error?

@@ -3155,6 +3155,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             }
                             MType = enum<MonsterType> <| r.GetInt32(12)
                             MSubType = enum<MonsterSubType> <| r.GetInt32(13)
+                            IsDefaultMonster = r.IsDBNull(14)
                         |})
                     match monsterO with
                     | Some rdb ->
@@ -3175,6 +3176,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             MonsterRecord = MonsterRecord(rdb.Name, rdb.Description,
                                 Monster.TryCreate(rdb.MType, rdb.MSubType).Value, rdb.Stat, uint64 rdb.Xp, rdb.Img)
                             MonsterEffects = monsterEffects
+                            IsDefaultMonster = rdb.IsDefaultMonster
                         |}
                         |> Ok
                     | None -> Error("Can't get monster data")
@@ -3199,23 +3201,17 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     ]
                     |> Db.scalar(fun v -> (unbox<int64> v) = 0L)
 
-                // correction to rewards in case monster is default one, e.g. has no "owner"
-                let unclaimedRewards', claimed', monsterRewards =
-                    if isDefaultMonster then
-                        (roundRewards.Unclaimed + roundRewards.Monster, roundRewards.Claimed - roundRewards.Monster, 0M)
-                    else (roundRewards.Unclaimed, roundRewards.Claimed, roundRewards.Monster)
-
                 // insert to round rewards
                 tn
                 |> Db.newCommandForTransaction SQL.InsertRoundRewards
                 |> Db.setParams [ 
                     "roundId", SqlType.Int64 <| int64 roundId
-                    "unclaimed", SqlType.Decimal unclaimedRewards'
+                    "unclaimed", SqlType.Decimal roundRewards.Unclaimed
                     "dao", SqlType.Decimal sRoundRewards.DAO
                     "reserve", SqlType.Decimal sRoundRewards.Reserve
                     "devs", SqlType.Decimal sRoundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
-                    "monstr", SqlType.Decimal monsterRewards
+                    "monstr", SqlType.Decimal roundRewards.Monster
                 ]
                 |> Db.exec
 
@@ -3224,7 +3220,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     tn
                     |> Db.newCommandForTransaction SQL.UpdateMonstrEarnedRewards
                     |> Db.setParams [
-                        "rewards", SqlType.Decimal monsterRewards
+                        "rewards", SqlType.Decimal roundRewards.Monster
                         "monsterId", SqlType.Int64 <| int64 monsterId
                     ]
                     |> Db.exec
@@ -3234,7 +3230,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
-                    "amount", SqlType.Decimal (-claimed')
+                    "amount", SqlType.Decimal (-roundRewards.Claimed)
                     "key", SqlType.String (DbKeysNum.Rewards.ToString())
                 ]
                 |> Db.exec

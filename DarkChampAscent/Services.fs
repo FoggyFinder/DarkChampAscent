@@ -612,10 +612,13 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             let champNames = champs |> Map.map(fun _ (_,_,name) -> name)
 
             let monsterChar = MonsterChar(monster.MonsterId, monster.MonsterRecord.Monster, monster.MonsterRecord.Stats, monster.MonsterRecord.Xp, monster.MonsterRecord.Name)
-
+            
             match Battle.fight(roundId, battleId, roundMoves, boosts, levels, monsterChar, rewards) with
             | Ok bres ->
-                let revivalTime = Monster.getRevivalDuration monsterChar.Monster
+                let revivalTime =
+                    let baseRevival = Monster.getRevivalDuration monsterChar.Monster
+                    let lvlRevival = Levels.getLvlByXp monster.MonsterRecord.Xp
+                    baseRevival + 3u * uint lvlRevival
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Finished, None, roundId))

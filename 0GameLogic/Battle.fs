@@ -380,7 +380,7 @@ module Battle =
 
     let fight(roundId: uint64, battleId: uint64, roundMoves: RoundAction list,
             boosts:Map<uint64, RoundBoost list>, lvlsStat: Map<uint64, Stat>,
-            monster:MonsterChar, rewards:decimal) =
+            monster:MonsterChar, isDefaultMonster:bool, rewards:decimal) =
         let monsterAction = selectMonsterAction monster
         let monsterLvl = Levels.getLvlByXp monster.XP
         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.Monster.MType, monster.Monster.MSubType, monsterLvl)
@@ -486,7 +486,7 @@ module Battle =
         let rewardsRes =
             actions'
             |> List.map(fun (ra, pa) -> ra.Move, ra.ChampId, pa.Dmg)
-            |> GameLogic.Rewards.RoundRewardSplit.CalculateRewards rewards monsterDefeater
+            |> GameLogic.Rewards.RoundRewardSplit.CalculateRewards rewards isDefaultMonster monsterDefeater
         
         let champsMoveAndXp =
             actions'
