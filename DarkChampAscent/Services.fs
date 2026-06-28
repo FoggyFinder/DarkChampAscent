@@ -613,7 +613,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
             let monsterChar = MonsterChar(monster.MonsterId, monster.MonsterRecord.Monster, monster.MonsterRecord.Stats, monster.MonsterRecord.Xp, monster.MonsterRecord.Name)
             
-            match Battle.fight(roundId, battleId, roundMoves, boosts, levels, monsterChar, rewards) with
+            match Battle.fight(roundId, battleId, roundMoves, boosts, levels, monsterChar, monster.IsDefaultMonster, rewards) with
             | Ok bres ->
                 let revivalTime =
                     let baseRevival = Monster.getRevivalDuration monsterChar.Monster
