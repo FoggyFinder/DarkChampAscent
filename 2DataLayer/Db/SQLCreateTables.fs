@@ -355,6 +355,16 @@ module internal SQLTables =
             CHECK (Rewards > 0)
         );
 
+        CREATE TABLE IF NOT EXISTS MonsterRewardsPayed (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            BattleId INT NOT NULL UNIQUE,
+            Tx TEXT NOT NULL UNIQUE,
+            Rewards NUMERIC NOT NULL,
+            FOREIGN KEY (BattleId)
+               REFERENCES Battle (ID),
+            CHECK (Rewards > 0)
+        );
+
         CREATE TABLE IF NOT EXISTS SpecialWithdrawal (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             BattleId INT NOT NULL,
