@@ -183,7 +183,7 @@ type UpdatePriceService(db:SqliteStorage, gclient:GatewayClient) =
                         match db.GetDateTimeKey(Db.DbKeys.LastTimePriceIsUpdated) with
                         | Some dt ->
                             let th = (now - dt).TotalHours
-                            // ToDo: move to conf
+                            // TODO: move to conf
                             th < 3.
                         | None -> false
                     if isPriceUpToDate |> not then
@@ -358,7 +358,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     let err = $"Balance doesn't match {bal.Total} >= {walletBalance}"
                     Log.Error(err)
                     // if diff isn't significant then log error and allow game to continue
-                    // ToDo: reduce
+                    // TODO: reduce
                     if bal.Total <= walletBalance + 5000M then
                         Ok(())
                     else Error(err)
@@ -415,8 +415,17 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                                 
                     do! DUtils.sendMsgToLogChannel gclient mp
                 | None -> () 
+
         | Error _ -> ()
-            
+
+        match db.SendToMonsterOwnerWallet(battleId, send) with
+        | Some (tx, wallet, dark) ->
+            let tnComponent = ChainComponent.tnSend $"{dark} {Emoj.Coin} was sent to {wallet.Substring(0, 5)}... as monster owner" tx
+            let mp = DUtils.v2ComponentMessage [tnComponent]
+                                                
+            do! DUtils.sendMsgToLogChannel gclient mp
+        | _ -> ()
+        
         for wt in Enum.GetValues<WalletType>() do
             let wallet =
                 match wt with
@@ -603,10 +612,13 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             let champNames = champs |> Map.map(fun _ (_,_,name) -> name)
 
             let monsterChar = MonsterChar(monster.MonsterId, monster.MonsterRecord.Monster, monster.MonsterRecord.Stats, monster.MonsterRecord.Xp, monster.MonsterRecord.Name)
-
-            match Battle.fight(roundId, battleId, roundMoves, boosts, levels, monsterChar, rewards) with
+            
+            match Battle.fight(roundId, battleId, roundMoves, boosts, levels, monsterChar, monster.IsDefaultMonster, rewards) with
             | Ok bres ->
-                let revivalTime = Monster.getRevivalDuration monsterChar.Monster
+                let revivalTime =
+                    let baseRevival = Monster.getRevivalDuration monsterChar.Monster
+                    let lvlRevival = Levels.getLvlByXp monster.MonsterRecord.Xp
+                    baseRevival + 3u * uint lvlRevival
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Finished, None, roundId))

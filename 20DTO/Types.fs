@@ -114,13 +114,13 @@ type PMResult(detail:PMDetail, xp:uint64, rewards:decimal option) =
     member _.Rewards = rewards
 
 [<Struct>]
-type RoundReward(sr:SpecialReward, champs:decimal) =
+type RoundReward(sr:SpecialReward, champs:decimal, monstr:decimal) =
     member _.DAO = sr.DAO
     member _.Reserve = sr.Reserve
-    member _.Burn = sr.Burn
+    member _.Monstr = monstr
     member _.Dev = sr.Dev
     member _.Champs = champs
-    member _.Total = sr.Total + champs
+    member _.Total = sr.Total + champs + monstr
 
 [<Struct>]
 type RoundInfo(roundId:uint64, details:PMResult list, rewards:RoundReward, 
@@ -199,15 +199,15 @@ type WalletValue(wallet:string, value:decimal) =
     member _.Wallet = wallet
     member _.Value = value
 
-type TStats(burnt: WalletValue option, dao: WalletValue option, reserve: WalletValue option, devs: WalletValue option) =
-    member _.Burnt = burnt
+type TStats(dao: WalletValue option, reserve: WalletValue option, devs: WalletValue option) =
     member _.Dao = dao
     member _.Reserve = reserve
     member _.Devs = devs
 
-type Stats(gameStats:GameStats, tStats:TStats, rewards: decimal option) =
+type Stats(gameStats:GameStats, tStats:TStats, players: decimal option, monstrs: decimal option) =
     member _.GameStats = gameStats
-    member _.Rewards = rewards
+    member _.PlayersRewards = players
+    member _.MonstrsRewards = monstrs
     member _.TStats = tStats
 
 [<RequireQualifiedAccess>]

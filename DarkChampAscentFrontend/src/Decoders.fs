@@ -460,14 +460,15 @@ let private decodeGameStats (m: Map<string, Json>) : GameStats option =
 
 let private decodeTStats (m: Map<string, Json>) : TStats option =
     let optWV key = field key m |> Option.bind asObj |> Option.bind decodeWalletValue
-    Some (TStats(optWV "Burnt", optWV "Dao", optWV "Reserve", optWV "Devs"))
+    Some (TStats(optWV "Dao", optWV "Reserve", optWV "Devs"))
 
 let decodeStats (m: Map<string, Json>) : Stats option =
     match field "GameStats" m |> Option.bind asObj |> Option.bind decodeGameStats,
           field "TStats" m |> Option.bind asObj |> Option.bind decodeTStats with
     | Some gameStats, Some tStats ->
-        let rewards = optNum "Rewards" m |> Option.map asDecimal
-        Some (Stats(gameStats, tStats, rewards))
+        let playersRewards = optNum "PlayersRewards" m |> Option.map asDecimal
+        let monstrsRewards = optNum "MonstrsRewards" m |> Option.map asDecimal
+        Some (Stats(gameStats, tStats, playersRewards, monstrsRewards))
     | _ -> None
 
 let parseChampList (json: string) : Result<(ChampShortInfo * decimal) list, string> =
@@ -624,11 +625,11 @@ let private decodePMResult (j: Json) : PMResult option =
     | _ -> None
 
 let private decodeRoundReward (m: Map<string, Json>) : RoundReward option =
-    match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Burn" m,
+    match reqNum "DAO" m, reqNum "Reserve" m, reqNum "Monstr" m,
           reqNum "Dev" m, reqNum "Champs" m with
-    | Some dao, Some reserve, Some burn, Some dev, Some champs ->
-        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal burn, asDecimal dev)
-        RoundReward(sr, asDecimal champs) |> Some
+    | Some dao, Some reserve, Some monstr, Some dev, Some champs ->
+        let sr = SpecialReward(asDecimal dao, asDecimal reserve, asDecimal dev)
+        RoundReward(sr, asDecimal champs, asDecimal monstr) |> Some
     | _ -> None
 
 let private decodeRoundInfo (j: Json) : RoundInfo option =

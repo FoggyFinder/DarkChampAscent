@@ -1099,18 +1099,16 @@ let statsHandler : HttpHandler =
             
             let response =
                 match db.GetStats() with
-                | Some (gs, pw, rewards) -> 
+                | Some (gs, pr, mr, rewards) -> 
                     let ts =
                         TStats(
-                            rewards.TryFind WalletType.Burn |> Option.map(fun v ->
-                                WalletValue(wallet.BurnWallet, v)),
                             rewards.TryFind WalletType.DAO |> Option.map(fun v ->
                                 WalletValue(wallet.DAOWallet, v)),
                             rewards.TryFind WalletType.Reserve |> Option.map(fun v ->
                                 WalletValue(wallet.ReserveWallet, v)),
                             rewards.TryFind WalletType.Dev |> Option.map(fun v ->
                                 WalletValue(wallet.DevsWallet, v)))
-                    Stats(gs, ts, pw) |> apiOk
+                    Stats(gs, ts, pr, mr) |> apiOk
                 | _ -> apiError "Could not fetch stats" 500
             return! response ctx
         }

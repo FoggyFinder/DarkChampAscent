@@ -151,8 +151,8 @@ module BattleComponent =
                 TextDisplayProperties($"** DAO **: {Display.toRound6StrD rewards.DAO} {Emoj.Coin}")                 
                 TextDisplayProperties($"** Dev **: {Display.toRound6StrD rewards.Dev} {Emoj.Coin}")
                 TextDisplayProperties($"** Reserve **: {Display.toRound6StrD rewards.Reserve} {Emoj.Coin}")
-                TextDisplayProperties($"** Burn **: {Display.toRound6StrD rewards.Burn} {Emoj.Coin}")
                 TextDisplayProperties($"** Champs **: {Display.toRound6StrD br.Rewards.ChampsTotal} {Emoj.Coin}")
+                TextDisplayProperties($"** Monster **: {Display.toRound6StrD br.Rewards.Monster} {Emoj.Coin}")
             ])
         
         let champRewardsComponents =
