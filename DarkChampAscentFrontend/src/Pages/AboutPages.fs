@@ -121,11 +121,12 @@ let StatsPage () =
                     prop.className "stats-table"
                     prop.children [
                         Html.tbody [
-                            optRow "Players earned" "🤖" s.Rewards
+                            optRow "Players earned" "🤖" s.PlayersRewards
+                            optRow "Monsters earned" WebEmoji.Monsters s.MonstrsRewards
+
                             optTRow "DAO" WebEmoji.DAO s.TStats.Dao
                             optTRow "Devs" WebEmoji.Dev s.TStats.Devs
                             optTRow "Reserve" WebEmoji.Reserve s.TStats.Reserve
-                            optTRow "Burnt" WebEmoji.Fire s.TStats.Burnt
                         ]
                     ]
                 ]
@@ -288,8 +289,8 @@ let TokenomicsPage () =
                                 prop.children [
                                     Html.p [ prop.text "For each round rewards are splitted by following logic:" ]
                                     Charts.PieChart "champsChart" 420 420
-                                        [ "Players"; "DAO"; "Devs"; "Reserve"; "Burn" ]
-                                        [ 75.0; 10.0; 8.0; 6.0; 1.0 ]
+                                        [ "Players"; "Monster"; "DAO"; "Devs"; "Reserve" ]
+                                        [ 70.0; 5.0; 10.0; 9.0; 6.0 ]
                                         [ "#74c67a"; "#e64a2b"; "#ffd60a"; "#00d6d6"; "#3d7ef0" ]
                                 ]
                             ]
@@ -299,7 +300,7 @@ let TokenomicsPage () =
                                     Html.p [ prop.text "Each round rewards allocated for players splitted as:" ]
                                     Charts.PieChart "rewardsChart" 420 420
                                         [ "Damage / TotalDamage"; "Shield"; "MagicShield"; "Heal"; "Meditate"; "Attack"; "MagicAttack" ]
-                                        [ 20.0; 11.0; 11.0; 11.0; 11.0; 5.5; 5.5 ]
+                                        [ 20.0; 10.0; 10.0; 10.0; 10.0; 5; 5 ]
                                         [ "#19c7f1"; "#5d8db3"; "#3ef24a"; "#b16bf0"; "#ff7f3f"; "#e64a2b"; "#d7ef2c" ]
                                 ]
                             ]

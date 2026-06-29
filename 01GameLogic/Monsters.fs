@@ -283,10 +283,10 @@ module Monster =
 
     let getRevivalDuration(monster:Monster) =
         match monster.MType with
-        | MonsterType.Zombie -> Constants.RoundsInBattle * 5
-        | MonsterType.Demon -> Constants.RoundsInBattle * 17
-        | MonsterType.Necromancer ->  Constants.RoundsInBattle * 13
-        | MonsterType.Universal -> Constants.RoundsInBattle * 7
+        | MonsterType.Zombie -> Constants.RoundsInBattle * 2
+        | MonsterType.Demon -> Constants.RoundsInBattle * 7
+        | MonsterType.Necromancer -> Constants.RoundsInBattle * 6
+        | MonsterType.Universal -> Constants.RoundsInBattle * 4
         |> uint
 
 [<RequireQualifiedAccess>]

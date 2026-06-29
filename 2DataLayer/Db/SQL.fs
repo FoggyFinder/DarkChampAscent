@@ -346,6 +346,28 @@ module internal SQL =
         SELECT Sum(Balance) FROM Champ
     """
 
+    let GetMonstrsBalance = """
+        SELECT Sum(Balance) FROM UserMonster
+    """
+
+    let WithdrawFromMonstrBalance = """
+        UPDATE UserMonster SET
+            Withdrawn = Withdrawn + Balance,
+            Balance = 0
+        WHERE MonsterId = @monsterId AND Balance > 0
+    """
+
+    let UpdateMonstrEarnedRewards = """
+        UPDATE UserMonster SET
+            Balance = Balance + @rewards,
+            TotalEarned = TotalEarned + @rewards
+        WHERE MonsterId = @monsterId
+    """
+
+    let IsCustomMonster = """
+        SELECT EXISTS(SELECT 1 FROM UserMonster WHERE MonsterId = @monsterId)
+    """
+
     let CreateMonster = """
         INSERT INTO Monster(Name, Description, Picture, Xp, Health, Magic, Accuracy, Luck, Attack, MagicAttack, Defense, MagicDefense, Type, SubType)
         VALUES(
@@ -499,7 +521,7 @@ module internal SQL =
         VALUES(@champId, @characteristic, DATETIME('now'));
     """
 
-    // ToDo: use Timestamp
+    // TODO: use Timestamp
     let GetLvlsForRound = """
         SELECT ChampId, Characteristic FROM ChampLevel
         WHERE ChampId IN (
@@ -623,8 +645,8 @@ module internal SQL =
     """
 
     let InsertRoundRewards = """
-        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking)
-        VALUES(@roundId, @unclaimed, @burn, @dao, @reserve, @devs, @champs, 0)
+        INSERT INTO RewardsHistory(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, Monstr)
+        VALUES(@roundId, @unclaimed, 0, @dao, @reserve, @devs, @champs, 0, @monstr)
     """
 
     let InsertRewardsPayed = """
@@ -632,15 +654,36 @@ module internal SQL =
         VALUES(@champId, @battleId, @tx, @rewards)
     """
 
+    let InsertMonsterRewardsPayed = """
+        INSERT INTO MonsterRewardsPayed(BattleId, Tx, Rewards)
+        VALUES(@battleId, @tx, @rewards)
+    """
+
+    let GetMonsterPayoutInfo = """
+        SELECT um.MonsterId, um.Balance, w.Address
+        FROM Battle b
+        JOIN UserMonster um ON um.MonsterId = b.MonsterId
+        JOIN User u ON u.ID = um.UserId
+		JOIN Wallet w ON w.UserId = u.ID
+        WHERE b.ID = @battleId
+    """
+
     let InsertSpecialWithdrawal = """
         INSERT INTO SpecialWithdrawal(WalletType, BattleId, Tx, Amount)
         VALUES(@walletType, @battleId, @tx, @amount)
     """
 
-    let WinthdrawFromBalance = """
+    let WithdrawFromChampBalance = """
         UPDATE Champ SET
             Withdrawn = Withdrawn + Balance,
             Balance = 0
+        WHERE ID = @champId
+    """
+
+    let UpdateChampEarnedRewards = """
+        UPDATE Champ SET
+            Balance = Balance + @rewards,
+            TotalEarned = TotalEarned + @rewards
         WHERE ID = @champId
     """
 
@@ -682,13 +725,6 @@ module internal SQL =
             Defense = @defense,
             MagicDefense = @mdefense
         WHERE ID = @monsterId;
-    """
-
-    let UpdateChampEarnedRewards = """
-        UPDATE Champ SET
-            Balance = Balance + @rewards,
-            TotalEarned = TotalEarned + @rewards
-        WHERE ID = @champId;
     """
 
     let AddChampXp = """
@@ -832,8 +868,11 @@ module internal SQL =
         ORDER BY Timestamp ASC
     """
 
-    let ConnectMonsterToUser = "INSERT INTO UserMonster(MonsterId, UserId, RequestId, NFTMonsterId) VALUES(@monsterId, @userId, @requestId, @nftMonsterId)"
-    
+    let ConnectMonsterToUser = """
+        INSERT INTO UserMonster(MonsterId, UserId, RequestId, NFTMonsterId, Balance, TotalEarned, Withdrawn) 
+        VALUES(@monsterId, @userId, @requestId, @nftMonsterId, 0, 0, 0)
+    """
+
     let IsMonsterNameExists = """
         SELECT EXISTS(
             SELECT 1 FROM Monster WHERE Name = @name
@@ -931,7 +970,7 @@ module internal SQL =
     """
 
     let GetRewardsForBattle = """
-        SELECT h.RoundId, h.Burn, h.DAO, h.Reserve, h.Devs, h.Champs FROM RewardsHistory h
+        SELECT h.RoundId, h.DAO, h.Reserve, h.Devs, h.Champs, h.Monstr FROM RewardsHistory h
         JOIN Round r ON r.ID = h.RoundId
         JOIN Battle b ON b.ID = r.BattleId
         WHERE r.BattleId = @battleId
@@ -962,6 +1001,7 @@ module internal SQL =
     """
     
     let PlayersEarned = "SELECT Sum(Rewards) FROM RewardsPayed"
+    let MonstrsEarned = "SELECT Sum(Rewards) FROM MonsterRewardsPayed"
 
     let SaveNonce = "INSERT OR REPLACE INTO Web3Nonces (Wallet, Nonce, ExpiresAt) VALUES (@wallet, @nonce, @expiresAt)"
     let GetNonceByWallet = "SELECT Nonce, ExpiresAt FROM Web3Nonces WHERE Wallet = @wallet"

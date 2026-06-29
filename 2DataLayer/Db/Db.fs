@@ -302,90 +302,112 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"CreateNewMonster: {monster}")
             false
 
-    let addIPFSImg(conn:SqliteConnection) =
-        try
-            Db.batch(fun tn ->
-                let isInit =
-                    Db.newCommandForTransaction SQL.GetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
-                    ]
-                    |> Db.querySingle (fun rd -> rd.ReadBoolean "Value")
-                    |> Option.defaultValue false
-                
-                if isInit |> not then
-                    let dbParams =
-                        Db.newCommandForTransaction "SELECT ID, Picture FROM Monster" tn
-                        |> Db.query(fun r -> 
-                            r.GetInt32(0),
-                            JsonSerializer.Deserialize<MonsterImgOld>(Utils.getBytesData r 1, jsOptions))
-                        |> List.map(fun (mId, pic) ->
-                            let img = pic.ToMonsterImg
-                            let bytes = JsonSerializer.SerializeToUtf8Bytes(img, jsOptions)
-                            [
-                                "img", SqlType.Bytes bytes
-                                "mId", SqlType.Int64 mId
-                            ] : RawDbParams)
-
-                    Db.newCommandForTransaction "UPDATE Monster SET Picture = @img WHERE ID = @mId" tn
-                    |> Db.execMany dbParams
-
-                    Db.newCommandForTransaction SQL.SetKeyBool tn
-                    |> Db.setParams [
-                        "key", SqlType.String (DbKeysBool.MonsterImgIPFSAdded.ToString())
-                        "value", SqlType.Boolean true
-                    ]
-                    |> Db.exec
-            ) conn
-            
-            true
-        with exn ->
-            Log.Error(exn, "addIPFSImg")
-            false
-
-    let addNFTMonsterIdColumn(conn:SqliteConnection) =
+    let addBalanceToAMonster(conn:SqliteConnection) =
         let balanceColumnCount = """
                 SELECT COUNT(*) FROM
                 pragma_table_info('UserMonster')
-                WHERE name='NFTMonsterId'
-            """
-        let sql = """
-            PRAGMA foreign_keys = OFF;
-
-            CREATE TABLE IF NOT EXISTS UserMonsterNew (
-                ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                MonsterId INTEGER NOT NULL UNIQUE,
-                UserId INTEGER NOT NULL,
-                RequestId INTEGER,
-                NFTMonsterId INTEGER,
-                FOREIGN KEY (MonsterId)
-                   REFERENCES Monster (ID),
-                FOREIGN KEY (UserId)
-                   REFERENCES User (ID),
-                FOREIGN KEY (RequestId)
-                   REFERENCES UserGenMonsterRequest (ID),
-                FOREIGN KEY (NFTMonsterId)
-                   REFERENCES NFTMonster (ID),
-                CHECK (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
-            );
-
-            INSERT INTO UserMonsterNew(MonsterId, UserId, RequestId, NFTMonsterId)
-            SELECT MonsterId, UserId, RequestId, NULL
-            FROM UserMonster;
-
-            DROP TABLE UserMonster;
-
-            ALTER TABLE UserMonsterNew RENAME TO UserMonster;
-
-            PRAGMA foreign_keys = ON;
+                WHERE name='Balance'
             """
 
         Db.newCommand balanceColumnCount conn
         |> Db.scalar(fun v -> tryUnbox<int64> v)
         |> Option.iter(fun i ->
             if i = 0L then
-                Db.newCommand sql conn
-                |> Db.exec)
+                Db.batch(fun tn ->
+                    Db.newCommandForTransaction "PRAGMA foreign_keys = OFF" tn
+                    |> Db.exec
+
+                    // changes to UserMonster table
+                    
+                    Db.newCommandForTransaction """
+                        CREATE TABLE IF NOT EXISTS UserMonsterNew (
+                            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            MonsterId INTEGER NOT NULL UNIQUE,
+                            UserId INTEGER NOT NULL,
+                            RequestId INTEGER,
+                            NFTMonsterId INTEGER,
+                            Balance NUMERIC NOT NULL,
+                            TotalEarned NUMERIC NOT NULL,
+                            Withdrawn NUMERIC NOT NULL,
+                            FOREIGN KEY (MonsterId)
+                               REFERENCES Monster (ID),
+                            FOREIGN KEY (UserId)
+                               REFERENCES User (ID),
+                            FOREIGN KEY (RequestId)
+                               REFERENCES UserGenMonsterRequest (ID),
+                            FOREIGN KEY (NFTMonsterId)
+                               REFERENCES NFTMonster (ID),
+                            CHECK (
+                                (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
+                                AND Balance >= 0
+                                AND TotalEarned >= 0
+                                AND Withdrawn >= 0
+                            )
+                        );                    
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction """
+                        INSERT INTO UserMonsterNew(MonsterId, UserId, RequestId, NFTMonsterId, Balance, TotalEarned, Withdrawn)
+                        SELECT MonsterId, UserId, RequestId, NFTMonsterId, 0, 0, 0
+                        FROM UserMonster;
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "DROP TABLE UserMonster" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "ALTER TABLE UserMonsterNew RENAME TO UserMonster" tn
+                    |> Db.exec
+                    
+                    // changes to RewardsHistory table
+                    Db.newCommandForTransaction """
+                        CREATE TABLE IF NOT EXISTS RewardsHistoryNew (
+                            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            RoundId INT NOT NULL,
+                            Unclaimed NUMERIC NOT NULL,
+                            Burn NUMERIC NOT NULL,
+                            DAO NUMERIC NOT NULL,
+                            Reserve NUMERIC NOT NULL,
+                            Devs NUMERIC NOT NULL,
+                            Champs NUMERIC NOT NULL,
+                            Staking NUMERIC NOT NULL,
+                            Monstr NUMERIC NOT NULL,
+                            FOREIGN KEY (RoundId)
+                               REFERENCES Round (ID),
+                            CHECK (
+                                Unclaimed > -0.0001 AND
+                                Burn >= 0 AND
+                                DAO >= 0 AND
+                                Reserve >= 0 AND
+                                Devs >= 0 AND
+                                Champs >= 0 AND
+                                Staking >= 0 AND
+                                Monstr >= 0
+                            )
+                        );                  
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction """
+                        INSERT INTO RewardsHistoryNew(RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, Monstr)
+                        SELECT RoundId, Unclaimed, Burn, DAO, Reserve, Devs, Champs, Staking, 0
+                        FROM RewardsHistory;
+                    """ tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "DROP TABLE RewardsHistory" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "ALTER TABLE RewardsHistoryNew RENAME TO RewardsHistory" tn
+                    |> Db.exec
+
+                    Db.newCommandForTransaction "PRAGMA foreign_keys = ON" tn
+                    |> Db.exec
+
+                ) conn
+        )
+
     let cs = options.Value.ConnectionString
     do Log.Information("Db is init....")
 
@@ -395,8 +417,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     do updateShop(_conn) |> ignore
     do updateEffects(_conn) |> ignore
     do setInitBalance(_conn) |> ignore
-    do addIPFSImg(_conn) |> ignore
-    do addNFTMonsterIdColumn(_conn) |> ignore
+    do addBalanceToAMonster(_conn) |> ignore
 
     do _conn.Dispose()
 
@@ -1003,7 +1024,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 match userId with
                 | Some id ->
                     try
-                        // ToDo: improve
+                        // TODO: improve
                         let code = System.Random.Shared.NextInt64(10000L, 99999L) |> string
                         use conn = new SqliteConnection(cs)
                         if uId.IsWeb3 |> not then
@@ -2115,29 +2136,25 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             let reserveO = getKeyNum conn DbKeysNum.Reserve
             let devO = getKeyNum conn DbKeysNum.Dev
             let daoO = getKeyNum conn DbKeysNum.DAO
-            let burnO = getKeyNum conn DbKeysNum.Burn
             let champO =
                 Db.newCommand SQL.GetChampsBalance conn
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-            let stakingO = 
-                Db.newCommand SQL.GetKeyNum conn
-                |> Db.setParams [ "key", SqlType.String (DbKeysNum.Staking.ToString()) ]
+            let monstrsO: decimal option =
+                Db.newCommand SQL.GetMonstrsBalance conn
                 |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
-
-            match poolO, reserveO, devO, daoO, burnO, champO, stakingO with
-            | Some pool, Some reserve, Some dev, Some dao, Some burn, Some champ, Some staking->
+            match poolO, reserveO, devO, daoO, champO, monstrsO with
+            | Some pool, Some reserve, Some dev, Some dao, Some champ, Some monstrs->
                 {
                     DAO = dao
                     Reserve = reserve
                     Dev = dev
-                    Burn = burn
                     Rewards = pool
                     Champs = champ
-                    Staking = staking
+                    Monstrs = monstrs
                 }
                 |> Ok
-            | _, _, _, _, _,_,_ ->
-                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Burn: {burnO.IsSome}; Champ:{champO.IsSome}; Staking:{stakingO.IsSome}"
+            | _, _, _, _, _,_ ->
+                let err = $"rewards: {poolO.IsSome}; Reserve: {reserveO.IsSome}; Dev: {devO.IsSome}; Champs:{champO.IsSome}; Monstrs:{monstrsO.IsSome}"
                 Error(err)
 
         with exn ->
@@ -2383,7 +2400,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"LevelUp: {champId}, {ch}")
             Error(exn.Message)
 
-    // ToDo: optimize if/when monsters > 100
+    // TODO: optimize if/when monsters > 100
     /// last round is included in selection
     member _.GetAliveMonsters() =
         try
@@ -3138,6 +3155,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             }
                             MType = enum<MonsterType> <| r.GetInt32(12)
                             MSubType = enum<MonsterSubType> <| r.GetInt32(13)
+                            IsDefaultMonster = r.IsDBNull(14)
                         |})
                     match monsterO with
                     | Some rdb ->
@@ -3158,6 +3176,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             MonsterRecord = MonsterRecord(rdb.Name, rdb.Description,
                                 Monster.TryCreate(rdb.MType, rdb.MSubType).Value, rdb.Stat, uint64 rdb.Xp, rdb.Img)
                             MonsterEffects = monsterEffects
+                            IsDefaultMonster = rdb.IsDefaultMonster
                         |}
                         |> Ok
                     | None -> Error("Can't get monster data")
@@ -3172,23 +3191,42 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         try
             use conn = new SqliteConnection(cs)
 
-            let updateRewards (tn:Data.IDbTransaction) (roundId: uint64) (roundRewards: RoundRewardSplit) =
+            let updateRewards (tn:Data.IDbTransaction) (roundId: uint64) (roundRewards: RoundRewardSplit) (monsterId: uint64) =
                 let sRoundRewards = roundRewards.SRewards
+                let isDefaultMonster =
+                    tn
+                    |> Db.newCommandForTransaction SQL.IsCustomMonster
+                    |> Db.setParams [ 
+                        "monsterId", SqlType.Int64 <| int64 monsterId
+                    ]
+                    |> Db.scalar(fun v -> (unbox<int64> v) = 0L)
+
                 // insert to round rewards
                 tn
                 |> Db.newCommandForTransaction SQL.InsertRoundRewards
                 |> Db.setParams [ 
                     "roundId", SqlType.Int64 <| int64 roundId
                     "unclaimed", SqlType.Decimal roundRewards.Unclaimed
-                    "burn", SqlType.Decimal sRoundRewards.Burn
                     "dao", SqlType.Decimal sRoundRewards.DAO
                     "reserve", SqlType.Decimal sRoundRewards.Reserve
                     "devs", SqlType.Decimal sRoundRewards.Dev
                     "champs", SqlType.Decimal roundRewards.ChampsTotal
+                    "monstr", SqlType.Decimal roundRewards.Monster
                 ]
                 |> Db.exec
 
+                // update monster's balance
+                if isDefaultMonster |> not then
+                    tn
+                    |> Db.newCommandForTransaction SQL.UpdateMonstrEarnedRewards
+                    |> Db.setParams [
+                        "rewards", SqlType.Decimal roundRewards.Monster
+                        "monsterId", SqlType.Int64 <| int64 monsterId
+                    ]
+                    |> Db.exec
+
                 // update numeric keys
+                
                 tn
                 |> Db.newCommandForTransaction SQL.AddToKeyNum
                 |> Db.setParams [
@@ -3218,14 +3256,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> Db.setParams [
                     "amount", SqlType.Decimal sRoundRewards.DAO
                     "key", SqlType.String (DbKeysNum.DAO.ToString())
-                ]
-                |> Db.exec
-
-                tn
-                |> Db.newCommandForTransaction SQL.AddToKeyNum
-                |> Db.setParams [
-                    "amount", SqlType.Decimal sRoundRewards.Burn
-                    "key", SqlType.String (DbKeysNum.Burn.ToString())
                 ]
                 |> Db.exec
 
@@ -3274,28 +3304,25 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Monster.getStats m.Monster
                 |> updateMonsterStat tn m.Id
 
-                let itemIdO =
+                let itemId =
                     Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
                     |> Db.setParams [
                         "item", SqlType.Int <| int Effect.Death
                     ]
-                    |> Db.scalar (fun v -> tryUnbox<int64> v)
+                    |> Db.scalar (fun v -> unbox<int64> v)
 
-                match itemIdO with
-                | Some itemId ->
-                    let duration = Monster.getRevivalDuration m.Monster
-                    tn
-                    |> Db.newCommandForTransaction SQL.ApplyEffectToMonster
-                    |> Db.setParams [
-                        "monsterId", SqlType.Int64 <| int64 m.Id
-                        "itemId", SqlType.Int64 itemId
-                        "roundId", SqlType.Int64 <| int64 bresult.RoundId
-                        "duration", SqlType.Int <| int duration
-                    ]
-                    |> Db.exec
-                | None -> tn.Rollback()
+                let duration = Monster.getRevivalDuration m.Monster
+                tn
+                |> Db.newCommandForTransaction SQL.ApplyEffectToMonster
+                |> Db.setParams [
+                    "monsterId", SqlType.Int64 <| int64 m.Id
+                    "itemId", SqlType.Int64 itemId
+                    "roundId", SqlType.Int64 <| int64 bresult.RoundId
+                    "duration", SqlType.Int <| int duration
+                ]
+                |> Db.exec
 
-            // ToDo: handle case when rewards is 0
+            // TODO: handle case when rewards is 0
             let updateChampMoves (tn:Data.IDbTransaction) (champId: uint64) (pm:PerformedMove) (xpEarned: uint64) (rewards: decimal) =
                 let bytes = JsonSerializer.SerializeToUtf8Bytes(pm, jsOptions)
                 tn
@@ -3367,43 +3394,40 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     ]
                     |> Db.exec
                     
-                    let itemIdO =
+                    let itemId =
                         Db.newCommandForTransaction SQL.GetEffectItemIdByItem tn
                         |> Db.setParams [
                             "item", SqlType.Int <| int Effect.Death
                         ]
-                        |> Db.scalar (fun v -> tryUnbox<int64> v)
+                        |> Db.scalar (fun v -> unbox<int64> v)
 
-                    match itemIdO with
-                    | Some itemId ->
-                        let revivalExists =
-                            boosts.TryFind champId
-                            |> Option.map(fun xs -> xs |> List.exists(fun b -> b.Boost = ShopItem.RevivalSpell))
-                            |> Option.defaultValue false
+                    let revivalExists =
+                        boosts.TryFind champId
+                        |> Option.map(fun xs -> xs |> List.exists(fun b -> b.Boost = ShopItem.RevivalSpell))
+                        |> Option.defaultValue false
                         
-                        // if revivalExists set Duration to 0 and mark as passive
-                        let duration = if revivalExists then 0 else Effects.getRoundDuration(Effect.Death)
+                    // if revivalExists set Duration to 0 and mark as passive
+                    let duration = if revivalExists then 0 else Effects.getRoundDuration(Effect.Death)
                         
-                        Db.newCommandForTransaction SQL.ApplyEffectWithIsActive tn
-                        |> Db.setParams [
-                            "champId", SqlType.Int64 <| int64 champId
-                            "itemId", SqlType.Int64 <| int64 itemId
-                            "roundId", SqlType.Int64 <| int64 bresult.RoundId
-                            "duration", SqlType.Int duration
-                            "isActive", SqlType.Boolean <| not revivalExists
-                        ]
-                        |> Db.exec
+                    Db.newCommandForTransaction SQL.ApplyEffectWithIsActive tn
+                    |> Db.setParams [
+                        "champId", SqlType.Int64 <| int64 champId
+                        "itemId", SqlType.Int64 <| int64 itemId
+                        "roundId", SqlType.Int64 <| int64 bresult.RoundId
+                        "duration", SqlType.Int duration
+                        "isActive", SqlType.Boolean <| not revivalExists
+                    ]
+                    |> Db.exec
 
-                        // mark revival as finished
-                        Db.newCommandForTransaction SQL.UpdateBoostDuration tn
-                        |> Db.setParams [
-                            "duration", SqlType.Int duration
-                            "champId", SqlType.Int64 <| int64 champId
-                            "itemId", SqlType.Int64 <| int64 itemId
-                            "roundId", SqlType.Int64 <| int64 bresult.RoundId
-                        ]
-                        |> Db.exec
-                    | None -> tn.Rollback()
+                    // mark revival as finished
+                    Db.newCommandForTransaction SQL.UpdateBoostDuration tn
+                    |> Db.setParams [
+                        "duration", SqlType.Int duration
+                        "champId", SqlType.Int64 <| int64 champId
+                        "itemId", SqlType.Int64 <| int64 itemId
+                        "roundId", SqlType.Int64 <| int64 bresult.RoundId
+                    ]
+                    |> Db.exec
                 | None -> tn.Rollback()
 
             let performMonsterAction (tn:Data.IDbTransaction) =
@@ -3445,16 +3469,16 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         xp)
                 |> addMonsterXp tn bresult.MonsterChar.Id
 
+            let rewards = bresult.Rewards.Champs |> List.map(fun c -> c.ChampId, c.Reward) |> Map.ofList
             Db.batch (fun tn ->
-                updateRewards tn bresult.RoundId bresult.Rewards
+                updateRewards tn bresult.RoundId bresult.Rewards bresult.MonsterChar.Id
                 bresult.MonsterDefeater |> Option.iter(defeatMonster tn)
                 if bresult.MonsterDefeater.IsNone then
                     bresult.MonsterChar.Stat |> updateMonsterStat tn bresult.MonsterChar.Id
                 performMonsterAction tn
                
                 bresult.ChampsMoveAndXp |> Map.iter(fun champId (pm, xp) ->
-                    bresult.Rewards.Champs
-                    |> List.tryPick(fun c -> if c.ChampId = champId then Some c.Reward else None)
+                    rewards.TryFind champId
                     |> Option.defaultValue 0M
                     |> updateChampMoves tn champId pm xp
                 )
@@ -3669,19 +3693,59 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, "FinalizeBattle")
             false
 
+    /// returns (tx, wallet, balance) in case of success
+    member _.SendToMonsterOwnerWallet(battleId:uint64, send:(string -> decimal -> (string * bool) option)) =
+        try 
+            use conn = new SqliteConnection(cs)
+            Db.batch(fun tn ->
+                let infoO =
+                    Db.newCommandForTransaction SQL.GetMonsterPayoutInfo tn
+                    |> Db.setParams [ "battleId", SqlType.Int64 <| int64 battleId ]
+                    |> Db.querySingle(fun r -> r.GetInt64(0), r.GetDecimal(1), r.GetString(2))
+
+                match infoO with
+                | Some (monsterId, balance, wallet) when balance > 0M ->
+                    Db.newCommandForTransaction SQL.WithdrawFromMonstrBalance tn
+                    |> Db.setParams [
+                        "monsterId", SqlType.Int64 monsterId
+                    ]
+                    |> Db.exec
+
+                    let r = send wallet balance
+
+                    match r with
+                    // TODO: fix unconfirmed case
+                    | Some (tx, b) ->
+                        Db.newCommandForTransaction SQL.InsertMonsterRewardsPayed tn
+                        |> Db.setParams [
+                            "battleId", SqlType.Int64 <| int64 battleId
+                            "tx", SqlType.String <| tx
+                            "rewards", SqlType.Decimal balance
+                        ]
+                        |> Db.exec
+                        
+                        Some(tx, wallet, balance)
+                    | None ->
+                        tn.Rollback()
+                        None
+                | _ -> None) conn
+        with exn ->
+            Log.Error(exn, $"SendToMonsterOwnerWallet {battleId}")
+            None
+    
     member _.SendToWallet(champs:(uint64 * decimal) list, battleId:uint64, send:(unit -> (string * bool) option)) =
         try 
             use conn = new SqliteConnection(cs)
             Db.batch(fun tn ->
                 for (champId, _) in champs do
-                    Db.newCommandForTransaction SQL.WinthdrawFromBalance tn
+                    Db.newCommandForTransaction SQL.WithdrawFromChampBalance tn
                     |> Db.setParams [
                         "champId", SqlType.Int64 <| int64 champId
                     ]
                     |> Db.exec
                 let r = send()
                 match r with
-                // ToDo: fix unconfirmed case
+                // TODO: fix unconfirmed case
                 | Some (tx, b) ->
                     for (champId, balance) in champs do
                         Db.newCommandForTransaction SQL.InsertRewardsPayed tn
@@ -3735,7 +3799,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     |> Db.exec
                     let r = send v
                     match r with
-                    // ToDo: fix unconfirmed case
+                    // TODO: fix unconfirmed case
                     | Some (tx, _) ->
                         Db.newCommandForTransaction SQL.InsertSpecialWithdrawal tn
                         |> Db.setParams [
@@ -3986,7 +4050,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 if isMonsterNameExists then
                     Error("This name already taken")
                 else
-                    // ToDo: validate that user did create this monster
+                    // TODO: validate that user did create this monster
                     Db.newCommand SQL.RenameMonster conn
                     |> Db.setParams [
                         "userId", SqlType.Int64 userId
@@ -4171,7 +4235,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.query (fun r ->
                     uint64 <| r.GetInt64(0),
-                    RoundReward(SpecialReward(r.GetDecimal(2), r.GetDecimal(3), r.GetDecimal(1), r.GetDecimal(4)), r.GetDecimal(5)))
+                    RoundReward(SpecialReward(r.GetDecimal(1), r.GetDecimal(2), r.GetDecimal(3)), r.GetDecimal(4), r.GetDecimal(5)))
                 |> readOnlyDict
 
             let defeatedChamps =
@@ -4227,7 +4291,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let rRewards =
                         match mRewards.TryGetValue rId with
                         | true, r -> r
-                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M, 0M), 0M)
+                        | false, _ -> RoundReward(SpecialReward(0M, 0M, 0M), 0M, 0M)
 
                     let dChamps =
                         match defeatedChamps.TryGetValue rId with
@@ -4279,8 +4343,12 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Db.newCommand SQL.PlayersEarned conn
                 |> Db.querySingle (fun r -> r.GetDecimal(0))
 
+            let monstrsEarned =
+                Db.newCommand SQL.MonstrsEarned conn
+                |> Db.querySingle (fun r -> r.GetDecimal(0))
+
             (GameStats(players, confirmedPlayers, champs, cMonsters, battles, rounds),
-                playersEarned, rewards)
+                playersEarned, monstrsEarned, rewards)
             |> Some
         with exn ->
             Log.Error(exn, "GetStats")

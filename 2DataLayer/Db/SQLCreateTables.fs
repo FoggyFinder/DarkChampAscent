@@ -205,6 +205,9 @@ module internal SQLTables =
             UserId INTEGER NOT NULL,
             RequestId INTEGER,
             NFTMonsterId INTEGER,
+            Balance NUMERIC NOT NULL,
+            TotalEarned NUMERIC NOT NULL,
+            Withdrawn NUMERIC NOT NULL,
             FOREIGN KEY (MonsterId)
                REFERENCES Monster (ID),
             FOREIGN KEY (UserId)
@@ -213,7 +216,12 @@ module internal SQLTables =
                REFERENCES UserGenMonsterRequest (ID),
             FOREIGN KEY (NFTMonsterId)
                REFERENCES NFTMonster (ID),
-            CHECK (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
+            CHECK (
+                (RequestId IS NOT NULL OR NFTMonsterId IS NOT NULL)
+                AND Balance >= 0
+                AND TotalEarned >= 0
+                AND Withdrawn >= 0
+            )
         );
 
         CREATE TABLE IF NOT EXISTS Battle (
@@ -313,11 +321,12 @@ module internal SQLTables =
             RoundId INT NOT NULL,
             Unclaimed NUMERIC NOT NULL,
             Burn NUMERIC NOT NULL,
-            DAO NUMETIC NOT NULL,
+            DAO NUMERIC NOT NULL,
             Reserve NUMERIC NOT NULL,
             Devs NUMERIC NOT NULL,
             Champs NUMERIC NOT NULL,
             Staking NUMERIC NOT NULL,
+            Monstr NUMERIC NOT NULL,
             FOREIGN KEY (RoundId)
                REFERENCES Round (ID),
             CHECK (
@@ -327,7 +336,8 @@ module internal SQLTables =
                 Reserve >= 0 AND
                 Devs >= 0 AND
                 Champs >= 0 AND
-                Staking >= 0 
+                Staking >= 0 AND
+                Monstr >= 0
             )
         );
 
@@ -340,6 +350,16 @@ module internal SQLTables =
             UNIQUE(ChampId, BattleId),
             FOREIGN KEY (ChampId)
                REFERENCES Champ (ID),
+            FOREIGN KEY (BattleId)
+               REFERENCES Battle (ID),
+            CHECK (Rewards > 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS MonsterRewardsPayed (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            BattleId INT NOT NULL UNIQUE,
+            Tx TEXT NOT NULL UNIQUE,
+            Rewards NUMERIC NOT NULL,
             FOREIGN KEY (BattleId)
                REFERENCES Battle (ID),
             CHECK (Rewards > 0)

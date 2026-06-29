@@ -469,8 +469,8 @@ let BattlePage () =
                                                 Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Reserve)} {WebEmoji.DarkCoin}" ]
                                             ]
                                             Html.tr [
-                                                Html.td [ prop.text $"{WebEmoji.Fire} Burn {WebEmoji.Fire}" ]
-                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Burn)} {WebEmoji.DarkCoin}" ]
+                                                Html.td [ prop.text $"{WebEmoji.Monsters} Monster {WebEmoji.Monsters}" ]
+                                                Html.td [ prop.dangerouslySetInnerHTML $"{Display.toRound6StrD(srewards.Monstr)} {WebEmoji.DarkCoin}" ]
                                             ]
                                         ]
                                     ]
