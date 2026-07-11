@@ -283,8 +283,7 @@ module Battle =
                     if isLucky stat
                     then Dmg.Critical(dmg' * 3UL)
                     else Dmg.Default dmg'
-                // TODO: return min magicCost stat.Magic
-                dmg', magicCost
+                dmg', min magicCost (uint64 stat.Magic)
             else Dmg.Missed, 1UL
         else Dmg.Missed, 0UL
     

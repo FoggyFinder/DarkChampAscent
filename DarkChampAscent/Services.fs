@@ -618,7 +618,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                 let revivalTime =
                     let baseRevival = Monster.getRevivalDuration monsterChar.Monster
                     let lvlRevival = Levels.getLvlByXp monster.MonsterRecord.Xp
-                    baseRevival + 3u * uint lvlRevival
+                    baseRevival + 5u * uint lvlRevival
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Finished, None, roundId))

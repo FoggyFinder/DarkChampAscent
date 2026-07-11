@@ -3311,14 +3311,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     ]
                     |> Db.scalar (fun v -> unbox<int64> v)
 
-                let duration = Monster.getRevivalDuration m.Monster
                 tn
                 |> Db.newCommandForTransaction SQL.ApplyEffectToMonster
                 |> Db.setParams [
                     "monsterId", SqlType.Int64 <| int64 m.Id
                     "itemId", SqlType.Int64 itemId
                     "roundId", SqlType.Int64 <| int64 bresult.RoundId
-                    "duration", SqlType.Int <| int duration
+                    "duration", SqlType.Int <| int monsterRevivalTime
                 ]
                 |> Db.exec
 
@@ -4341,11 +4340,11 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
 
             let playersEarned =
                 Db.newCommand SQL.PlayersEarned conn
-                |> Db.querySingle (fun r -> r.GetDecimal(0))
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
 
             let monstrsEarned =
                 Db.newCommand SQL.MonstrsEarned conn
-                |> Db.querySingle (fun r -> r.GetDecimal(0))
+                |> Db.querySingle (fun r -> if r.IsDBNull(0) then 0M else r.GetDecimal(0))
 
             (GameStats(players, confirmedPlayers, champs, cMonsters, battles, rounds),
                 playersEarned, monstrsEarned, rewards)
