@@ -371,7 +371,7 @@ let BattlePage () =
                                     Html.img [ prop.className "picNormal"; Utils.srcMonsterImg cbi.Monster.Picture ]
                                     Html.div [ prop.className "center"; prop.children [ monsterLink (uint64 cbi.Monster.Id) cbi.Monster.Name ] ]
                                     Html.div [ prop.className "center muted"; prop.text (Display.monsterClass(cbi.Monster.MType, cbi.Monster.MSubType)) ]
-                                    Html.div [ prop.className "center"; prop.text $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp cbi.Monster.XP} lvl)" ]
+                                    Html.div [ prop.className "center"; prop.text $"{WebEmoji.Gem} {cbi.Monster.XP} XP ({WebEmoji.Level} {Levels.getLvlByXp (cbi.Monster.XP, true)} lvl)" ]
                        
                                     chTable cbi.Monster.Stat
                                 ]

@@ -606,7 +606,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         ChampId = ar.ChampId
                         ChampName = name
                         Stat = stat
-                        ChampLvl = Levels.getLvlByXp xp
+                        ChampLvl = Levels.getLvlByXp (xp, false)
                     })
 
             let champNames = champs |> Map.map(fun _ (_,_,name) -> name)
@@ -617,8 +617,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             | Ok bres ->
                 let revivalTime =
                     let baseRevival = Monster.getRevivalDuration monsterChar.Monster
-                    let lvlRevival = Levels.getLvlByXp monster.MonsterRecord.Xp
-                    baseRevival + 5u * uint lvlRevival
+                    let lvlRevival = Levels.getLvlByXp (monster.MonsterRecord.Xp, true)
+                    baseRevival + 10u * uint lvlRevival
                 match db.FinalizeRound bres revivalTime boosts with
                 | Ok _ ->
                     roundStatus.Set(RoundInfoDTO(RoundStatus.Finished, None, roundId))

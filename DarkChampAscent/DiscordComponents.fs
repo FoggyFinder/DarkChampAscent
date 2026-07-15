@@ -182,7 +182,7 @@ module BattleComponent =
                     ]))
 
         let monster = br.MonsterChar.Monster
-        let monsterLvl = Levels.getLvlByXp br.MonsterChar.XP
+        let monsterLvl = Levels.getLvlByXp (br.MonsterChar.XP, true)
         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
         let mstat' = monsterLvlStats + br.MonsterChar.Stat
         let stats =

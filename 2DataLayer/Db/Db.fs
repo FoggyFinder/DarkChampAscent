@@ -1784,7 +1784,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             enum<MonsterType> <| r.GetInt32(13),
                             enum<MonsterSubType> <| r.GetInt32(14),
                             Some (uint64 userId), gtype)
-                    let monsterLvl = Levels.getLvlByXp mi.XP
+                    let monsterLvl = Levels.getLvlByXp (mi.XP, true)
                     let monsterLvlStats = Monster.getMonsterStatsByLvl(mi.MType, mi.MSubType, monsterLvl)
                     mi.WithStat(mi.Stat + monsterLvlStats))
 
@@ -2385,7 +2385,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     "champId", SqlType.Int64 <| int64 champId
                 ]
                 |> Db.scalar (fun v -> unbox<int64> v |> uint64)
-            let lvl = Levels.getLvlByXp xp
+            let lvl = Levels.getLvlByXp (xp, false)
             if lvl > lvledChars then
                 Db.newCommand SQL.InsertChampLvl conn
                 |> Db.setParams [
@@ -3638,7 +3638,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     ownerId, gtype))
                 |> function
                     | Some monster ->
-                        let monsterLvl = Levels.getLvlByXp monster.XP
+                        let monsterLvl = Levels.getLvlByXp (monster.XP, true)
                         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
                         monster.WithStat(monster.Stat + monsterLvlStats)
                         |> Some
@@ -4169,7 +4169,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 |> function
                     | Some v ->
                         let monster = v.Monster
-                        let monsterLvl = Levels.getLvlByXp monster.XP
+                        let monsterLvl = Levels.getLvlByXp (monster.XP, true)
                         let monsterLvlStats = Monster.getMonsterStatsByLvl(monster.MType, monster.MSubType, monsterLvl)
                         v.WithMonsterInfo(v.Monster.WithStat(monster.Stat + monsterLvlStats))
                         |> Ok

@@ -46,7 +46,7 @@ let ChampDetailPage (champId: uint64) =
     deferred data (fun d ->
         let c = d.ChampInfo.ChampInfo
         let isOwner = d.BelongsToAUser
-        let lvl = Levels.getLvlByXp c.XP
+        let lvl = Levels.getLvlByXp (c.XP, false)
 
         let bs = c.BoostStat |> Option.defaultValue Stat.Zero
         let ls = c.LevelsStat |> Option.defaultValue Stat.Zero
@@ -279,7 +279,7 @@ let MonsterDetailPage (monsterId: uint64) =
 
     deferred data (fun d ->
         let m = d.Monster.MonsterInfo
-        let lvl = Levels.getLvlByXp(m.XP)
+        let lvl = Levels.getLvlByXp(m.XP, true)
 
         let bs = Stat.Zero
         let ls = Monster.getMonsterStatsByLvl(m.MType, m.MSubType, lvl)
@@ -562,7 +562,7 @@ let UserDetailPage (userId: uint64) =
                                             ]
                                         ]
 
-                                        let lvl = Levels.getLvlByXp c.XP
+                                        let lvl = Levels.getLvlByXp (c.XP, false)
 
                                         Html.div [
                                             prop.className "champ-body"
@@ -639,7 +639,7 @@ let UserDetailPage (userId: uint64) =
                                             ]
                                         ]
 
-                                        let lvl = Levels.getLvlByXp m.XP
+                                        let lvl = Levels.getLvlByXp (m.XP, true)
 
                                         Html.div [
                                             prop.className "champ-body"

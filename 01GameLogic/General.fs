@@ -392,7 +392,8 @@ module Levels =
     open System.Collections.Generic
 
     let [<Literal>] XPPerLvl = 100UL
-    
+    let [<Literal>] MonsterXPPerLvl = 500UL
+
     let statFromCharacteristics(lvls:IDictionary<Characteristic, int>) =
         {
             Health = 10L * (Utils.getValueOrDefault lvls 0 Characteristic.Health |> int64)
@@ -408,8 +409,11 @@ module Levels =
     let statFromCharacteristicSeq(lvls:Characteristic seq) =
         lvls |> Seq.countBy id |> dict |> statFromCharacteristics
 
-    let getLvlByXp (xp:uint64) =
-        xp / XPPerLvl
+    let getLvlByXp (xp:uint64, isMonster:bool) =
+        if isMonster then
+            xp / MonsterXPPerLvl
+        else
+            xp / XPPerLvl
 
 module Champ =
     let fromBackground(background:Background) : Stat =
