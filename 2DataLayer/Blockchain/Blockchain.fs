@@ -208,7 +208,7 @@ let getDarkCoinTxForWallet(wallet:string, afterTimeOpt:DateTime option) =
 let getNotesForWallet(wallet:string, afterTimeOpt:DateTime option) =
     getAssetTxsForAddress(wallet, Nullable(), afterTimeOpt)
     |> Seq.choose(fun tx ->
-        if tx.PaymentTransaction <> null && tx.PaymentTransaction.Amount = 0UL then
+        if tx.PaymentTransaction <> null then
             Some(tx.Sender, tx.Note)
         else None)
 
