@@ -3491,7 +3491,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.exec
 
-                if bresult.MonsterDefeater.IsSome then
+                if bresult.MonsterDefeater.IsSome || (bresult.MonsterChar.Stat.IsAlive |> not) then
                     Db.newCommand SQL.FinishBattle conn
                     |> Db.setParams [
                         "battleId", SqlType.Int64 <| int64 bresult.BattleId
