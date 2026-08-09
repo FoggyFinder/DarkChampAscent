@@ -632,6 +632,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                         let mp = DUtils.v2ComponentMessage([ msg ])
                         do! DUtils.sendMsgToLogChannel gclient mp
 
+                    db.RebuildRanks()
+
                     let mp = MessageProperties(Content = $"Round {roundId} is completed.")
                     do! DUtils.sendMsgToLogChannel gclient mp
                 | Error _ -> ()
@@ -648,8 +650,9 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             // TODO: add link to a champ's owner
             task {
                 let name, ipfs = db.GetChampNameIPFSById rar.ChampId |> Option.defaultValue ("", "")
-                let mp = 
-                    [ BattleComponent.champJoinRoundComponent name ipfs rar.ChampId ]
+                let rank = db.GetChampRank rar.ChampId
+                let mp =
+                    [ BattleComponent.champJoinRoundComponent name ipfs rar.ChampId rank ]
                     |> DUtils.v2ComponentMessage
                 DUtils.sendMsgToLogChannel gclient mp |> ignore
             }
@@ -702,7 +705,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                                     else Move.Attack
                                 { Move = move; ChampId = c.ID })
                         let results =
-                            moves |> List.map(fun rar -> joinRound(userId, rar, moves.Length = 1))
+                            moves |> List.map(fun rar -> joinRound(userId, rar, false))
                         if results |> List.forall(fun r -> r.IsOk) then
                             Ok (champs.Length + v)
                         else Error("Unexpected error")
@@ -774,6 +777,8 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
 
             do! updateBattleStatus()
             
+            db.RebuildRanks()
+
             do! Task.Delay(TimeSpan.FromMinutes(0.5), cancellationToken)
             while cancellationToken.IsCancellationRequested |> not do
                 try

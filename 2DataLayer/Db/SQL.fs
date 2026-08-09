@@ -1032,3 +1032,5 @@ module internal SQL =
          LEFT JOIN CustomUser cu ON cu.ID = u.CustomUserId
          WHERE u.ID = @userId
     """
+
+    let GetChampsRank = "SELECT ChampId, RANK() OVER (ORDER BY Xp DESC) AS ChampRank FROM ChampStat"

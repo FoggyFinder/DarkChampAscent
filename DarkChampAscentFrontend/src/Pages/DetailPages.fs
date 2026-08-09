@@ -131,6 +131,7 @@ let ChampDetailPage (champId: uint64) =
                                             ]
                                             statRow WebEmoji.Gem "XP" (string c.XP)
                                             statRow WebEmoji.Level "Level" (string lvl)
+                                            statRow WebEmoji.Leaderboard "Rank" (string c.Rank)
                                         ]
                                     ]
                                 ]
@@ -577,6 +578,7 @@ let UserDetailPage (userId: uint64) =
                                                                 Html.tbody [
                                                                     statRow WebEmoji.Gem "XP" (string c.XP)
                                                                     statRow WebEmoji.Level "Level" (string lvl)
+                                                                    statRow WebEmoji.Leaderboard "Rank" (string c.Rank)
                                                                 ]
                                                             ]
                                                         ]

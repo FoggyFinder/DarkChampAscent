@@ -7,6 +7,7 @@ open Db.Sqlite
 open Gen
 open Types
 open DarkChampAscent.Api
+open System.Threading
 
 type DbKeys =
     | LastTrackedChampCfg = 0
@@ -111,6 +112,7 @@ open Blockchain
 open GameLogic.Limits
 open System.Text
 open System.Collections.Generic
+open System.Collections.Frozen
 
 type SqliteStorage(options:IOptions<DbConfiguration>) =
     let jsOptions = JsonFSharpOptions().ToJsonSerializerOptions()
@@ -440,6 +442,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     let dbIdByWallet = ConcurrentDictionary<string, int64>()
     let userChampsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, ChampInfoWithStat list>>()
     let userMonstrsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, MonsterInfo list>>()
+    let mutable champsRank : FrozenDictionary<uint64, uint64> = FrozenDictionary<uint64, uint64>.Empty
 
     let getUserIdByWallet(wallet: string) =
         try 
@@ -932,6 +935,16 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Log.Error(exn, $"createNFTBasedMonster {requestId}")
                 Error($"Unexpected error: {exn.Message}")
         | None -> Error("User not found")
+
+    let tryGetChampRank(cId:uint64) =
+        try
+            let snapshot = Volatile.Read(&champsRank)
+            match snapshot.TryGetValue cId with
+            | true, rank -> Some rank
+            | false, _ -> None
+        with exp ->
+            Log.Error(exp, "tryGetChampRank")
+            None
 
     member _.FindUserIdByWallet(wallet: string) = getUserIdByWallet wallet
     
@@ -1712,7 +1725,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let xp = uint64 (r.GetInt64(11))
                     let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
                     let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
-                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat))
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat, tryGetChampRank cId |> Option.defaultValue 1000UL))
 
             let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
             
@@ -1919,7 +1932,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let xp = uint64 (r.GetInt64(11))
                     let lStat = Map.tryFind cId lvls |> Option.defaultValue (Stat.Zero)
                     let bsStat = Map.tryFind cId boosts |> Option.defaultValue (Stat.Zero)
-                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat))
+                    ChampInfoWithStat(cId, r.GetString(1), r.GetString(2), xp, bStat + lStat + bsStat, tryGetChampRank cId |> Option.defaultValue 1000UL))
                 |> Ok
             with exn ->
                 Log.Error(exn, $"GetActiveUserChamps {uId}")
@@ -2066,8 +2079,9 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     "champId", SqlType.Int64 champId
                 ]
                 |> Db.querySingle (fun r ->
+                    let cId = uint64 <| r.GetInt64(0)
                     ChampInfo(
-                        uint64 <| r.GetInt64(0),
+                        cId,
                         r.GetString(1),
                         r.GetString(2),
                         Math.Round(r.GetDecimal(3), 6),
@@ -2093,7 +2107,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                             Head = r.GetInt32(17) |> enum<Head>
                             Armour = r.GetInt32(18) |> enum<Armour>
                             Extra = r.GetInt32(19) |> enum<Extra>
-                        }, None, None, uint64 lvledChars, uint64 <| r.GetInt64(20)))
+                        }, None, None, uint64 lvledChars, uint64 <| r.GetInt64(20), tryGetChampRank cId |> Option.defaultValue 1000UL))
             
             match baseChampInfoOpt with
             | Some baseChampInfo ->
@@ -4601,6 +4615,19 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Log.Error(exn, $"AddCreateNFTBasedMonsterRequest")
                 Error exn.Message
         | None -> Error("Unable to find user")
+    
+    member _.GetChampRank(cId:uint64) = tryGetChampRank cId
+    
+    member _.RebuildRanks() =
+        try
+            let next = Dictionary<uint64, uint64>()
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetChampsRank conn
+            |> Db.query(fun r -> next.[r.GetInt64(0) |> uint64] <- r.GetInt64(1) |> uint64)
+            |> ignore
+            Volatile.Write(&champsRank, next.ToFrozenDictionary())
+        with exp ->
+            Log.Error(exp, "RebuildRanks")
         
     member _.GetDateTimeKey(key:DbKeys) =
         use conn = new SqliteConnection(cs)

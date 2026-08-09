@@ -80,9 +80,10 @@ module MonstersComponent =
 [<RequireQualifiedAccess>]
 module BattleComponent =
     open Helpers
-    let champJoinRoundComponent (name:string) (ipfs:string) (champId:uint64) =
+    let champJoinRoundComponent (name:string) (ipfs:string) (champId:uint64) (rankO: uint64 option) =
+        let rankS = match rankO with | Some rank -> $"# {rank} {Emoj.Trophy}" | None -> ""
         let components =
-            [ TextDisplayProperties($"** [{name}]({Links.champProfile champId}) **")
+            [ TextDisplayProperties($"** [{name}]({Links.champProfile champId}) ({rankS}) **")
               TextDisplayProperties("joined round!") ]
         ComponentContainerProperties(
             [ ComponentSectionProperties(

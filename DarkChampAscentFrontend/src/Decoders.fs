@@ -293,7 +293,8 @@ let decodeChampInfo (m: Map<string, Json>) : ChampInfo option =
         let boostStat = field "BoostStat" m |> Option.bind (function JNull -> None | j -> asObj j |> Option.bind decodeStat)
         let levelsStat = field "LevelsStat" m |> Option.bind (function JNull -> None | j -> asObj j |> Option.bind decodeStat)
         let leveledChars = reqNum "LeveledChars" m |> Option.map asUInt64 |> Option.defaultValue 0UL
-        Some (ChampInfo(asUInt64 id, name, ipfs, asDecimal bal, asUInt64 xp, stat, traits, boostStat, levelsStat, leveledChars, asUInt64 ownerId))
+        let rank = reqNum "Rank" m |> Option.map asUInt64 |> Option.defaultValue 0UL
+        Some (ChampInfo(asUInt64 id, name, ipfs, asDecimal bal, asUInt64 xp, stat, traits, boostStat, levelsStat, leveledChars, asUInt64 ownerId, rank))
     | _ -> None
 
 let decodeGenRequest (m: Map<string, Json>) : GenRequest option =
@@ -368,9 +369,9 @@ let decodeShopDTO (m: Map<string, Json>) : ShopDTO option =
 
 let decodeChampInfoWithStat (m: Map<string, Json>) =
     let stat = (field "Stat" m) |> Option.bind asObj |> Option.bind decodeStat
-    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, reqNum "XP" m, stat with
-    | Some id, Some name, Some ipfs, Some xp, Some stat ->
-        Some (ChampInfoWithStat(uint64 id, name, ipfs, uint64 xp, stat))
+    match reqNum "ID" m, reqStr "Name" m, reqStr "IPFS" m, reqNum "XP" m, stat, reqNum "Rank" m  with
+    | Some id, Some name, Some ipfs, Some xp, Some stat, Some rank ->
+        Some (ChampInfoWithStat(uint64 id, name, ipfs, uint64 xp, stat, uint64 rank))
     | _ -> None
 
 let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =

@@ -20,10 +20,10 @@
 	</ItemGroup>
 	
 	<ItemGroup>
-		<PackageReference Include="Algorand4" Version="4.4.1.2026010317" />
+		<PackageReference Include="Algorand4" Version="4.7.4.2026080422" />
 		<PackageReference Include="Donald" Version="10.1.0" />
 		<PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
-		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0-preview.6.26359.118" />
 		<PackageReference Include="IpfsShipyard.Ipfs.Core" Version="0.7.0" />
 		<PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
 	</ItemGroup>

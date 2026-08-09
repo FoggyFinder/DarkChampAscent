@@ -9,7 +9,8 @@
 	<ItemGroup>
 		<PackageReference Include="Falco" Version="5.1.0" />
 		<PackageReference Include="AspNet.Security.OAuth.Discord" Version="10.0.0" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+		<PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 		<PackageReference Include="NetCord.Hosting.Services" Version="1.0.0-alpha.448" />

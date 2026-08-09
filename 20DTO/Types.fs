@@ -12,7 +12,7 @@ type UserLink(uId:uint64, nickname:string) =
     member _.UserRawId = uId
     member _.Nickname = nickname
 
-type ChampInfo(id: uint64, name: string, ipfs: string, balance: decimal, xp: uint64, stat: Stat, traits: Traits, boostStat: Stat option, levelsStat: Stat option, leveledChars: uint64, ownerId: uint64) =
+type ChampInfo(id: uint64, name: string, ipfs: string, balance: decimal, xp: uint64, stat: Stat, traits: Traits, boostStat: Stat option, levelsStat: Stat option, leveledChars: uint64, ownerId: uint64, rank:uint64) =
     member _.ID = id
     member _.Name = name
     member _.Ipfs = ipfs
@@ -24,8 +24,9 @@ type ChampInfo(id: uint64, name: string, ipfs: string, balance: decimal, xp: uin
     member _.LevelsStat = levelsStat
     member _.LeveledChars = leveledChars
     member _.OwnerId = ownerId
+    member _.Rank = rank
     member x.WithFullStats(levelsStat, boostedStat) =
-        ChampInfo(x.ID, x.Name, x.Ipfs, x.Balance, x.XP, x.Stat, x.Traits, Some boostedStat, Some levelsStat, x.LeveledChars, x.OwnerId)
+        ChampInfo(x.ID, x.Name, x.Ipfs, x.Balance, x.XP, x.Stat, x.Traits, Some boostedStat, Some levelsStat, x.LeveledChars, x.OwnerId, x.Rank)
 
 type ChampInfoWithUserLink(champInfo:ChampInfo, userLink: UserLink) =
     member _.ChampInfo = champInfo
@@ -168,12 +169,13 @@ type ChampShortInfo(cid:uint64, name:string, ipfs:string, xp:uint64) =
     member _.IPFS = ipfs
     member _.XP = xp
 
-type ChampInfoWithStat(cId:uint64, name:string, ipfs:string, xp:uint64, stat:Stat) =
+type ChampInfoWithStat(cId:uint64, name:string, ipfs:string, xp:uint64, stat:Stat, rank:uint64) =
     member _.ID = cId
     member _.Name = name
     member _.IPFS = ipfs
     member _.XP = xp
     member _.Stat = stat
+    member _.Rank = rank
 
 type MonsterShortInfo(mid:uint64, name:string, mtype:MonsterType, msubtype:MonsterSubType, pic:MonsterImg, xp:uint64) =
     member _.ID = mid
