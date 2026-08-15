@@ -53,7 +53,7 @@ module Monster =
         match mtype with
         | MonsterType.Zombie ->
             {
-                Health = 2000L
+                Health = 2500L
                 Magic = 0L
                 Accuracy = 1L
                 Luck = 1L
@@ -64,7 +64,7 @@ module Monster =
             }            
         | MonsterType.Demon ->
             {
-                Health = 3500L
+                Health = 4000L
                 Magic = 550L
                 Accuracy = 2L
                 Luck = 4L
@@ -75,7 +75,7 @@ module Monster =
             }
         | MonsterType.Necromancer ->
             {
-                Health = 1500L
+                Health = 2000L
                 Magic = 2500L
                 Accuracy = 3L
                 Luck = 2L
@@ -86,7 +86,7 @@ module Monster =
             }
         | MonsterType.Universal ->
             {
-                Health = 1000L
+                Health = 1500L
                 Magic = 1000L
                 Accuracy = 3L
                 Luck = 2L
@@ -98,10 +98,10 @@ module Monster =
     
     let private getSubTypeStats(msubtype:MonsterSubType) =
         match msubtype with
-        | MonsterSubType.None -> Stat.Zero            
+        | MonsterSubType.None -> { Stat.Zero with Health = 2000L }           
         | MonsterSubType.Fire ->
             {
-                Health = 500L
+                Health = 750L
                 Magic = 100L
                 Accuracy = 1L
                 Luck = 1L
@@ -112,7 +112,7 @@ module Monster =
             }
         | MonsterSubType.Frost ->
             {
-                Health = 500L
+                Health = 1000L
                 Magic = 100L
                 Accuracy = 1L
                 Luck = 1L

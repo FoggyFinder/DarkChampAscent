@@ -25,7 +25,7 @@ module internal SQL =
     let GetAliveMonsters = """
         SELECT m.ID, um.UserId FROM Monster m
         LEFT JOIN UserMonster um ON um.MonsterId = m.ID 
-        WHERE m.Health > 0 AND m.ID NOT IN (
+        WHERE m.ID NOT IN (
 	        SELECT MonsterId FROM MonsterDefeats
 	        WHERE RoundId <= @roundId AND RoundId + RevivalDuration >= @roundId)      
     """
