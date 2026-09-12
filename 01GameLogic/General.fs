@@ -392,7 +392,7 @@ module Levels =
     open System.Collections.Generic
 
     let [<Literal>] XPPerLvl = 100UL
-    let [<Literal>] MonsterXPPerLvl = 500UL
+    let [<Literal>] MonsterXPPerLvl = 400UL
 
     let statFromCharacteristics(lvls:IDictionary<Characteristic, int>) =
         {

@@ -4,7 +4,7 @@
 module Links =
     let [<Literal>] Github    = "https://github.com/FoggyFinder/DarkChampAscent"
     let [<Literal>] Discord   = "https://discord.gg/bYPtQhYKwN"
-    let [<Literal>] IPFS      = "https://ipfs.dark-coin.io/ipfs/"
+    let [<Literal>] IPFS      = "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/"
     let [<Literal>] DarkCoinIo = "https://dark-coin.io/"
     let [<Literal>] DarkChampCollection = "https://www.downbad.farm/collection/dark-coin-champions"
     let [<Literal>] AIPG      = "https://aipowergrid.io/"

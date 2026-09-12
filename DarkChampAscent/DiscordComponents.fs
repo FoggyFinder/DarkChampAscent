@@ -88,7 +88,7 @@ module BattleComponent =
         ComponentContainerProperties(
             [ ComponentSectionProperties(
                 ComponentSectionThumbnailProperties(
-                    ComponentMediaProperties($"https://ipfs.dark-coin.io/ipfs/{ipfs}")),
+                    ComponentMediaProperties($"https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/{ipfs}")),
                     components)]) :> IMessageComponentProperties
 
     let roundCard (roundId:int64) (rewards:decimal) =
