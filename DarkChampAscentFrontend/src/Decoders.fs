@@ -189,15 +189,17 @@ let private decodeMonsterImg (j: Json) : MonsterImg option =
     | _ -> None
 
 let private decodeDiscordUser (m: Map<string, Json>) : DiscordUser option =
-    match reqStr "Nickname" m, reqNum "DiscordId" m with
-    | Some nick, Some did ->
-        Some (DiscordUser(nick, asUInt64 did, optStr "PicRaw" m))
+    match reqNum "DiscordId" m with
+    | Some did ->
+        let nickname = optStr "Nickname" m |> Option.defaultValue "Unknown"
+        Some (DiscordUser(nickname, asUInt64 did, optStr "PicRaw" m))
     | _ -> None
 
 let private decodeCustomUser (m: Map<string, Json>) : CustomUser option =
-    match reqStr "Nickname" m, reqNum "CustomId" m with
-    | Some nick, Some cid ->
-        Some (CustomUser(nick, asUInt64 cid))
+    match reqNum "CustomId" m with
+    | Some cid ->
+        let nickname = optStr "Nickname" m |> Option.defaultValue "Unknown"
+        Some (CustomUser(nickname, asUInt64 cid))
     | _ -> None
 
 let private decodeWeb3User (m: Map<string, Json>) : Web3User option =
@@ -387,8 +389,10 @@ let decodeUserStorageDTO (m: Map<string, Json>) : UserStorageDTO option =
     Some (UserStorageDTO(storage, champs))
 
 let decodeUserLink (m: Map<string, Json>) : UserLink option =
-    match reqNum "UserRawId" m, reqStr "Nickname" m with
-    | Some uId, Some nickname -> Some (UserLink(asUInt64 uId, nickname))
+    match reqNum "UserRawId" m with
+    | Some uId ->
+        let nickname = optStr "Nickname" m |> Option.defaultValue "Unknown"
+        Some (UserLink(asUInt64 uId, nickname))
     | _ -> None
 
 let decodeChampInfoWithUserLink (m: Map<string, Json>) : ChampInfoWithUserLink option =
@@ -420,16 +424,14 @@ let decodeMonsterDTO (m: Map<string, Json>) : MonsterDTO option =
     | _ -> None
 
 let decodeUserInfo (m: Map<string, Json>) : UserInfo option =
-    match reqStr "Nickname" m with
-    | Some nickname ->
-        let champs =
-            reqArr "Champs" m
-            |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
-        let monsters =
-            reqArr "Monsters" m
-            |> List.choose (fun j -> j |> asObj |> Option.bind decodeMonsterInfo)
-        Some (UserInfo(nickname, champs, monsters))
-    | _ -> None
+    let nickname = optStr "Nickname" m |> Option.defaultValue "Unknown"
+    let champs =
+        reqArr "Champs" m
+        |> List.choose (fun j -> j |> asObj |> Option.bind decodeChampInfoWithStat)
+    let monsters =
+        reqArr "Monsters" m
+        |> List.choose (fun j -> j |> asObj |> Option.bind decodeMonsterInfo)
+    Some (UserInfo(nickname, champs, monsters))
 
 let decodeUserMonstersDTO (m: Map<string, Json>) : UserMonstersDTO option =
     match reqNum "Price" m with

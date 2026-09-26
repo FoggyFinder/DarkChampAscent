@@ -176,8 +176,12 @@ module Cache =
                 try
                     let client = ctx.Plug<RestClient>()
                     let! u = client.GetUserAsync dId
-                    names.TryAdd(dId, u.GlobalName) |> ignore
-                    return u.GlobalName
+                    let name =
+                        match u.GlobalName with
+                        | null | "" -> u.Username
+                        | gn -> gn
+                    names.TryAdd(dId, name) |> ignore
+                    return name
                 with exn ->
                     Log.Error("Attempt to get user info", exn)
                     return $"Discord:{dId}"
