@@ -866,6 +866,17 @@ module LeaderboardHandlers =
 module TxHandlers =
     open DarkChampAscent.Api
 
+    let validateSignedTx (signedTx: SignedTransaction) (tx: Tx) (gameWallet:string) =
+        match signedTx.Tx with
+        | :? AssetTransferTransaction as att ->
+            if att.XferAsset <> Blockchain.DarkCoinAssetId then Error "Wrong asset"
+            elif att.AssetReceiver.EncodeAsString() <> gameWallet then Error "Wrong receiver"
+            elif att.Sender.EncodeAsString() <> tx.Wallet then Error "Sender doesn't match wallet"
+            elif Text.Encoding.UTF8.GetString att.Note <> tx.Note then Error "Note doesn't match"
+            elif att.AssetAmount > 0UL then Ok (decimal att.AssetAmount / Blockchain.Algo6Decimals)
+            else Error "Amount must be greater than 0"
+        | _ -> Error "Expected a DarkCoin asset transfer"
+
     let createTxHandler : HttpHandler =
         fun ctx ->
             task {
@@ -954,90 +965,86 @@ module TxHandlers =
                                 let txnB64 = s.ToString()
                                 let signedTxnBytes = Convert.FromBase64String(txnB64)
                                 let signedTx = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
-                                let amount =
-                                    match signedTx.Tx with
-                                    | :? AssetTransferTransaction as att ->
-                                        decimal att.AssetAmount / Algo6Decimals
-                                    | _ ->
-                                        Log.Information($"{signedTx.Tx.GetType()}")
-                                        0M
-                                let isValid =
-                                    match tx with
-                                    | Tx.Confirm _ -> Ok (())
-                                    | _ -> db.IsTxValid(user.ID, tx, amount)
-                                match isValid with
-                                | Ok () ->
-                                    let! txstatus = Blockchain.sendTX64 txnB64
+                                let wallet = builder.Configuration.GetSection("Configuration:Wallet").Get<WalletConfiguration>()
+                                match tx with
+                                | Tx.Confirm _ -> return Error "Unexpected case"
+                                | _ ->
+                                    let amountR =
+                                        validateSignedTx signedTx tx wallet.GameWallet
+                                        |> Result.bind(fun amount -> db.IsTxValid(user.ID, tx, amount) |> Result.map(fun () -> amount))
+                                    match amountR with
+                                    | Ok amount ->
+                                        let! txstatus = Blockchain.sendTX64 txnB64
                                     
-                                    match txstatus with
-                                    | TxStatus.Confirmed(txId, _) ->
+                                        match txstatus with
+                                        | TxStatus.Confirmed(txId, _) ->
                                         
-                                        let ptx =
-                                            ParsedTx(txId, signedTx.Tx.Sender.EncodeAsString(), amount, 
-                                                System.Text.Encoding.UTF8.GetString signedTx.Tx.Note, Some tx)
-                                        let! b =
-                                            Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
-                                                5 (TimeSpan.FromSeconds(5.))
-                                        if b then
-                                            let msg =
-                                                match tx with
-                                                | Tx.Confirm _ | Tx.RenameChamp _ -> "Done!"
-                                                | Tx.CreateCustomMonster _ ->
-                                                    "Request created. We use external AIPG API so don't have full control over it. Processing may take up to 5-10 minutes. You can track progress on 'Requests' tab."
-                                                | Tx.BuyItem _ -> "Done! You can check 'Storage' to see all available items"
-                                                | Tx.Donate (_, _) ->
-                                                    let sender =
-                                                        match user with
-                                                        | Account.Discord du -> DUtils.mention du.DiscordId
-                                                        | Account.Custom cu -> cu.Nickname
-                                                        | Account.Web3 w3 ->
-                                                            match db.FindDiscordIdByWallet w3.Wallet with
-                                                            | Some dId -> DUtils.mention (uint64 dId)
-                                                            | None -> w3.Wallet
-                                                    let sendMsg() = task {
-                                                        let uri = $"https://allo.info/tx/{txId}"
-                                                        let card = Components.donationCard amount sender (Some uri)
-                                                        let newDonationMessage =
-                                                                MessageProperties()
-                                                                    .WithComponents([ card ])
-                                                                    .WithFlags(MessageFlags.IsComponentsV2)
-                                                                    .WithAllowedMentions(AllowedMentionsProperties.None)
-                                                        let gclient = ctx.Plug<GatewayClient>()
-                                                        do! DUtils.sendMsgToLogChannel gclient newDonationMessage
-                                                    }
-                                                    sendMsg() |> ignore
-                                                    "Thank you!"
-                                                | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
-                                                    let sendMsg(monsterInfo:MonsterInfo) = task {
-                                                        let gclient = ctx.Plug<GatewayClient>()
-                                                        let! createdBy = Cache.tryGetUserLinkByUserId db gclient.Rest user.ID
-                                                        let uri =
-                                                            match monsterInfo.Picture with
-                                                            | MonsterImg.File _ -> ""
-                                                            | MonsterImg.Ipfs ipfs -> "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + ipfs
-                                                        let createdByStr =
-                                                            match createdBy with
-                                                            | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
-                                                            | None -> None
+                                            let ptx =
+                                                ParsedTx(txId, signedTx.Tx.Sender.EncodeAsString(), amount, 
+                                                    System.Text.Encoding.UTF8.GetString signedTx.Tx.Note, Some tx)
+                                            let! b =
+                                                Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
+                                                    5 (TimeSpan.FromSeconds(5.))
+                                            if b then
+                                                let msg =
+                                                    match tx with
+                                                    | Tx.Confirm _ | Tx.RenameChamp _ -> "Done!"
+                                                    | Tx.CreateCustomMonster _ ->
+                                                        "Request created. We use external AIPG API so don't have full control over it. Processing may take up to 5-10 minutes. You can track progress on 'Requests' tab."
+                                                    | Tx.BuyItem _ -> "Done! You can check 'Storage' to see all available items"
+                                                    | Tx.Donate (_, _) ->
+                                                        let sender =
+                                                            match user with
+                                                            | Account.Discord du -> DUtils.mention du.DiscordId
+                                                            | Account.Custom cu -> cu.Nickname
+                                                            | Account.Web3 w3 ->
+                                                                match db.FindDiscordIdByWallet w3.Wallet with
+                                                                | Some dId -> DUtils.mention (uint64 dId)
+                                                                | None -> w3.Wallet
+                                                        let sendMsg() = task {
+                                                            let uri = $"https://allo.info/tx/{txId}"
+                                                            let card = Components.donationCard amount sender (Some uri)
+                                                            let newDonationMessage =
+                                                                    MessageProperties()
+                                                                        .WithComponents([ card ])
+                                                                        .WithFlags(MessageFlags.IsComponentsV2)
+                                                                        .WithAllowedMentions(AllowedMentionsProperties.None)
+                                                            let gclient = ctx.Plug<GatewayClient>()
+                                                            do! DUtils.sendMsgToLogChannel gclient newDonationMessage
+                                                        }
+                                                        sendMsg() |> ignore
+                                                        "Thank you!"
+                                                    | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
+                                                        let sendMsg(monsterInfo:MonsterInfo) = task {
+                                                            let gclient = ctx.Plug<GatewayClient>()
+                                                            let! createdBy = Cache.tryGetUserLinkByUserId db gclient.Rest user.ID
+                                                            let uri =
+                                                                match monsterInfo.Picture with
+                                                                | MonsterImg.File _ -> ""
+                                                                | MonsterImg.Ipfs ipfs -> "https://mainnet.api.perawallet.app/v1/ipfs-thumbnails/" + ipfs
+                                                            let createdByStr =
+                                                                match createdBy with
+                                                                | Some uLink -> $"Created by [{uLink.Nickname}]({Links.userProfile uLink.UserRawId})" |> Some
+                                                                | None -> None
                                                         
-                                                        let monsterCard = MonstersComponent.monsterComponent monsterInfo $"is {Format.createMsg monsterInfo.MType}!" uri createdByStr
-                                                        let mp = MessageProperties().WithComponents([monsterCard]).WithFlags(MessageFlags.IsComponentsV2)
-                                                        do! DUtils.sendMsgToLogChannel gclient mp
-                                                    }
-                                                    let monsterInfoO = db.GetMonsterInfoByRequestId (int64 requestId)
-                                                    match monsterInfoO with
-                                                    | Some monsterInfo ->
-                                                        sendMsg(monsterInfo) |> ignore
-                                                        $"{monsterInfo.Id}"
-                                                    | None ->
-                                                        "Thank you. Monster was created!"
-                                            return Ok msg
-                                        else
-                                            return Error $"Tx ({txId}) was confirmed but unexpected error occured while processing"
-                                    | TxStatus.Unconfirmed tx -> return Error ($"Sorry, tx {tx} was recorded but not confirmed in time. Please try again later. Current one will be refunded within 24 hrs.")
-                                    | TxStatus.Error err -> return Error (err.ToString())
-                                | Error err ->
-                                    return Error err
+                                                            let monsterCard = MonstersComponent.monsterComponent monsterInfo $"is {Format.createMsg monsterInfo.MType}!" uri createdByStr
+                                                            let mp = MessageProperties().WithComponents([monsterCard]).WithFlags(MessageFlags.IsComponentsV2)
+                                                            do! DUtils.sendMsgToLogChannel gclient mp
+                                                        }
+                                                        let monsterInfoO = db.GetMonsterInfoByRequestId (int64 requestId)
+                                                        match monsterInfoO with
+                                                        | Some monsterInfo ->
+                                                            sendMsg(monsterInfo) |> ignore
+                                                            $"{monsterInfo.Id}"
+                                                        | None ->
+                                                            "Thank you. Monster was created!"
+                                                return Ok msg
+                                            else
+                                                return Error $"Tx ({txId}) was confirmed but unexpected error occured while processing"
+                                        | TxStatus.Unconfirmed tx -> return Error ($"Sorry, tx {tx} was recorded but not confirmed in time. Please try again later. Current one will be refunded within 24 hrs.")
+                                        | TxStatus.Error err -> return Error (err.ToString())
+                                    | Error err ->
+                                        return Error err
                             | None -> return Error "Missing tx"
                         | Error err -> return Error err
                     }
