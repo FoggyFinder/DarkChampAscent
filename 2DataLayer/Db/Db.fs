@@ -4658,7 +4658,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 if monsterExists then Error("Monster based on this NFT already exists")
                 else
                     let requestExists =
-                        Db.newCommand SQL.NFTBasedMonsterExists conn
+                        Db.newCommand SQL.NFTBasedMonsterRequestExists conn
                         |> Db.setParams [ 
                             "assetId",  SqlType.Int64 <| int64 assetId
                             "userId",  SqlType.Int64 <| int64 userId
