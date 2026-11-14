@@ -394,6 +394,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     Log.Error(exn, $"unable to send to {wallet}")
                     return None
             } |> Async.RunSynchronously
+
+        for p in db.GetPendingPayouts() do
+            Log.Error $"Unresolved payout {p.ID} ({p.Kind}, battle {p.BattleId}): {p.Amount} to {p.Target}, tx: '{p.Tx}', {p.Details}, reserved at {p.CreatedAt}"
+
         match db.GetChampWithBalances() with
         | Ok champs ->
             let champsAndWallet =
@@ -408,7 +412,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             for (wallet, champs) in champsAndWallet do
                 let champs' = champs |> List.map(fun ar -> ar.ChampId, ar.Balance)
                 let sum = champs |> List.sumBy(fun ar -> ar.Balance)
-                match db.SendToWallet(champs', battleId, fun () -> send wallet sum) with
+                match db.SendToWallet(wallet, champs', battleId, fun () -> send wallet sum) with
                 | Some tx ->
                     let tnComponent = ChainComponent.tnSend $"{sum} {Emoj.Coin} was sent to {wallet.Substring(0, 5)}..." tx
                     let mp = DUtils.v2ComponentMessage [tnComponent]

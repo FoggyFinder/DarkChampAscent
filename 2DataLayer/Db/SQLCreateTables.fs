@@ -376,6 +376,19 @@ module internal SQLTables =
             CHECK (Amount > 0)
         );
 
+        CREATE TABLE IF NOT EXISTS PendingPayout (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            Kind INT NOT NULL,
+            BattleId INT NOT NULL,
+            Target TEXT NOT NULL,
+            Amount NUMERIC NOT NULL,
+            Details TEXT NOT NULL,
+            Tx TEXT,
+            CreatedAt DATETIME NOT NULL,
+            FOREIGN KEY (BattleId)
+               REFERENCES Battle (ID)
+        );
+
         CREATE TABLE IF NOT EXISTS Shop (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             Item INT NOT NULL

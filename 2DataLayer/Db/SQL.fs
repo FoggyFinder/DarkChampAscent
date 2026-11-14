@@ -683,6 +683,35 @@ module internal SQL =
         WHERE ID = @champId
     """
 
+    let RestoreChampBalance = """
+        UPDATE Champ SET
+            Balance = Balance + @amount,
+            Withdrawn = MAX(Withdrawn - @amount, 0)
+        WHERE ID = @champId
+     """
+
+    let RestoreMonstrBalance = """
+        UPDATE UserMonster SET
+            Balance = Balance + @amount,
+            Withdrawn = MAX(Withdrawn - @amount, 0)
+        WHERE MonsterId = @monsterId
+    """
+
+    let InsertPendingPayout = """
+        INSERT INTO PendingPayout(Kind, BattleId, Target, Amount, Details, CreatedAt)
+        VALUES(@kind, @battleId, @target, @amount, @details, DATETIME('now'));
+        SELECT last_insert_rowid();
+    """
+
+    let SetPendingPayoutTx = "UPDATE PendingPayout SET Tx = @tx WHERE ID = @id"
+    let DeletePendingPayout = "DELETE FROM PendingPayout WHERE ID = @id"
+
+    let GetPendingPayouts = """
+        SELECT ID, Kind, BattleId, Target, Amount, Details, Tx, CreatedAt
+        FROM PendingPayout
+        ORDER BY ID
+    """
+
     let UpdateChampEarnedRewards = """
         UPDATE Champ SET
             Balance = Balance + @rewards,
