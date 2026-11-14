@@ -12,7 +12,6 @@ module internal SQL =
     let ConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE Address = @wallet AND IsConfirmed = 1 LIMIT 1);"
     let UnConfirmedWalletExists = "SELECT EXISTS(SELECT 1 FROM Wallet WHERE IsConfirmed = 0 LIMIT 1);"
     let ChampExists = "SELECT EXISTS(SELECT 1 FROM Champ WHERE AssetId = @assetId LIMIT 1);"
-    let DepositExists = "SELECT EXISTS(SELECT 1 FROM Deposit WHERE Tx = @tx LIMIT 1);"
     let TxExists = "SELECT EXISTS(SELECT 1 FROM TxHistory WHERE Tx = @tx LIMIT 1);"
 
     let MonsterExists = "SELECT EXISTS(SELECT 1 FROM Monster WHERE ID = @monsterId LIMIT 1);"
@@ -53,14 +52,7 @@ module internal SQL =
         LIMIT 1
     """
 
-    let GetUserIdByChampId = "SELECT UserId FROM UserChamp WHERE ChampId = @champId LIMIT 1"
-    let GetChampIdsForUser = """
-        SELECT Champ.ID, AssetId FROM Champ
-        JOIN UserChamp uc ON uc.ChampId = Champ.ID
-        WHERE UserId = @userId
-    """
     let GetChampIdByAssetId = "SELECT ID FROM Champ WHERE AssetId = @assetId LIMIT 1;"
-    let GetChampIdByName = "SELECT ID FROM Champ WHERE Name = @name LIMIT 1;"
     let GetAssetIdByName = "SELECT AssetId FROM Champ WHERE Name = @name LIMIT 1;"
     let GetChampNameIPFSById = "SELECT Name, IPFS FROM Champ WHERE ID = @id LIMIT 1;"
     let GetShopItemIdByItem = "SELECT Id FROM Shop WHERE Item = @item LIMIT 1"
@@ -82,11 +74,6 @@ module internal SQL =
     let GetLastBattle = "SELECT Max(ID) FROM Battle";
     let GetBattleRewards = "SELECT Rewards FROM Battle Where ID = @battleId"
     let GetBattleStatus = "SELECT Status FROM Battle Where ID = @battleId"
-
-    let GetActiveConfirmedUserWallets = """
-        SELECT Address FROM Wallet
-        WHERE UserId = @userId AND IsConfirmed = 1 AND IsActive = 1
-    """
 
     let ConfirmedActiveWalletExistsByDiscordId = """
         SELECT EXISTS(
@@ -301,10 +288,6 @@ module internal SQL =
         WHERE Balance > 0
     """
 
-    let InsertDeposit = """
-        INSERT INTO Deposit(WalletId, TX, Amount) VALUES((SELECT ID FROM Wallet WHERE Address = @wallet LIMIT 1), @tx, @amount)
-    """
-  
     let InsertTx = """
         INSERT INTO TxHistory(TX, Wallet, Note, Amount, Type, IsValid, IsFinished, Comment)
         VALUES(@tx, @wallet, @note, @amount, @type, @isValid, @isFinished, @comment);
@@ -332,14 +315,8 @@ module internal SQL =
        WHERE UserId = @userId AND Amount > 0
     """
 
-    let UserHasItemInStorage = """
-       SELECT Item, Amount FROM Storage
-       JOIN Shop shop ON shop.ID = Storage.ItemId
-       WHERE UserId = @userId AND Amount > 0
-    """
-
     let GetAmountFromStorage = """
-        SELECT Amount FROM Storage WHERE UserId = @userId AND ItemId = @itemId LIMIT 1"        
+        SELECT Amount FROM Storage WHERE UserId = @userId AND ItemId = @itemId LIMIT 1;
     """
 
     let GetChampsBalance = """
@@ -764,8 +741,6 @@ module internal SQL =
             Xp = Xp + @xp
         WHERE ChampId = @champId;
     """
-
-    let GetChampXp = "SELECT Xp FROM ChampStat WHERE ChampId = @champId"
 
     let AddMonsterXp = """
         UPDATE Monster SET 
