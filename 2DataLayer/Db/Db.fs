@@ -921,7 +921,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         "wallet", SqlType.String sender
                         "note", SqlType.String note
                         "amount", SqlType.Decimal amount
-                        "type", SqlType.Int <| int TxType.BuyItem
+                        "type", SqlType.Int <| int TxType.CreateNFTBasedCustomMonster
                         "isValid", SqlType.Boolean true
                         "isFinished", SqlType.Boolean true
                         "comment", SqlType.String ""

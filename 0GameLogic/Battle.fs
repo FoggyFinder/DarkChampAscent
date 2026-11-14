@@ -57,13 +57,13 @@ module ActionSelector =
         | [] -> []
         | [(cId, stat)] ->
             let move =
-                if stat.Health > 10 && stat.Magic > 5 then Move.Heal
+                if stat.Health < 20 && stat.Magic > 5 then Move.Heal
                 elif stat.Health > 50 && stat.Magic < 20 then Move.Meditate
                 else Move.Attack
             [{ Move = move; ChampId = cId }]
         | [(cId1, stat1); (cId2, stat2)] ->
             let move1 =
-                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                if stat1.Health < 20 && stat1.Magic > 5 then Move.Heal
                 elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
                 else Move.Attack
             let move2 =
@@ -73,7 +73,7 @@ module ActionSelector =
             [ { Move = move1; ChampId = cId1 }; { Move = move2; ChampId = cId2 } ]
         | [(cId1, stat1); (cId2, stat2); (cId3, stat3) ] ->
             let move1 =
-                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                if stat1.Health < 20 && stat1.Magic > 5 then Move.Heal
                 elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
                 else Move.Attack
             let move2 =
@@ -91,7 +91,7 @@ module ActionSelector =
             xs
             |> List.map(fun (cId, stat) ->
                 let move =
-                    if stat.Health > 20 && stat.Magic > 5 then Move.Heal
+                    if stat.Health < 20 && stat.Magic > 5 then Move.Heal
                     elif stat.Health > 50 && stat.Magic < 25 then Move.Meditate
                     else Move.Attack
                 { Move = move; ChampId = cId })

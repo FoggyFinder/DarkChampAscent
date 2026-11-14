@@ -592,7 +592,7 @@ let champHandler : HttpHandler =
                         return (ChampDTO(ChampInfoWithUserLink(champ, uLink), belongsToAUser, price)) |> apiOk                    
                     }
                 | _ -> task { return apiNotFound }
-            return response ctx
+            return! response ctx
         }
 
 let lvlUpHandler : HttpHandler =
@@ -702,7 +702,7 @@ let monstrHandler : HttpHandler =
                         return MonsterDTO(mWithLink, isOwned) |> apiOk
                     }
                 | _ -> task { return apiNotFound }
-            return response ctx
+            return! response ctx
         }
 
 let renameMonstrHandler : HttpHandler =
