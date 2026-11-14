@@ -113,7 +113,7 @@ let tryGetChampInfo(assetId:uint64) =
             tr.Transactions
             |> Seq.tryLast
             |> Option.map(fun tx ->
-                let json = tx.Note |> System.Text.ASCIIEncoding.ASCII.GetString |> JObject.Parse
+                let json = tx.Note |> System.Text.Encoding.UTF8.GetString |> JObject.Parse
                 let properties = json.["properties"]
                 {
                     Armour = Trait.parseArmour(properties.Value<string>("Armour"))
@@ -142,7 +142,7 @@ let getDCChampAcfgTransactions(afterTimeOpt:DateTime option) =
     |> Seq.choose(fun tx ->
         tx.AssetConfigTransaction.AssetId |> Option.ofNullable |> Option.bind(fun assetId ->
             try
-                let str = tx.Note |> System.Text.ASCIIEncoding.ASCII.GetString
+                let str = tx.Note |> System.Text.Encoding.UTF8.GetString
                 let json = str |> JObject.Parse
                 let properties = json.["properties"]
                 let t = {
