@@ -707,7 +707,7 @@ module internal SQL =
 
     let SetChampActionRewardsStatusToSend = """
         UPDATE Action SET RewardsStatus = 2
-        WHERE ChampId = @champId
+        WHERE ChampId = @champId AND RewardsStatus <> 2
     """
 
     let UpdateChampStat = """

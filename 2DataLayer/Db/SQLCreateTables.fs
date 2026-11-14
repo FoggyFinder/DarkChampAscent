@@ -107,6 +107,8 @@ module internal SQLTables =
                REFERENCES User (ID)
         );
 
+        CREATE INDEX IF NOT EXISTS IX_UserChamp_UserId ON UserChamp (UserId, ChampId);
+
         CREATE TABLE IF NOT EXISTS ChampStat (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             ChampId INTEGER NOT NULL UNIQUE,
@@ -259,6 +261,8 @@ module internal SQLTables =
             CHECK (Rewards > 0)
         );
 
+        CREATE INDEX IF NOT EXISTS IX_Round_BattleId ON Round (BattleId);
+
         CREATE TABLE IF NOT EXISTS ChampLevel (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             ChampId INTEGER NOT NULL,
@@ -267,6 +271,8 @@ module internal SQLTables =
             FOREIGN KEY (ChampId)
                REFERENCES Champ (ID)
         );
+
+        CREATE INDEX IF NOT EXISTS IX_ChampLevel_ChampId ON ChampLevel (ChampId);
 
         CREATE TABLE IF NOT EXISTS Action (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -286,6 +292,9 @@ module internal SQLTables =
             CHECK (Rewards >= 0)
         );
 
+        CREATE INDEX IF NOT EXISTS IX_Action_RoundId ON Action (RoundId, ChampId);
+        CREATE INDEX IF NOT EXISTS IX_Action_Unpaid ON Action (ChampId) WHERE RewardsStatus <> 2;
+
         CREATE TABLE IF NOT EXISTS MonsterAction (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             RoundId INT NOT NULL,
@@ -299,6 +308,8 @@ module internal SQLTables =
             FOREIGN KEY (ChampId)
                REFERENCES Champ (ID)
         );
+
+        CREATE INDEX IF NOT EXISTS IX_MonsterAction_RoundId ON MonsterAction (RoundId);
 
         CREATE TABLE IF NOT EXISTS MonsterDefeats (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -353,6 +364,8 @@ module internal SQLTables =
                 Monstr >= 0
             )
         );
+
+        CREATE INDEX IF NOT EXISTS IX_RewardsHistory_RoundId ON RewardsHistory (RoundId);
 
         CREATE TABLE IF NOT EXISTS RewardsPayed (
             ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

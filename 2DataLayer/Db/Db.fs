@@ -445,8 +445,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     let dbIdByDiscordId = ConcurrentDictionary<uint64, int64>()
     let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
     let dbIdByWallet = ConcurrentDictionary<string, int64>()
-    let userChampsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, ChampInfoWithStat list>>()
-    let userMonstrsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, MonsterInfo list>>()
     let mutable champsRank : FrozenDictionary<uint64, uint64> = FrozenDictionary<uint64, uint64>.Empty
 
     let getUserIdByWallet(wallet: string) =
@@ -883,13 +881,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         match getUserIdByWallet sender with
         | Some userId ->
             try
-                try
-                    for d in userMonstrsInfoByRound.Values do
-                        if d.ContainsKey userId then
-                            d.Remove userId |> ignore
-                with inner ->
-                    Log.Error(inner, $"remove monstrs from cache for {userId}")
-
                 use conn = new SqliteConnection(cs)
                 
                 Db.batch (fun tn ->
@@ -1762,25 +1753,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
 
             let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
             
-            // remove all outdated records
-            for key in userChampsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
-                userChampsInfoByRound.Remove key |> ignore
-
-            match userChampsInfoByRound.TryGetValue roundId with
-            | true, dct ->
-                match dct.TryGetValue userId with
-                | true, champs -> champs
-                | false, _ ->
-                    let info = getChampsInfo roundId
-                    dct.Add (userId, info)
-                    info
-            | false, _ ->
-                let info = getChampsInfo roundId
-                let d = Dictionary<int64, ChampInfoWithStat list>()
-                d.Add (userId, info)
-                userChampsInfoByRound.TryAdd(roundId, d) |> ignore
-                info
-            |> Ok
+            getChampsInfo roundId |> Ok
         with exn ->
             Log.Error(exn, $"GetUserChampsRaw {userId}")
             Error("Unexpected error")
@@ -1834,27 +1807,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let monsterLvlStats = Monster.getMonsterStatsByLvl(mi.MType, mi.MSubType, monsterLvl)
                     mi.WithStat(mi.Stat + monsterLvlStats))
 
-            let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
-            
-            // remove all outdated records
-            for key in userMonstrsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
-                userMonstrsInfoByRound.Remove key |> ignore
-
-            match userMonstrsInfoByRound.TryGetValue roundId with
-            | true, dct ->
-                match dct.TryGetValue userId with
-                | true, monstrs -> monstrs
-                | false, _ ->
-                    let info = getMonstrsInfo()
-                    dct.Add (userId, info)
-                    info
-            | false, _ ->
-                let info = getMonstrsInfo()
-                let d = Dictionary<int64, MonsterInfo list>()
-                d.Add (userId, info)
-                userMonstrsInfoByRound.TryAdd(roundId, d) |> ignore
-                info
-            |> Ok
+            getMonstrsInfo() |> Ok
         with exn ->
             Log.Error(exn, $"GetUserMonstrsRaw {userId}")
             Error("Unexpected error")
