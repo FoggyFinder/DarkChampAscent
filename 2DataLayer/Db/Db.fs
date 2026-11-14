@@ -1349,7 +1349,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Error "Unexpected error"
 
     member _.IsTxValid(uId:UserId, tx:Tx, ?amountO:decimal) =
-        let validatePrice (conn:SqliteConnection) (price:decimal) =
+        let validateAmount (conn:SqliteConnection) (expectedAmount: decimal -> decimal) =
             match amountO with
             | Some amount ->
                 let darkCoinPriceO = getKeyNum conn DbKeysNum.DarkCoinPrice
@@ -1358,18 +1358,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     |> Option.orElse darkCoinPriceO
                 match darkCoinPriceO, darkCoinPriceOldO with
                 | Some cPrice, Some oPrice ->
-                    let expectedAmount = Math.Round(price / cPrice, 6)
-                    let fallbackAmount = Math.Round(price / oPrice, 6)
-                    let isValidAmount =
-                        Utils.isCloseEnough expectedAmount amount ||
-                        Utils.isCloseEnough fallbackAmount amount
-
-                    if isValidAmount then
-                        Ok(())
-                    else
-                        Error("Amount not valid")
+                    if Utils.isCloseEnough (expectedAmount cPrice) amount ||
+                       Utils.isCloseEnough (expectedAmount oPrice) amount then Ok(())
+                    else Error("Amount not valid")
                 | _ -> Error("Unexpected error")
-            | None -> Ok(())            
+            | None -> Ok(())
+        let validatePrice (conn:SqliteConnection) (price:decimal) =
+            validateAmount conn (fun dcPrice -> Math.Round(price / dcPrice, 6))         
         if tx.IsConfirm then Ok (())
         else
             match getUserIdByUserId uId with
@@ -1437,9 +1432,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                     Error (sb.ToString())
                                 | Error err, _ 
                                 | _, Error err -> Error err
-                        | Tx.BuyItem _ ->
-                            // TODO: validate price
-                            Ok (())
+                        | Tx.BuyItem(_, item, count) ->
+                            let unitPrice = Shop.getPrice item
+                            if unitPrice <= 0M then
+                                Error "Unknown item"
+                            elif count = 0u || count > Limits.MaxItemsPerPurchase then
+                                Error $"You can buy 1 to {Limits.MaxItemsPerPurchase} items at once"
+                            else
+                                // same formula as createTxHandler: per-item price is rounded first
+                                validateAmount conn (fun dcPrice -> Math.Round(decimal count * Math.Round(unitPrice / dcPrice, 6), 6))
                         | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
                             let requestBelongsToAUser =
                                 Db.newCommand SQL.NFTMonsterCreationRequestBelongsToAUser conn
