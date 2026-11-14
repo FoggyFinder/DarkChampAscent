@@ -432,9 +432,8 @@ module Battle =
         let monsterActions, monsterState =
             match monsterAction with
             | Move.Attack | Move.MagicAttack ->
-                match monsterDefeater with
-                | Some _ -> [], monster'
-                | None ->
+                if not mstat.IsAlive || actions'.IsEmpty then [], monster'
+                else
                     let isMagicAttack = monsterAction = Move.MagicAttack
                     let isMassAttack = int64(Monster.massAttackChance(monster.Monster, isMagicAttack)) > Random.Shared.NextInt64(101L)
                     let target =
@@ -553,7 +552,7 @@ module Battle =
                 ChampsFinalStat = champsFinalStat |> List.map(fun (x,y,_) -> x, y) |> Map.ofList
                 DeadChamps = champsFinalStat |> List.choose(fun (x,_, z) -> if z then None else Some x)
                 MonsterDefeater = monsterDefeater
-
+                MonsterIsAlive = monsterState.Stat.IsAlive
                 MonsterPM = monsterPM
                 MonsterActions = monsterActions' |> Map.map(fun _ (_, pm, xp) -> pm, xp)
             })

@@ -50,6 +50,8 @@ type BattleResult = {
     ChampsMoveAndXp: Map<uint64, PerformedMove * uint64>
     ChampsFinalStat: Map<uint64, Stat>
     DeadChamps: uint64 list
+    
+    MonsterIsAlive: bool
 
     MonsterDefeater: uint64 option
     MonsterPM: PerformedMove option

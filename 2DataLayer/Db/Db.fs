@@ -3508,7 +3508,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 updateRewards tn bresult.RoundId bresult.Rewards bresult.MonsterChar.Id
                 bresult.MonsterDefeater |> Option.iter(defeatMonster tn)
                 if bresult.MonsterDefeater.IsNone then
-                    bresult.MonsterChar.Stat |> updateMonsterStat tn bresult.MonsterChar.Id
+                    if bresult.MonsterIsAlive then
+                        bresult.MonsterChar.Stat |> updateMonsterStat tn bresult.MonsterChar.Id
+                    else
+                        // Dead without a defeater: it started the round already at zero health, level
+                        // bonus included (that can happen after its level bonus shrinks), so no champ
+                        // could hit it. The battle is finished below; give it fresh stats here, or it
+                        // would come back just as dead in its next battle.
+                        Monster.getStats bresult.MonsterChar.Monster
+                        |> updateMonsterStat tn bresult.MonsterChar.Id
                 performMonsterAction tn
                
                 bresult.ChampsMoveAndXp |> Map.iter(fun champId (pm, xp) ->
@@ -3526,7 +3534,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.exec
 
-                if bresult.MonsterDefeater.IsSome || (bresult.MonsterChar.Stat.IsAlive |> not) then
+                if bresult.MonsterDefeater.IsSome || (bresult.MonsterIsAlive |> not) then
                     Db.newCommand SQL.FinishBattle conn
                     |> Db.setParams [
                         "battleId", SqlType.Int64 <| int64 bresult.BattleId
