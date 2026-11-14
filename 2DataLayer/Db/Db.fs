@@ -1416,11 +1416,9 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         match tx with
                         | Tx.Confirm _ -> Ok (())
                         | Tx.RenameChamp(_, champId, nName) ->
-                            if String.IsNullOrWhiteSpace nName then
-                                Error ("Name is empty!")
-                            elif nName.Trim().Length < 3 then
-                                Error ("Name is too short!")
-                            else
+                            match Validation.validateName nName with
+                            | Error err -> Error err
+                            | Ok _ ->
                                 let belongsToAUserO =
                                     Db.newCommand SQL.ChampBelongsToAUser conn
                                     |> Db.setParams [

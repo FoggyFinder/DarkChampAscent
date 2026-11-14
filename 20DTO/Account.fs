@@ -58,6 +58,42 @@ type UserType =
 
 [<RequireQualifiedAccess>]
 module Validation =
+    let [<Literal>] MinNameLength = 3
+    let [<Literal>] MaxNameLength = 32
+    let [<Literal>] MaxDescriptionLength = 500
+
+    let private nameExtraChars = " -'.#&!,+()"
+
+    /// Champ and monster names. The name comes back unchanged when it's acceptable.
+    let validateName (name: string) : Result<string, string> =
+        if String.IsNullOrWhiteSpace(name) then
+            Error "Name is empty!"
+        elif name <> name.Trim() then
+            Error "Name can't start or end with a space"
+        elif name.Length < MinNameLength then
+            Error "Name is too short!"
+        elif name.Length > MaxNameLength then
+            Error $"Name must be {MaxNameLength} characters or less"
+        elif name.Contains("  ") then
+            Error "Name can't contain two spaces in a row"
+        elif name |> Seq.exists (fun c -> not (Char.IsLetterOrDigit c || nameExtraChars.IndexOf(c) >= 0)) then
+            Error $"Name can only contain letters, digits, spaces and {nameExtraChars.Trim()}"
+        else
+            Ok name
+
+    let validateDescription (description: string) : Result<string, string> =
+        let trimmed = description.Trim()
+        if trimmed.Length = 0 then
+            Error "Description is empty!"
+        elif trimmed.Length > MaxDescriptionLength then
+            Error $"Description must be {MaxDescriptionLength} characters or less"
+        elif trimmed |> Seq.exists (fun c -> Char.IsControl c && c <> '\n' && c <> '\r') then
+            Error "Description contains unsupported characters"
+        elif trimmed.Contains("://") || trimmed |> Seq.exists (fun c -> "@<>[]`".IndexOf(c) >= 0) then
+            Error "Description can't contain links, mentions or any of @ < > [ ] `"
+        else
+            Ok trimmed
+
     let validateNickname (nickname: string) : Result<string, string> =
         let trimmed = nickname.Trim()
         if String.IsNullOrWhiteSpace(trimmed) then
