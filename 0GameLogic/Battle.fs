@@ -350,7 +350,7 @@ module Battle =
             { stat with Defense = stat.Defense + int64 f }, targetStat, pm
         | PerformedMove.MagicShield(defenseIncrease, magicTaken) ->
             { stat with
-                Defense = stat.Defense + int64 defenseIncrease
+                MagicDefense = stat.MagicDefense + int64 defenseIncrease
                 Magic = stat.Magic - int64 magicTaken
             }, targetStat, pm
         | PerformedMove.Heal(healthIncrease, magicTaken) ->
