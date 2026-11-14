@@ -113,7 +113,7 @@ let tryGetChampInfo(assetId:uint64) =
             tr.Transactions
             |> Seq.tryLast
             |> Option.map(fun tx ->
-                let json = tx.Note |> System.Text.Encoding.UTF8.GetString |> JObject.Parse
+                let json = tx.Note |> Utils.noteToString |> JObject.Parse
                 let properties = json.["properties"]
                 {
                     Armour = Trait.parseArmour(properties.Value<string>("Armour"))
@@ -142,8 +142,7 @@ let getDCChampAcfgTransactions(afterTimeOpt:DateTime option) =
     |> Seq.choose(fun tx ->
         tx.AssetConfigTransaction.AssetId |> Option.ofNullable |> Option.bind(fun assetId ->
             try
-                let str = tx.Note |> System.Text.Encoding.UTF8.GetString
-                let json = str |> JObject.Parse
+                let json = tx.Note |> Utils.noteToString |> JObject.Parse
                 let properties = json.["properties"]
                 let t = {
                         Armour = Trait.parseArmour(properties.Value<string>("Armour"))
@@ -198,7 +197,7 @@ let getDarkCoinTxForWallet(wallet:string, afterTimeOpt:DateTime option) =
     getAssetTxsForAddress(wallet, Nullable(DarkCoinAssetId), afterTimeOpt)
     |> Seq.choose(fun tx ->
         if tx.AssetTransferTransaction <> null && tx.AssetTransferTransaction.Receiver = wallet && tx.AssetTransferTransaction.Amount > 0UL then
-            let note = System.Text.Encoding.UTF8.GetString tx.Note
+            let note = Utils.noteToString tx.Note
             ParsedTx(tx.Id, tx.Sender, decimal tx.AssetTransferTransaction.Amount / Algo6Decimals,
                 note, Tx.TryParse tx.Sender note)
             |> Some
@@ -329,7 +328,7 @@ let decodeTX64(signedTxnB64: string) =
     task {
         let signedTxnBytes = Convert.FromBase64String(signedTxnB64)
         let signedTx      = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
-        let note = System.Text.Encoding.UTF8.GetString signedTx.Tx.Note
+        let note = Utils.noteToString signedTx.Tx.Note
         return signedTx.Tx.Sender.ToString(), note
     }
 
@@ -342,7 +341,7 @@ let verifyAlgorandTxnSignature (wallet: string) (signedTxnB64: string) (txnnote:
         let signedTxn      = Encoder.DecodeFromMsgPack<SignedTransaction>(signedTxnBytes)
         let txn            = signedTxn.Tx
 
-        let note = System.Text.Encoding.UTF8.GetString(txn.Note)
+        let note = Utils.noteToString txn.Note
         if note = txnnote then
             let pubKeyBytes =
                 // re-keyed wallet case

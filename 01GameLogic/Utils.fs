@@ -9,6 +9,8 @@ let getValueOrDefault (d:IDictionary<_,_>) dflt key=
 
 let fstOf3(x,_,_) = x
 
+let noteToString (note: byte[]) = if isNull note then "" else System.Text.Encoding.UTF8.GetString note
+
 //let ofList (xs:Result<_,_> list) =
 //    if xs |> List.exists(fun r -> r.IsError) then
 //        None

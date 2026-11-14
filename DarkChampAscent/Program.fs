@@ -893,7 +893,7 @@ module TxHandlers =
             if att.XferAsset <> Blockchain.DarkCoinAssetId then Error "Wrong asset"
             elif att.AssetReceiver.EncodeAsString() <> gameWallet then Error "Wrong receiver"
             elif att.Sender.EncodeAsString() <> tx.Wallet then Error "Sender doesn't match wallet"
-            elif Text.Encoding.UTF8.GetString att.Note <> tx.Note then Error "Note doesn't match"
+            elif Utils.noteToString att.Note <> tx.Note then Error "Note doesn't match"
             elif att.AssetAmount > 0UL then Ok (decimal att.AssetAmount / Blockchain.Algo6Decimals)
             else Error "Amount must be greater than 0"
         | _ -> Error "Expected a DarkCoin asset transfer"
@@ -1002,7 +1002,7 @@ module TxHandlers =
                                         
                                             let ptx =
                                                 ParsedTx(txId, signedTx.Tx.Sender.EncodeAsString(), amount, 
-                                                    System.Text.Encoding.UTF8.GetString signedTx.Tx.Note, Some tx)
+                                                    Utils.noteToString signedTx.Tx.Note, Some tx)
                                             let! b =
                                                 Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
                                                     5 (TimeSpan.FromSeconds(5.))
