@@ -133,7 +133,7 @@ module internal SQL =
         SELECT last_insert_rowid();
         """
     let UpdatePassword = "UPDATE CustomUser SET Password = @password WHERE ID = @cId;"
-    let AddCustomUser = "INSERT INTO User(CustomUserId) VALUES(@customId, 0);"
+    let AddCustomUser = "INSERT INTO User(CustomUserId) VALUES(@customId);"
 
     let PrimaryWalletAlreadyExists = "SELECT EXISTS(SELECT 1 FROM User WHERE PrimaryWallet = @wallet LIMIT 1);"
     let AddNewWeb3User = """
@@ -516,9 +516,12 @@ module internal SQL =
         WHERE ChampId = @champId AND RoundId <= @roundId AND Duration != 0 AND RoundId + Duration >= @roundId
     """
 
-    let InsertChampLvl = """
+    let InsertChampLvlIfAvailable = """
         INSERT INTO ChampLevel(ChampId, Characteristic, Timestamp)
-        VALUES(@champId, @characteristic, DATETIME('now'));
+        SELECT @champId, @characteristic, DATETIME('now')
+        WHERE (SELECT Xp FROM ChampStat WHERE ChampId = @champId) / @xpPerLvl
+            > (SELECT Count(*) FROM ChampLevel WHERE ChampId = @champId);
+        SELECT changes();
     """
 
     // TODO: use Timestamp

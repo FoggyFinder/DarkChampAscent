@@ -700,7 +700,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             champs
                             |> List.map(fun c ->
                                 let move =
-                                    if c.Stat.Health > 20 && c.Stat.Magic > 5 then Move.Heal
+                                    if c.Stat.Health < 20 && c.Stat.Magic > 5 then Move.Heal
                                     elif c.Stat.Health > 50 && c.Stat.Magic < 25 then Move.Meditate
                                     else Move.Attack
                                 { Move = move; ChampId = c.ID })

@@ -2387,30 +2387,16 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.LevelUp(champId:uint64, ch:Characteristic) =
         try
             use conn = new SqliteConnection(cs)
-            let lvledChars =
-                Db.newCommand SQL.GetLvledCharsForChamp conn
-                |> Db.setParams [
-                    "champId", SqlType.Int64 <| int64 champId
-                ]
-                |> Db.scalar (fun v -> unbox<int64> v |> uint64)
-
-            let xp =
-                Db.newCommand SQL.GetChampXp conn
-                |> Db.setParams [
-                    "champId", SqlType.Int64 <| int64 champId
-                ]
-                |> Db.scalar (fun v -> unbox<int64> v |> uint64)
-            let lvl = Levels.getLvlByXp (xp, false)
-            if lvl > lvledChars then
-                Db.newCommand SQL.InsertChampLvl conn
+            let inserted =
+                Db.newCommand SQL.InsertChampLvlIfAvailable conn
                 |> Db.setParams [
                     "champId", SqlType.Int64 <| int64 champId
                     "characteristic", SqlType.Int32 <| int ch
+                    "xpPerLvl", SqlType.Int64 <| int64 Levels.XPPerLvl
                 ]
-                |> Db.exec
-                Ok (())
-            else
-                Error("Not enough xp")
+                |> Db.scalar (fun v -> unbox<int64> v)
+            if inserted > 0L then Ok (())
+            else Error("Not enough xp")
         with exn ->
             Log.Error(exn, $"LevelUp: {champId}, {ch}")
             Error(exn.Message)
