@@ -339,7 +339,7 @@ module internal SQL =
     """
 
     let GetAmountFromStorage = """
-        SELECT Amount FROM Storage WHERE UserId = @userId AND ItemId = @itemId LIMIT 1;"        
+        SELECT Amount FROM Storage WHERE UserId = @userId AND ItemId = @itemId LIMIT 1"        
     """
 
     let GetChampsBalance = """

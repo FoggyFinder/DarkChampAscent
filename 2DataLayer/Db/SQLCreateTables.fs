@@ -41,6 +41,19 @@ module internal SQLTables =
                REFERENCES User (ID)
         );
 
+        -- Legacy, read-only: donations made from the in-game wallet before v0.3.
+        -- Nothing writes here any more, but GetTopDonaters still counts these rows,
+        -- so the table has to exist on a fresh database too.
+        CREATE TABLE IF NOT EXISTS InGameDonation (
+            ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            UserId INTEGER NOT NULL,
+            Timestamp DATETIME NOT NULL,
+            Amount INT NOT NULL,
+            FOREIGN KEY (UserId)
+               REFERENCES User (ID),
+            CHECK (Amount >= 0)
+        );
+
         CREATE TABLE IF NOT EXISTS TxHistory (
 	        ID INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             TX TEXT NOT NULL UNIQUE,
