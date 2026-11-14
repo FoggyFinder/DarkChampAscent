@@ -237,10 +237,9 @@ type TxStatus =
     | Unconfirmed of tx:string
     | Error of exn
 
-let sendTx(keys:string, receiver:string, amount:uint64, assetId:uint64, note:string) =
+let sendTx(src:Account, receiver:string, amount:uint64, assetId:uint64, note:string) =
     task {
         try
-            let src = Account(keys)
             let! transParams = algodApiInstance.TransactionParamsAsync()
             let assetTransferTx =
                 AssetTransferTransaction(
