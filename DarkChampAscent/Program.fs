@@ -350,6 +350,10 @@ open Algorand.Algod.Model.Transactions
 open GameLogic.Monsters
 open DiscordBot.Components
 
+open System.IO
+open System.Threading
+open System.Threading.Channels
+
 [<RequireQualifiedAccess>]
 module SSEHelper =
     let handler (signal:Utils.IReadOnlySignal<'a>) (apply:('a -> 'a) option): HttpHandler =
@@ -360,27 +364,44 @@ module SSEHelper =
                 res.Headers["Cache-Control"] <- "no-cache"
                 res.Headers["Connection"] <- "keep-alive"
                 res.Headers["X-Accel-Buffering"] <- "no"
-                do! res.Body.FlushAsync()
                 let ct = ctx.RequestAborted
 
-                let update v =
+                // Holds only the newest value: older unsent values are dropped,
+                // since the client only needs the latest state.
+                let pending = Channel.CreateBounded<'a>(BoundedChannelOptions(1, FullMode = BoundedChannelFullMode.DropOldest))
+
+                let write (text:string) =
                     task {
-                        let v' = match apply with | Some f -> f v | None -> v
-                        let json = JsonSerializer.Serialize(v', options)
-                        let msg = $"data: {json}\n\n"
-                        let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
+                        let bytes = System.Text.Encoding.UTF8.GetBytes text
                         do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct)
-                        do! res.Body.FlushAsync()
+                        do! res.Body.FlushAsync(ct)
                     }
-                do! update(signal.Value)
-                let d = signal.Publish.Subscribe (fun v -> update v |> ignore)
-                while not ct.IsCancellationRequested do
-                    try
-                        do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
-                    with
-                    | :? OperationCanceledException -> ()
-                    | ex -> Log.Error("sseHandler:" + ex.ToString())
-                d.Dispose()
+
+                let send (v:'a) =
+                    let v' = match apply with Some f -> f v | None -> v
+                    let json = JsonSerializer.Serialize(v', options)
+                    write $"data: {json}\n\n"
+
+                // Subscribe before reading the current value so nothing is missed in between.
+                // The callback only queues; all writes happen in the loop below, one at a time.
+                use _subscription = signal.Publish.Subscribe(fun v -> pending.Writer.TryWrite v |> ignore)
+                try
+                    do! send signal.Value
+                    while not ct.IsCancellationRequested do
+                        // Wake on a new value, or after 30s to send a heartbeat
+                        use timeout = CancellationTokenSource.CreateLinkedTokenSource(ct)
+                        timeout.CancelAfter(TimeSpan.FromSeconds 30.)
+                        try
+                            let! _ = pending.Reader.WaitToReadAsync(timeout.Token).AsTask()
+                            ()
+                        with :? OperationCanceledException when not ct.IsCancellationRequested -> ()
+                        match pending.Reader.TryRead() with
+                        | true, v -> do! send v
+                        | _ -> do! write ": ping\n\n"
+                with
+                | :? OperationCanceledException
+                | :? IOException -> () // client disconnected
+                | ex -> Log.Error(ex, "sseHandler")
             }
 
 let battleParticipantsHandler : HttpHandler =
