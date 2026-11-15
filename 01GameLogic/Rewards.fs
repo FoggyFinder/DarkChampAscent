@@ -113,7 +113,7 @@ type RoundRewardSplit private (
                     | Move.MagicAttack ->
                         // special case - monster is killed, all dmg pot goes to defeater
                         match monsterDefeater with
-                        | Some mdefeaterId -> if champId = mdefeaterId then damageR else 0M
+                        | Some mdefeaterId -> if champId = mdefeaterId then 20M * x else 0M
                         | None ->
                             match d.Value with
                             | damage when damage.Value > 0UL -> (decimal damage.Value) * damageR

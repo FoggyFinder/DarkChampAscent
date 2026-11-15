@@ -269,7 +269,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
         DateTimeOffset(dt).ToUnixTimeSeconds()
     let wallets = options.Value.Wallet
     let keys = options.Value.Chain.GameWalletKeys
-
+    let src = new Algorand.Algod.Model.Account(keys)
     let roundParticipants = Signal<RoundParticipantChamp list>([])
     let roundStatus = Signal<RoundInfoDTO>(RoundInfoDTO(RoundStatus.Processing, None, 0UL))
     let battleStatus = Signal<BattleInfoDTO option>(None)
@@ -379,7 +379,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             async {
                 let! r =
                     Blockchain.sendTx(
-                        keys, wallet, uv,
+                        src, wallet, uv,
                         Blockchain.DarkCoinAssetId,
                         $"DarkChampAscent: {battleId} battle"
                     ) |> Async.AwaitTask
@@ -394,6 +394,10 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                     Log.Error(exn, $"unable to send to {wallet}")
                     return None
             } |> Async.RunSynchronously
+
+        for p in db.GetPendingPayouts() do
+            Log.Error $"Unresolved payout {p.ID} ({p.Kind}, battle {p.BattleId}): {p.Amount} to {p.Target}, tx: '{p.Tx}', {p.Details}, reserved at {p.CreatedAt}"
+
         match db.GetChampWithBalances() with
         | Ok champs ->
             let champsAndWallet =
@@ -408,7 +412,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
             for (wallet, champs) in champsAndWallet do
                 let champs' = champs |> List.map(fun ar -> ar.ChampId, ar.Balance)
                 let sum = champs |> List.sumBy(fun ar -> ar.Balance)
-                match db.SendToWallet(champs', battleId, fun () -> send wallet sum) with
+                match db.SendToWallet(wallet, champs', battleId, fun () -> send wallet sum) with
                 | Some tx ->
                     let tnComponent = ChainComponent.tnSend $"{sum} {Emoj.Coin} was sent to {wallet.Substring(0, 5)}..." tx
                     let mp = DUtils.v2ComponentMessage [tnComponent]
@@ -700,7 +704,7 @@ type BattleService(db:SqliteStorage, gclient:GatewayClient, options: IOptions<Co
                             champs
                             |> List.map(fun c ->
                                 let move =
-                                    if c.Stat.Health > 20 && c.Stat.Magic > 5 then Move.Heal
+                                    if c.Stat.Health < 20 && c.Stat.Magic > 5 then Move.Heal
                                     elif c.Stat.Health > 50 && c.Stat.Magic < 25 then Move.Meditate
                                     else Move.Attack
                                 { Move = move; ChampId = c.ID })
@@ -837,6 +841,7 @@ type RefundFailedGenService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfi
     inherit BackgroundService()
     
     let keys = chainOpt.Value.GameWalletKeys
+    let src = new Algorand.Algod.Model.Account(keys)
 
     override _.ExecuteAsync(cancellationToken) =
         task {
@@ -854,7 +859,7 @@ type RefundFailedGenService(db:SqliteStorage, chainOpt: IOptions<Conf.ChainConfi
                                     Log.Information($"Exact amount = {amount}")
                                     let! r =
                                         Blockchain.sendTx(
-                                            keys, ar.Sender, amount,
+                                            src, ar.Sender, amount,
                                             Blockchain.DarkCoinAssetId,
                                             $"Gen failed, please try again later"
                                         )
@@ -894,6 +899,7 @@ type RefundInvalidTxService(db: SqliteStorage, chainOpt: IOptions<Conf.ChainConf
     inherit BackgroundService()
 
     let keys = chainOpt.Value.GameWalletKeys
+    let src = new Algorand.Algod.Model.Account(keys)
 
     override _.ExecuteAsync(cancellationToken) =
         task {
@@ -910,7 +916,7 @@ type RefundInvalidTxService(db: SqliteStorage, chainOpt: IOptions<Conf.ChainConf
                                     Log.Information($"Sending {tx.Amount} (exact: {amount}) to {tx.Wallet}")
                                     let! r =
                                         Blockchain.sendTx(
-                                            keys, tx.Wallet, amount,
+                                            src, tx.Wallet, amount,
                                             Blockchain.DarkCoinAssetId,
                                             ""
                                         )

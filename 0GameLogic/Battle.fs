@@ -57,13 +57,13 @@ module ActionSelector =
         | [] -> []
         | [(cId, stat)] ->
             let move =
-                if stat.Health > 10 && stat.Magic > 5 then Move.Heal
+                if stat.Health < 20 && stat.Magic > 5 then Move.Heal
                 elif stat.Health > 50 && stat.Magic < 20 then Move.Meditate
                 else Move.Attack
             [{ Move = move; ChampId = cId }]
         | [(cId1, stat1); (cId2, stat2)] ->
             let move1 =
-                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                if stat1.Health < 20 && stat1.Magic > 5 then Move.Heal
                 elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
                 else Move.Attack
             let move2 =
@@ -73,7 +73,7 @@ module ActionSelector =
             [ { Move = move1; ChampId = cId1 }; { Move = move2; ChampId = cId2 } ]
         | [(cId1, stat1); (cId2, stat2); (cId3, stat3) ] ->
             let move1 =
-                if stat1.Health > 10 && stat1.Magic > 5 then Move.Heal
+                if stat1.Health < 20 && stat1.Magic > 5 then Move.Heal
                 elif stat1.Health > 50 && stat1.Magic < 20 then Move.Meditate
                 else Move.Attack
             let move2 =
@@ -91,7 +91,7 @@ module ActionSelector =
             xs
             |> List.map(fun (cId, stat) ->
                 let move =
-                    if stat.Health > 20 && stat.Magic > 5 then Move.Heal
+                    if stat.Health < 20 && stat.Magic > 5 then Move.Heal
                     elif stat.Health > 50 && stat.Magic < 25 then Move.Meditate
                     else Move.Attack
                 { Move = move; ChampId = cId })
@@ -350,7 +350,7 @@ module Battle =
             { stat with Defense = stat.Defense + int64 f }, targetStat, pm
         | PerformedMove.MagicShield(defenseIncrease, magicTaken) ->
             { stat with
-                Defense = stat.Defense + int64 defenseIncrease
+                MagicDefense = stat.MagicDefense + int64 defenseIncrease
                 Magic = stat.Magic - int64 magicTaken
             }, targetStat, pm
         | PerformedMove.Heal(healthIncrease, magicTaken) ->
@@ -432,9 +432,8 @@ module Battle =
         let monsterActions, monsterState =
             match monsterAction with
             | Move.Attack | Move.MagicAttack ->
-                match monsterDefeater with
-                | Some _ -> [], monster'
-                | None ->
+                if not mstat.IsAlive || actions'.IsEmpty then [], monster'
+                else
                     let isMagicAttack = monsterAction = Move.MagicAttack
                     let isMassAttack = int64(Monster.massAttackChance(monster.Monster, isMagicAttack)) > Random.Shared.NextInt64(101L)
                     let target =
@@ -553,7 +552,7 @@ module Battle =
                 ChampsFinalStat = champsFinalStat |> List.map(fun (x,y,_) -> x, y) |> Map.ofList
                 DeadChamps = champsFinalStat |> List.choose(fun (x,_, z) -> if z then None else Some x)
                 MonsterDefeater = monsterDefeater
-
+                MonsterIsAlive = monsterState.Stat.IsAlive
                 MonsterPM = monsterPM
                 MonsterActions = monsterActions' |> Map.map(fun _ (_, pm, xp) -> pm, xp)
             })

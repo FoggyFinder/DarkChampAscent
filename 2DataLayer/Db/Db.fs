@@ -33,6 +33,11 @@ type WalletType =
     | Burn = 3
     | Staking = 4
 
+type PayoutKind =
+    | Champs = 0
+    | MonsterOwner = 1
+    | SpecialWallet = 2
+
 type DbKeysBool =
     | InitBalanceIsSet = 0
     | LockedKeyIsSet = 2
@@ -440,8 +445,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     let dbIdByDiscordId = ConcurrentDictionary<uint64, int64>()
     let dbIdByCustomId = ConcurrentDictionary<uint64, int64>()
     let dbIdByWallet = ConcurrentDictionary<string, int64>()
-    let userChampsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, ChampInfoWithStat list>>()
-    let userMonstrsInfoByRound = ConcurrentDictionary<int64, Dictionary<int64, MonsterInfo list>>()
     let mutable champsRank : FrozenDictionary<uint64, uint64> = FrozenDictionary<uint64, uint64>.Empty
 
     let getUserIdByWallet(wallet: string) =
@@ -605,6 +608,35 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             Log.Error(exn, $"confirmationCodeIsMatchedForWallet: {wallet}, {code}")
             false      
     
+    let addPendingPayout (tn:Data.IDbTransaction) (kind:PayoutKind) (battleId:uint64) (target:string) (amount:decimal) (details:string) =
+        tn
+        |> Db.newCommandForTransaction SQL.InsertPendingPayout
+        |> Db.setParams [
+            "kind", SqlType.Int32 <| int kind
+            "battleId", SqlType.Int64 <| int64 battleId
+            "target", SqlType.String target
+            "amount", SqlType.Decimal amount
+            "details", SqlType.String details
+        ]
+        |> Db.scalar (fun v -> unbox<int64> v)
+
+    let removePendingPayout (tn:Data.IDbTransaction) (pendingId:int64) =
+        tn
+        |> Db.newCommandForTransaction SQL.DeletePendingPayout
+        |> Db.setParams [ "id", SqlType.Int64 pendingId ]
+        |> Db.exec
+
+    let setPendingPayoutTx (conn:SqliteConnection) (pendingId:int64) (tx:string) =
+        try
+            Db.newCommand SQL.SetPendingPayoutTx conn
+            |> Db.setParams [
+                "id", SqlType.Int64 pendingId
+                "tx", SqlType.String tx
+            ]
+            |> Db.exec
+        with exn ->
+           Log.Error(exn, $"setPendingPayoutTx: {pendingId} | {tx}")
+
     let updateChampStat (tn:Data.IDbTransaction) (champId: uint64) (stat:Stat) =
         tn
         |> Db.newCommandForTransaction SQL.UpdateChampStat
@@ -849,13 +881,6 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         match getUserIdByWallet sender with
         | Some userId ->
             try
-                try
-                    for d in userMonstrsInfoByRound.Values do
-                        if d.ContainsKey userId then
-                            d.Remove userId |> ignore
-                with inner ->
-                    Log.Error(inner, $"remove monstrs from cache for {userId}")
-
                 use conn = new SqliteConnection(cs)
                 
                 Db.batch (fun tn ->
@@ -921,7 +946,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         "wallet", SqlType.String sender
                         "note", SqlType.String note
                         "amount", SqlType.Decimal amount
-                        "type", SqlType.Int <| int TxType.BuyItem
+                        "type", SqlType.Int <| int TxType.CreateNFTBasedCustomMonster
                         "isValid", SqlType.Boolean true
                         "isFinished", SqlType.Boolean true
                         "comment", SqlType.String ""
@@ -1349,7 +1374,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 Error "Unexpected error"
 
     member _.IsTxValid(uId:UserId, tx:Tx, ?amountO:decimal) =
-        let validatePrice (conn:SqliteConnection) (price:decimal) =
+        let validateAmount (conn:SqliteConnection) (expectedAmount: decimal -> decimal) =
             match amountO with
             | Some amount ->
                 let darkCoinPriceO = getKeyNum conn DbKeysNum.DarkCoinPrice
@@ -1358,18 +1383,13 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     |> Option.orElse darkCoinPriceO
                 match darkCoinPriceO, darkCoinPriceOldO with
                 | Some cPrice, Some oPrice ->
-                    let expectedAmount = Math.Round(price / cPrice, 6)
-                    let fallbackAmount = Math.Round(price / oPrice, 6)
-                    let isValidAmount =
-                        Utils.isCloseEnough expectedAmount amount ||
-                        Utils.isCloseEnough fallbackAmount amount
-
-                    if isValidAmount then
-                        Ok(())
-                    else
-                        Error("Amount not valid")
+                    if Utils.isCloseEnough (expectedAmount cPrice) amount ||
+                       Utils.isCloseEnough (expectedAmount oPrice) amount then Ok(())
+                    else Error("Amount not valid")
                 | _ -> Error("Unexpected error")
-            | None -> Ok(())            
+            | None -> Ok(())
+        let validatePrice (conn:SqliteConnection) (price:decimal) =
+            validateAmount conn (fun dcPrice -> Math.Round(price / dcPrice, 6))         
         if tx.IsConfirm then Ok (())
         else
             match getUserIdByUserId uId with
@@ -1387,11 +1407,9 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                         match tx with
                         | Tx.Confirm _ -> Ok (())
                         | Tx.RenameChamp(_, champId, nName) ->
-                            if String.IsNullOrWhiteSpace nName then
-                                Error ("Name is empty!")
-                            elif nName.Trim().Length < 3 then
-                                Error ("Name is too short!")
-                            else
+                            match Validation.validateName nName with
+                            | Error err -> Error err
+                            | Ok _ ->
                                 let belongsToAUserO =
                                     Db.newCommand SQL.ChampBelongsToAUser conn
                                     |> Db.setParams [
@@ -1437,9 +1455,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                                     Error (sb.ToString())
                                 | Error err, _ 
                                 | _, Error err -> Error err
-                        | Tx.BuyItem _ ->
-                            // TODO: validate price
-                            Ok (())
+                        | Tx.BuyItem(_, item, count) ->
+                            let unitPrice = Shop.getPrice item
+                            if unitPrice <= 0M then
+                                Error "Unknown item"
+                            elif count = 0u || count > Limits.MaxItemsPerPurchase then
+                                Error $"You can buy 1 to {Limits.MaxItemsPerPurchase} items at once"
+                            else
+                                // same formula as createTxHandler: per-item price is rounded first
+                                validateAmount conn (fun dcPrice -> Math.Round(decimal count * Math.Round(unitPrice / dcPrice, 6), 6))
                         | Tx.CreateNFTBasedCustomMonster(_, requestId) ->
                             let requestBelongsToAUser =
                                 Db.newCommand SQL.NFTMonsterCreationRequestBelongsToAUser conn
@@ -1729,25 +1753,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
 
             let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
             
-            // remove all outdated records
-            for key in userChampsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
-                userChampsInfoByRound.Remove key |> ignore
-
-            match userChampsInfoByRound.TryGetValue roundId with
-            | true, dct ->
-                match dct.TryGetValue userId with
-                | true, champs -> champs
-                | false, _ ->
-                    let info = getChampsInfo roundId
-                    dct.Add (userId, info)
-                    info
-            | false, _ ->
-                let info = getChampsInfo roundId
-                let d = Dictionary<int64, ChampInfoWithStat list>()
-                d.Add (userId, info)
-                userChampsInfoByRound.TryAdd(roundId, d) |> ignore
-                info
-            |> Ok
+            getChampsInfo roundId |> Ok
         with exn ->
             Log.Error(exn, $"GetUserChampsRaw {userId}")
             Error("Unexpected error")
@@ -1801,27 +1807,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                     let monsterLvlStats = Monster.getMonsterStatsByLvl(mi.MType, mi.MSubType, monsterLvl)
                     mi.WithStat(mi.Stat + monsterLvlStats))
 
-            let roundId = x.GetLastRoundId() |> Option.defaultValue 0UL |> int64
-            
-            // remove all outdated records
-            for key in userMonstrsInfoByRound.Keys |> Seq.filter(fun r -> r < roundId) do
-                userMonstrsInfoByRound.Remove key |> ignore
-
-            match userMonstrsInfoByRound.TryGetValue roundId with
-            | true, dct ->
-                match dct.TryGetValue userId with
-                | true, monstrs -> monstrs
-                | false, _ ->
-                    let info = getMonstrsInfo()
-                    dct.Add (userId, info)
-                    info
-            | false, _ ->
-                let info = getMonstrsInfo()
-                let d = Dictionary<int64, MonsterInfo list>()
-                d.Add (userId, info)
-                userMonstrsInfoByRound.TryAdd(roundId, d) |> ignore
-                info
-            |> Ok
+            getMonstrsInfo() |> Ok
         with exn ->
             Log.Error(exn, $"GetUserMonstrsRaw {userId}")
             Error("Unexpected error")
@@ -2386,30 +2372,16 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.LevelUp(champId:uint64, ch:Characteristic) =
         try
             use conn = new SqliteConnection(cs)
-            let lvledChars =
-                Db.newCommand SQL.GetLvledCharsForChamp conn
-                |> Db.setParams [
-                    "champId", SqlType.Int64 <| int64 champId
-                ]
-                |> Db.scalar (fun v -> unbox<int64> v |> uint64)
-
-            let xp =
-                Db.newCommand SQL.GetChampXp conn
-                |> Db.setParams [
-                    "champId", SqlType.Int64 <| int64 champId
-                ]
-                |> Db.scalar (fun v -> unbox<int64> v |> uint64)
-            let lvl = Levels.getLvlByXp (xp, false)
-            if lvl > lvledChars then
-                Db.newCommand SQL.InsertChampLvl conn
+            let inserted =
+                Db.newCommand SQL.InsertChampLvlIfAvailable conn
                 |> Db.setParams [
                     "champId", SqlType.Int64 <| int64 champId
                     "characteristic", SqlType.Int32 <| int ch
+                    "xpPerLvl", SqlType.Int64 <| int64 Levels.XPPerLvl
                 ]
-                |> Db.exec
-                Ok (())
-            else
-                Error("Not enough xp")
+                |> Db.scalar (fun v -> unbox<int64> v)
+            if inserted > 0L then Ok (())
+            else Error("Not enough xp")
         with exn ->
             Log.Error(exn, $"LevelUp: {champId}, {ch}")
             Error(exn.Message)
@@ -3487,7 +3459,15 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 updateRewards tn bresult.RoundId bresult.Rewards bresult.MonsterChar.Id
                 bresult.MonsterDefeater |> Option.iter(defeatMonster tn)
                 if bresult.MonsterDefeater.IsNone then
-                    bresult.MonsterChar.Stat |> updateMonsterStat tn bresult.MonsterChar.Id
+                    if bresult.MonsterIsAlive then
+                        bresult.MonsterChar.Stat |> updateMonsterStat tn bresult.MonsterChar.Id
+                    else
+                        // Dead without a defeater: it started the round already at zero health, level
+                        // bonus included (that can happen after its level bonus shrinks), so no champ
+                        // could hit it. The battle is finished below; give it fresh stats here, or it
+                        // would come back just as dead in its next battle.
+                        Monster.getStats bresult.MonsterChar.Monster
+                        |> updateMonsterStat tn bresult.MonsterChar.Id
                 performMonsterAction tn
                
                 bresult.ChampsMoveAndXp |> Map.iter(fun champId (pm, xp) ->
@@ -3505,7 +3485,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 ]
                 |> Db.exec
 
-                if bresult.MonsterDefeater.IsSome || (bresult.MonsterChar.Stat.IsAlive |> not) then
+                if bresult.MonsterDefeater.IsSome || (bresult.MonsterIsAlive |> not) then
                     Db.newCommand SQL.FinishBattle conn
                     |> Db.setParams [
                         "battleId", SqlType.Int64 <| int64 bresult.BattleId
@@ -3710,78 +3690,123 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
     member _.SendToMonsterOwnerWallet(battleId:uint64, send:(string -> decimal -> (string * bool) option)) =
         try 
             use conn = new SqliteConnection(cs)
-            Db.batch(fun tn ->
-                let infoO =
-                    Db.newCommandForTransaction SQL.GetMonsterPayoutInfo tn
-                    |> Db.setParams [ "battleId", SqlType.Int64 <| int64 battleId ]
-                    |> Db.querySingle(fun r -> r.GetInt64(0), r.GetDecimal(1), r.GetString(2))
+            let reserved =
+                Db.batch(fun tn ->
+                    let infoO =
+                        Db.newCommandForTransaction SQL.GetMonsterPayoutInfo tn
+                        |> Db.setParams [ "battleId", SqlType.Int64 <| int64 battleId ]
+                        |> Db.querySingle(fun r -> r.GetInt64(0), r.GetDecimal(1), r.GetString(2))
 
-                match infoO with
-                | Some (monsterId, balance, wallet) when balance > 0M ->
-                    Db.newCommandForTransaction SQL.WithdrawFromMonstrBalance tn
-                    |> Db.setParams [
-                        "monsterId", SqlType.Int64 monsterId
-                    ]
-                    |> Db.exec
-
-                    let r = send wallet balance
-
-                    match r with
-                    // TODO: fix unconfirmed case
-                    | Some (tx, b) ->
-                        Db.newCommandForTransaction SQL.InsertMonsterRewardsPayed tn
+                    match infoO with
+                    | Some (monsterId, balance, wallet) when balance > 0M ->
+                        Db.newCommandForTransaction SQL.WithdrawFromMonstrBalance tn
                         |> Db.setParams [
-                            "battleId", SqlType.Int64 <| int64 battleId
-                            "tx", SqlType.String <| tx
-                            "rewards", SqlType.Decimal balance
+                            "monsterId", SqlType.Int64 monsterId
                         ]
                         |> Db.exec
-                        
-                        Some(tx, wallet, balance)
-                    | None ->
-                        tn.Rollback()
-                        None
-                | _ -> None) conn
+
+                        let pendingId =
+                            addPendingPayout tn PayoutKind.MonsterOwner battleId wallet balance $"monster:{monsterId}"
+                        Some(pendingId, monsterId, balance, wallet)
+                    | _ -> None) conn
+
+            match reserved with
+            | Some (pendingId, monsterId, balance, wallet) ->
+                match send wallet balance with
+                // TODO: fix unconfirmed case
+                | Some (tx, _) ->
+                    setPendingPayoutTx conn pendingId tx
+                    try
+                        Db.batch(fun tn ->
+                            Db.newCommandForTransaction SQL.InsertMonsterRewardsPayed tn
+                            |> Db.setParams [
+                                "battleId", SqlType.Int64 <| int64 battleId
+                                "tx", SqlType.String <| tx
+                                "rewards", SqlType.Decimal balance
+                            ]
+                            |> Db.exec
+
+                            removePendingPayout tn pendingId) conn
+                    with exn ->
+                        Log.Error(exn, $"SendToMonsterOwnerWallet {battleId}: {tx} was sent to {wallet} but not recorded, see PendingPayout {pendingId}")
+                    Some(tx, wallet, balance)
+                | None ->
+                    Db.batch(fun tn ->
+                        Db.newCommandForTransaction SQL.RestoreMonstrBalance tn
+                        |> Db.setParams [
+                            "monsterId", SqlType.Int64 monsterId
+                            "amount", SqlType.Decimal balance
+                        ]
+                        |> Db.exec
+
+                        removePendingPayout tn pendingId) conn
+                    None
+            | None -> None
         with exn ->
             Log.Error(exn, $"SendToMonsterOwnerWallet {battleId}")
             None
     
-    member _.SendToWallet(champs:(uint64 * decimal) list, battleId:uint64, send:(unit -> (string * bool) option)) =
+    /// wallet - where `send` transfers to; it's only written to PendingPayout here
+    member _.SendToWallet(wallet:string, champs:(uint64 * decimal) list, battleId:uint64, send:(unit -> (string * bool) option)) =
         try 
             use conn = new SqliteConnection(cs)
-            Db.batch(fun tn ->
-                for (champId, _) in champs do
-                    Db.newCommandForTransaction SQL.WithdrawFromChampBalance tn
-                    |> Db.setParams [
-                        "champId", SqlType.Int64 <| int64 champId
-                    ]
-                    |> Db.exec
-                let r = send()
-                match r with
-                // TODO: fix unconfirmed case
-                | Some (tx, b) ->
-                    for (champId, balance) in champs do
-                        Db.newCommandForTransaction SQL.InsertRewardsPayed tn
+            let sum = champs |> List.sumBy snd
+            let details =
+                champs
+                |> List.map(fun (champId, balance) -> $"{champId}:{balance}")
+                |> String.concat ";"
+
+            let pendingId =
+                Db.batch(fun tn ->
+                    for (champId, _) in champs do
+                        Db.newCommandForTransaction SQL.WithdrawFromChampBalance tn
                         |> Db.setParams [
                             "champId", SqlType.Int64 <| int64 champId
-                            "battleId", SqlType.Int64 <| int64 battleId
-                            "tx", SqlType.String <| tx
-                            "rewards", SqlType.Decimal balance
+                        ]
+                        |> Db.exec
+                    addPendingPayout tn PayoutKind.Champs battleId wallet sum details) conn
+
+            match send() with
+            // TODO: fix unconfirmed case
+            | Some (tx, _) ->
+                setPendingPayoutTx conn pendingId tx
+                try
+                    Db.batch(fun tn ->
+                        for (champId, balance) in champs do
+                            Db.newCommandForTransaction SQL.InsertRewardsPayed tn
+                            |> Db.setParams [
+                                "champId", SqlType.Int64 <| int64 champId
+                                "battleId", SqlType.Int64 <| int64 battleId
+                                "tx", SqlType.String <| tx
+                                "rewards", SqlType.Decimal balance
+                            ]
+                            |> Db.exec
+
+                            Db.newCommandForTransaction SQL.SetChampActionRewardsStatusToSend tn
+                            |> Db.setParams [
+                                "champId", SqlType.Int64 <| int64 champId
+                                "battleId", SqlType.Int64 <| int64 battleId
+                                "tx", SqlType.String <| tx
+                                "rewards", SqlType.Decimal balance
+                            ]
+                            |> Db.exec
+
+                        removePendingPayout tn pendingId) conn
+                with exn ->
+                    Log.Error(exn, $"SendToWallet {battleId}: {tx} was sent to {wallet} but not recorded, see PendingPayout {pendingId}")
+                Some(tx)
+            | None ->
+                Db.batch(fun tn ->
+                    for (champId, balance) in champs do
+                        Db.newCommandForTransaction SQL.RestoreChampBalance tn
+                        |> Db.setParams [
+                            "champId", SqlType.Int64 <| int64 champId
+                            "amount", SqlType.Decimal balance
                         ]
                         |> Db.exec
 
-                        Db.newCommandForTransaction SQL.SetChampActionRewardsStatusToSend tn
-                        |> Db.setParams [
-                            "champId", SqlType.Int64 <| int64 champId
-                            "battleId", SqlType.Int64 <| int64 battleId
-                            "tx", SqlType.String <| tx
-                            "rewards", SqlType.Decimal balance
-                        ]
-                        |> Db.exec
-                    Some(tx)
-                | None ->
-                    tn.Rollback()
-                    None) conn
+                    removePendingPayout tn pendingId) conn
+                None
 
         with exn ->
             let errors = StringBuilder()
@@ -3803,31 +3828,47 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
             use conn = new SqliteConnection(cs)
             match getKeyNum conn numKey with
             | Some v when v > 0M ->
-                Db.batch(fun tn ->
-                    Db.newCommandForTransaction SQL.SetKeyNum tn
-                    |> Db.setParams [
-                        "key", SqlType.String (numKey.ToString())
-                        "value", SqlType.Decimal 0M
-                    ]
-                    |> Db.exec
-                    let r = send v
-                    match r with
-                    // TODO: fix unconfirmed case
-                    | Some (tx, _) ->
-                        Db.newCommandForTransaction SQL.InsertSpecialWithdrawal tn
+                let pendingId =
+                    Db.batch(fun tn ->
+                        Db.newCommandForTransaction SQL.SetKeyNum tn
                         |> Db.setParams [
-                            "walletType", SqlType.Int32 <| int wt
-                            "battleId", SqlType.Int64 <| int64 battleId
-                            "tx", SqlType.String tx
+                            "key", SqlType.String (numKey.ToString())
+                            "value", SqlType.Decimal 0M
+                        ]
+                        |> Db.exec
+                        addPendingPayout tn PayoutKind.SpecialWallet battleId (wt.ToString()) v (numKey.ToString())) conn
+
+                match send v with
+                // TODO: fix unconfirmed case
+                | Some (tx, _) ->
+                    setPendingPayoutTx conn pendingId tx
+                    try
+                        Db.batch(fun tn ->
+                            Db.newCommandForTransaction SQL.InsertSpecialWithdrawal tn
+                            |> Db.setParams [
+                                "walletType", SqlType.Int32 <| int wt
+                                "battleId", SqlType.Int64 <| int64 battleId
+                                "tx", SqlType.String tx
+                                "amount", SqlType.Decimal v
+                            ]
+                            |> Db.exec
+
+                            removePendingPayout tn pendingId) conn
+                    with exn ->
+                        Log.Error(exn, $"SendToSpecialWallet {battleId}: {tx} was sent to {wt} but not recorded, see PendingPayout {pendingId}")
+                    Some(tx, v)
+                | None ->
+                    Db.batch(fun tn ->
+                        Db.newCommandForTransaction SQL.AddToKeyNum tn
+                        |> Db.setParams [
+                            "key", SqlType.String (numKey.ToString())
                             "amount", SqlType.Decimal v
                         ]
                         |> Db.exec
-                        Some(tx, v)
-                    | None ->
-                        tn.Rollback()
-                        Log.Error("Unable to send tx")
-                        None
-                ) conn
+
+                        removePendingPayout tn pendingId) conn
+                    Log.Error("Unable to send tx")
+                    None
             | Some _ ->
                 Log.Information($"0 rewards for {wt} at {battleId}")
                 None
@@ -3837,6 +3878,25 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
         with exn ->
             Log.Error(exn, "SendToSpecialWallet")
             None
+
+     /// Payouts that were reserved but never settled (see addPendingPayout). Normally empty.
+    member _.GetPendingPayouts() =
+        try
+            use conn = new SqliteConnection(cs)
+            Db.newCommand SQL.GetPendingPayouts conn
+            |> Db.query(fun r -> {|
+                ID = r.GetInt64(0)
+                Kind = r.GetInt32(1) |> enum<PayoutKind>
+                BattleId = uint64 <| r.GetInt64(2)
+                Target = r.GetString(3)
+                Amount = r.GetDecimal(4)
+                Details = r.GetString(5)
+                Tx = if r.IsDBNull(6) then "" else r.GetString(6)
+                CreatedAt = r.GetString(7)
+            |})
+         with exn ->
+            Log.Error(exn, "GetPendingPayouts")
+            []
 
     member _.GetAllUnfinishedGenRequests() =
         try
@@ -4549,7 +4609,7 @@ type SqliteStorage(options:IOptions<DbConfiguration>) =
                 if monsterExists then Error("Monster based on this NFT already exists")
                 else
                     let requestExists =
-                        Db.newCommand SQL.NFTBasedMonsterExists conn
+                        Db.newCommand SQL.NFTBasedMonsterRequestExists conn
                         |> Db.setParams [ 
                             "assetId",  SqlType.Int64 <| int64 assetId
                             "userId",  SqlType.Int64 <| int64 userId

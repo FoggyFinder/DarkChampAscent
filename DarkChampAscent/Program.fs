@@ -350,6 +350,10 @@ open Algorand.Algod.Model.Transactions
 open GameLogic.Monsters
 open DiscordBot.Components
 
+open System.IO
+open System.Threading
+open System.Threading.Channels
+
 [<RequireQualifiedAccess>]
 module SSEHelper =
     let handler (signal:Utils.IReadOnlySignal<'a>) (apply:('a -> 'a) option): HttpHandler =
@@ -360,27 +364,44 @@ module SSEHelper =
                 res.Headers["Cache-Control"] <- "no-cache"
                 res.Headers["Connection"] <- "keep-alive"
                 res.Headers["X-Accel-Buffering"] <- "no"
-                do! res.Body.FlushAsync()
                 let ct = ctx.RequestAborted
 
-                let update v =
+                // Holds only the newest value: older unsent values are dropped,
+                // since the client only needs the latest state.
+                let pending = Channel.CreateBounded<'a>(BoundedChannelOptions(1, FullMode = BoundedChannelFullMode.DropOldest))
+
+                let write (text:string) =
                     task {
-                        let v' = match apply with | Some f -> f v | None -> v
-                        let json = JsonSerializer.Serialize(v', options)
-                        let msg = $"data: {json}\n\n"
-                        let bytes = System.Text.Encoding.UTF8.GetBytes(msg)
+                        let bytes = System.Text.Encoding.UTF8.GetBytes text
                         do! res.Body.WriteAsync(bytes, 0, bytes.Length, ct)
-                        do! res.Body.FlushAsync()
+                        do! res.Body.FlushAsync(ct)
                     }
-                do! update(signal.Value)
-                let d = signal.Publish.Subscribe (fun v -> update v |> ignore)
-                while not ct.IsCancellationRequested do
-                    try
-                        do! Task.Delay(TimeSpan.FromMinutes(1.), ct)
-                    with
-                    | :? OperationCanceledException -> ()
-                    | ex -> Log.Error("sseHandler:" + ex.ToString())
-                d.Dispose()
+
+                let send (v:'a) =
+                    let v' = match apply with Some f -> f v | None -> v
+                    let json = JsonSerializer.Serialize(v', options)
+                    write $"data: {json}\n\n"
+
+                // Subscribe before reading the current value so nothing is missed in between.
+                // The callback only queues; all writes happen in the loop below, one at a time.
+                use _subscription = signal.Publish.Subscribe(fun v -> pending.Writer.TryWrite v |> ignore)
+                try
+                    do! send signal.Value
+                    while not ct.IsCancellationRequested do
+                        // Wake on a new value, or after 30s to send a heartbeat
+                        use timeout = CancellationTokenSource.CreateLinkedTokenSource(ct)
+                        timeout.CancelAfter(TimeSpan.FromSeconds 30.)
+                        try
+                            let! _ = pending.Reader.WaitToReadAsync(timeout.Token).AsTask()
+                            ()
+                        with :? OperationCanceledException when not ct.IsCancellationRequested -> ()
+                        match pending.Reader.TryRead() with
+                        | true, v -> do! send v
+                        | _ -> do! write ": ping\n\n"
+                with
+                | :? OperationCanceledException
+                | :? IOException -> () // client disconnected
+                | ex -> Log.Error(ex, "sseHandler")
             }
 
 let battleParticipantsHandler : HttpHandler =
@@ -592,7 +613,7 @@ let champHandler : HttpHandler =
                         return (ChampDTO(ChampInfoWithUserLink(champ, uLink), belongsToAUser, price)) |> apiOk                    
                     }
                 | _ -> task { return apiNotFound }
-            return response ctx
+            return! response ctx
         }
 
 let lvlUpHandler : HttpHandler =
@@ -702,7 +723,7 @@ let monstrHandler : HttpHandler =
                         return MonsterDTO(mWithLink, isOwned) |> apiOk
                     }
                 | _ -> task { return apiNotFound }
-            return response ctx
+            return! response ctx
         }
 
 let renameMonstrHandler : HttpHandler =
@@ -719,11 +740,14 @@ let renameMonstrHandler : HttpHandler =
                     let nameO = ctx.Request.Form.tryGetFormValue "mnstrname" |> Option.map string
                     match mIdO, nameO with
                     | Some mId, Some newName ->
-                        if db.MonsterBelongsToAUser(mId, user.ID) |> Option.defaultValue false then
-                            match db.RenameUserMonster(user.ID, newName, int64 mId) with
-                            | Ok _ -> apiOk ()
-                            | Error e -> apiError (string e) 400
-                        else apiError "Not your monster" 403
+                        match Validation.validateName (newName.Trim()) with
+                        | Error e -> apiError e 400
+                        | Ok validName ->
+                            if db.MonsterBelongsToAUser(mId, user.ID) |> Option.defaultValue false then
+                                match db.RenameUserMonster(user.ID, validName, int64 mId) with
+                                | Ok _ -> apiOk ()
+                                | Error e -> apiError (string e) 400
+                            else apiError "Not your monster" 403
                     | _ -> apiBadRequest "Missing fields"
                 | None -> apiUnauthorized
             return! response ctx
@@ -872,7 +896,7 @@ module TxHandlers =
             if att.XferAsset <> Blockchain.DarkCoinAssetId then Error "Wrong asset"
             elif att.AssetReceiver.EncodeAsString() <> gameWallet then Error "Wrong receiver"
             elif att.Sender.EncodeAsString() <> tx.Wallet then Error "Sender doesn't match wallet"
-            elif Text.Encoding.UTF8.GetString att.Note <> tx.Note then Error "Note doesn't match"
+            elif Utils.noteToString att.Note <> tx.Note then Error "Note doesn't match"
             elif att.AssetAmount > 0UL then Ok (decimal att.AssetAmount / Blockchain.Algo6Decimals)
             else Error "Amount must be greater than 0"
         | _ -> Error "Expected a DarkCoin asset transfer"
@@ -981,7 +1005,7 @@ module TxHandlers =
                                         
                                             let ptx =
                                                 ParsedTx(txId, signedTx.Tx.Sender.EncodeAsString(), amount, 
-                                                    System.Text.Encoding.UTF8.GetString signedTx.Tx.Note, Some tx)
+                                                    Utils.noteToString signedTx.Tx.Note, Some tx)
                                             let! b =
                                                 Helpers.retry (fun () -> db.ProcessParsedValidTx ptx |> Result.isOk)
                                                     5 (TimeSpan.FromSeconds(5.))
@@ -1142,6 +1166,43 @@ let discordCallbackHandler (frontendUrl: string) : HttpHandler =
                 return! response
         }
 
+let nftIsEligibleForMonster (db:SqliteStorage) (uId:DarkChampAscent.Account.UserId) (assetId:uint64) =
+    task {
+        if Blockchain.allChamps.Value.Contains assetId then
+            return Error "You can't use Champ as a monster!"
+        else
+            match db.GetUserWallets(uId) with
+            | Ok wallets ->
+                let mutable flag = false
+                for w in wallets |> List.filter(fun w -> w.IsConfirmed) do
+                    if flag then ()
+                    else
+                        let! r = Blockchain.walletContainsAsset(w.Wallet, assetId)
+                        match r with
+                        | Ok b -> flag <- b
+                        | Error err ->
+                            Log.Error($"walletContainsAsset: {w.Wallet} | {assetId}", err)
+                if flag then
+                    return Ok ()
+                else
+                    return Error "Unexpected error. Only NFTs from your confirmed wallets are eligible"
+            | Error err ->
+                return Error err
+    }
+
+let validateExternalLink (link: string) : Result<string, string> =
+    let trimmed = link.Trim()
+    if trimmed.Length = 0 then
+        Ok ""
+    elif trimmed.Length > 200 then
+        Error "Link must be 200 characters or less"
+    elif trimmed |> Seq.exists (fun c -> Char.IsWhiteSpace c || "<>[]()`\"".IndexOf(c) >= 0) then
+        Error "Link contains unsupported characters"
+    else
+        match Uri.TryCreate(trimmed, UriKind.Absolute) with
+        | true, uri when uri.Scheme = Uri.UriSchemeHttps -> Ok trimmed
+        | _ -> Error "Link must be a full https:// address"
+
 let assetsInfoHandler : HttpHandler =
     fun ctx ->
         task {
@@ -1151,28 +1212,14 @@ let assetsInfoHandler : HttpHandler =
             | Some u ->
                 let route = Request.getRoute ctx
                 let assetId = route.GetInt64 "id" |> uint64
-                if Blockchain.allChamps.Value.Contains assetId then
-                    return! apiResult (Error "You can't use Champ as a monster!") ctx
-                else
-                    let db = ctx.Plug<SqliteStorage>()
-                    match db.GetUserWallets(u.ID) with
-                    | Ok wallets ->
-                        let mutable flag = false
-                        for w in wallets |> List.filter(fun w -> w.IsConfirmed) do
-                            if flag then ()
-                            else
-                                let! r = Blockchain.walletContainsAsset(w.Wallet, assetId)
-                                match r with
-                                | Ok b -> flag <- b
-                                | Error err ->
-                                    Log.Error($"walletContainsAsset: {w.Wallet} | {assetId}", err)
-                        if flag then   
-                            let! res = External.API.getAssetInfo assetId
-                            return! apiResult res ctx
-                        else
-                            return! apiResult (Error "Unexpected error. Only NFTs from your confirmed wallets are eligible") ctx
-                    | x ->
-                        return! apiResult x ctx
+                let db = ctx.Plug<SqliteStorage>()
+                let! eligible = nftIsEligibleForMonster db u.ID assetId
+                match eligible with
+                | Ok () ->
+                    let! res = External.API.getAssetInfo assetId
+                    return! apiResult res ctx
+                | Error err ->
+                    return! apiResult (Error err) ctx
             | None -> return! apiUnauthorized ctx
         }
 
@@ -1186,15 +1233,37 @@ let createRequestForNFTBasedMonsterHandler : HttpHandler =
                 let assetIdO = form.tryGetUInt64 "assetId"
                 let nameO = form.tryGetFormValue "name"
                 let descriptionO = form.tryGetFormValue "description"
-                let ipfsO = form.tryGetFormValue "ipfs"
                 let eLink = form.tryGetFormValue "eLink" |> Option.map string |> Option.defaultValue ""
 
-                match assetIdO, nameO, descriptionO, ipfsO with
-                | Some assetId, Some name, Some description, Some ipfs ->
+                match assetIdO, nameO, descriptionO with
+                | Some assetId, Some name, Some description ->
                     let db = ctx.Plug<SqliteStorage>()
                     let description' = if String.IsNullOrWhiteSpace(description) then $"Not provided: {assetId}" else (description.ToString())
-                    let r = db.AddCreateNFTBasedMonsterRequest(u.ID, assetId, name, description', ipfs, eLink)
-                    return! apiResult r ctx
+                    let validated =
+                        Validation.validateName (name.ToString().Trim())
+                        |> Result.bind (fun validName ->
+                            Validation.validateDescription description'
+                            |> Result.bind (fun validDescription ->
+                                validateExternalLink eLink
+                                |> Result.map (fun validLink -> validName, validDescription, validLink)))
+                    match validated with
+                    | Error err ->
+                        return! apiResult (Error err) ctx
+                    | Ok (validName, validDescription, validLink) ->
+                        let! eligible = nftIsEligibleForMonster db u.ID assetId
+                        match eligible with
+                        | Error err ->
+                            return! apiResult (Error err) ctx
+                        | Ok () ->
+                            let! info = External.API.getAssetInfo assetId
+                            match info with
+                            | Error err ->
+                                return! apiResult (Error err) ctx
+                            | Ok ai when String.IsNullOrWhiteSpace ai.IPFS ->
+                                return! apiResult (Error "This NFT has no picture") ctx
+                            | Ok ai ->
+                                let r = db.AddCreateNFTBasedMonsterRequest(u.ID, assetId, validName, validDescription, ai.IPFS, validLink)
+                                return! apiResult r ctx
                 | _ ->
                     return! apiBadRequest "Missing required fields" ctx
             | None -> return! apiUnauthorized ctx
